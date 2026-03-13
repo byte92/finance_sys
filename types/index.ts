@@ -1,0 +1,109 @@
+// 数据模型 - 设计为未来可迁移云端数据库的结构
+// 所有字段名使用英文，便于未来对接RESTful API
+
+export type Market = 'A' | 'HK' | 'US' | 'FUND' | 'CRYPTO'
+
+// 交易类型：新增 DIVIDEND（分红/派息）
+export type TradeType = 'BUY' | 'SELL' | 'DIVIDEND'
+
+// 单笔交易记录
+export interface Trade {
+  id: string            // UUID
+  stockId: string       // 关联股票ID
+  type: TradeType
+  date: string          // ISO date string: "2024-01-15"
+  price: number         // 成交价格（分红时为每股分红金额）
+  quantity: number      // 成交数量（分红时为持有股数）
+  commission: number    // 手续费（元）
+  tax: number           // 印花税（元，仅卖出时收取）
+  totalAmount: number   // 总金额（price * quantity，不含费用）
+  netAmount: number     // 实际金额（买入含费用，卖出/分红扣费用）
+  note?: string
+  createdAt: string     // 创建时间
+  updatedAt: string
+}
+
+// 单笔交易盈亏明细（计算型，FIFO）
+export interface TradePnlDetail {
+  tradeId: string
+  type: TradeType
+  date: string
+  pnl: number           // 该笔盈亏
+  pnlPercent: number    // 盈亏率
+  costBasis: number     // 对应的买入成本
+  proceeds: number      // 卖出实收（含税后）
+  isDividend?: boolean
+}
+
+// 股票持仓/历史记录
+export interface Stock {
+  id: string
+  code: string          // 股票代码：000001, 00700, AAPL
+  name: string          // 股票名称
+  market: Market
+  trades: Trade[]
+  note?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// 手续费配置（每个市场可单独配置）
+export interface FeeConfig {
+  market: Market
+  commissionRate: number      // 佣金率（如 0.0003 = 万三）
+  minCommission: number       // 最低佣金（元）
+  stampDutyRate: number       // 印花税率（卖出时收）
+  transferFeeRate: number     // 过户费率（沪市收）
+  settlementFeeRate?: number  // 结算费率（港股用）
+}
+
+// 应用配置
+export interface AppConfig {
+  version: string
+  defaultMarket: Market
+  feeConfigs: Record<Market, FeeConfig>
+  currency: {
+    A: 'CNY'
+    HK: 'HKD'
+    US: 'USD'
+    FUND: 'CNY'
+    CRYPTO: 'USDT'
+  }
+}
+
+// 盈亏计算结果（计算型，不存储）
+export interface TradeProfit {
+  tradeId: string
+  pnl: number           // 盈亏金额
+  pnlPercent: number    // 盈亏百分比
+  buyAmount: number     // 买入金额（含手续费）
+  sellAmount: number    // 卖出金额（扣手续费）
+}
+
+// 股票整体盈亏摘要（计算型）
+export interface StockSummary {
+  stock: Stock
+  totalBuyAmount: number    // 总买入（含费）
+  totalSellAmount: number   // 总卖出（扣费）
+  currentHolding: number    // 当前持仓数量
+  avgCostPrice: number      // 平均成本价
+  realizedPnl: number       // 已实现盈亏（含分红）
+  unrealizedPnl: number     // 未实现盈亏（需输入当前价格）
+  totalPnl: number          // 总盈亏
+  totalPnlPercent: number   // 总盈亏%
+  totalCommission: number   // 总手续费
+  totalDividend: number     // 累计分红收益
+  tradeCount: number        // 交易笔数（不含分红）
+  tradePnlDetails: TradePnlDetail[]  // 每笔交易的盈亏明细
+}
+
+// 导出的数据结构（用于JSON导出）
+export interface ExportData {
+  meta: {
+    version: string
+    exportedAt: string
+    appName: string
+  }
+  config: AppConfig
+  stocks: Stock[]
+}

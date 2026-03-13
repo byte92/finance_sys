@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS 变量定义 - 默认暗色主题 */
+:root {
+  /* 中性色 - 深色金融风格 */
+  --background: 220 20% 7%;
+  --foreground: 210 20% 92%;
+
+  --card: 220 18% 11%;
+  --card-foreground: 210 20% 92%;
+
+  --surface: 220 16% 14%;
+  --surface-elevated: 220 14% 18%;
+
+  --primary: 210 100% 56%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 220 14% 20%;
+  --secondary-foreground: 210 20% 80%;
+
+  --muted: 220 14% 18%;
+  --muted-foreground: 215 12% 52%;
+
+  --accent: 210 100% 56%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 12% 20%;
+  --input: 220 12% 20%;
+  --ring: 210 100% 56%;
+
+  --radius: 0.75rem;
+
+  /* 盈亏专用颜色 - A股惯例：红涨绿跌 */
+  --profit: 4 90% 58%;
+  --profit-muted: 4 60% 18%;
+  --loss: 142 71% 45%;
+  --loss-muted: 142 50% 13%;
+
+  /* 渐变 */
+  --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(230 90% 65%));
+  --gradient-subtle: linear-gradient(180deg, hsl(220 20% 7%), hsl(220 18% 5%));
+  --gradient-card: linear-gradient(145deg, hsl(220 18% 13%), hsl(220 16% 10%));
+
+  /* 阴影 */
+  --shadow-card-hover: 0 8px 32px -8px hsl(210 100% 56% / 0.25);
+  --shadow-profit: 0 4px 16px -4px hsl(4 90% 58% / 0.3);
+  --shadow-loss: 0 4px 16px -4px hsl(142 71% 45% / 0.3);
+}
+
+/* 亮色主题 */
+[data-theme='light'] {
+  --background: 0 0% 100%;
+  --foreground: 220 20% 10%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 220 20% 10%;
+
+  --surface: 210 20% 98%;
+  --surface-elevated: 210 20% 96%;
+
+  --primary: 217 91% 60%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 20% 96%;
+  --secondary-foreground: 220 20% 10%;
+
+  --muted: 210 20% 96%;
+  --muted-foreground: 215 12% 50%;
+
+  --accent: 217 91% 60%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 214 20% 90%;
+  --input: 214 20% 90%;
+  --ring: 217 91% 60%;
+
+  --profit: 4 85% 55%;
+  --profit-muted: 4 80% 94%;
+  --loss: 142 76% 45%;
+  --loss-muted: 142 80% 94%;
+
+  --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(236 83% 70%));
+  --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 20% 98%));
+  --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 20% 96%));
+
+  --shadow-card-hover: 0 8px 32px -8px hsl(217 91% 60% / 0.15);
+  --shadow-profit: 0 4px 16px -4px hsl(4 85% 55% / 0.25);
+  --shadow-loss: 0 4px 16px -4px hsl(142 76% 45% / 0.25);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .stat-card {
+    @apply rounded-lg border bg-card p-5 transition-all duration-200 hover:shadow-card-hover hover:border-primary/30;
+  }
+  .profit-text {
+    @apply font-semibold;
+    color: hsl(var(--profit));
+  }
+  .loss-text {
+    @apply font-semibold;
+    color: hsl(var(--loss));
+  }
+  .profit-badge {
+    background-color: hsl(var(--profit-muted));
+    color: hsl(var(--profit));
+    @apply text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+  .loss-badge {
+    background-color: hsl(var(--loss-muted));
+    color: hsl(var(--loss));
+    @apply text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+  .neutral-badge {
+    @apply text-xs px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground;
+  }
+  .rates-marquee {
+    @apply relative overflow-hidden rounded-lg border border-border/70 bg-card/60;
+  }
+  .rates-track {
+    @apply flex w-max items-center whitespace-nowrap py-2;
+    animation: rates-marquee-scroll 24s linear infinite;
+  }
+  .rates-group {
+    @apply flex shrink-0 items-center gap-3 pr-3;
+  }
+  .rates-pill {
+    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm;
+  }
+  .rates-pill-usd {
+    @apply border-sky-500/40 bg-sky-500/10 text-sky-300;
+  }
+  .rates-pill-hkd {
+    @apply border-emerald-500/40 bg-emerald-500/10 text-emerald-300;
+  }
+  .rates-pill-cny {
+    @apply border-rose-500/40 bg-rose-500/10 text-rose-300;
+  }
+  .rates-value {
+    @apply font-mono text-sm text-foreground;
+  }
+}
+
+@keyframes rates-marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-33.3333%);
+  }
+}

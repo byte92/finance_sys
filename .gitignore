@@ -30,6 +30,7 @@ yarn-error.log*
 .playwright-mcp/
 .vscode/
 .qoder/
+data/*.sqlite
 
 # typescript
 *.tsbuildinfo

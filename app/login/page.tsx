@@ -10,10 +10,12 @@ import { Card } from '@/components/ui/card'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { user, loading, signIn, error } = useAuth()
+  const { user, loading, signInWithOtp, verifyEmailOtp, error } = useAuth()
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [otp, setOtp] = useState('')
+  const [otpSentTo, setOtpSentTo] = useState('')
   const [localError, setLocalError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -23,18 +25,49 @@ export default function LoginPage() {
     }
   }, [loading, user, router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLocalError('')
+    setSuccessMessage('')
 
-    if (!email || !password) {
-      setLocalError('请输入邮箱和密码')
+    if (!email) {
+      setLocalError('请输入邮箱')
       return
     }
 
     setSubmitting(true)
     try {
-      await signIn(email, password)
+      await signInWithOtp(email, `${window.location.origin}/`)
+      setOtpSentTo(email)
+      setSuccessMessage('验证码已发送到邮箱，请输入6位验证码完成登录')
+    } catch (_) {
+      // Error is handled in hook
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const OTP_MIN_LEN = 6
+  const OTP_MAX_LEN = 8
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLocalError('')
+    setSuccessMessage('')
+
+    if (!otpSentTo || !otp) {
+      setLocalError('请输入邮箱验证码')
+      return
+    }
+
+    if (!new RegExp(`^\\d{${OTP_MIN_LEN},${OTP_MAX_LEN}}$`).test(otp)) {
+      setLocalError(`验证码格式错误，请输入${OTP_MIN_LEN}-${OTP_MAX_LEN}位数字`)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await verifyEmailOtp(otpSentTo, otp)
       router.replace('/')
     } catch (_) {
       // Error is handled in hook
@@ -58,10 +91,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm border-border bg-card p-6">
         <div className="text-lg font-semibold mb-1">登录</div>
         <div className="text-xs text-muted-foreground mb-4">
-          测试账号：leo.langjun@gmail.com / 123123
+          先发送验证码到邮箱，再输入验证码完成登录
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSendOtp} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="login-email">邮箱</Label>
             <Input
@@ -73,26 +106,42 @@ export default function LoginPage() {
               required
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="login-password">密码</Label>
-            <Input
-              id="login-password"
-              type="password"
-              placeholder="至少 6 位"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
 
           {(localError || error) && (
             <p className="text-xs text-destructive">{localError || error}</p>
           )}
+          {successMessage && <p className="text-xs text-profit">{successMessage}</p>}
 
-          <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? '登录中...' : '登录'}
+          <Button type="submit" className="w-full" disabled={submitting || !email}>
+            {submitting ? '发送中...' : '发送邮箱验证码'}
           </Button>
         </form>
+
+        {otpSentTo && (
+          <form onSubmit={handleVerifyOtp} className="space-y-4 mt-4 pt-4 border-t border-border">
+            <div className="space-y-1.5">
+              <Label htmlFor="email-otp">邮箱验证码</Label>
+              <Input
+                id="email-otp"
+                type="text"
+                inputMode="numeric"
+                placeholder={`请输入${OTP_MIN_LEN}-${OTP_MAX_LEN}位数字验证码`}
+                value={otp}
+                maxLength={OTP_MAX_LEN}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_MAX_LEN))}
+                required
+              />
+            </div>
+            <div className="text-[11px] text-muted-foreground">验证码已发送至：{otpSentTo}</div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting || otp.length < OTP_MIN_LEN || otp.length > OTP_MAX_LEN}
+            >
+              {submitting ? '验证中...' : '验证并登录'}
+            </Button>
+          </form>
+        )}
       </Card>
     </div>
   )

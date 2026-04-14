@@ -4,6 +4,31 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
+function toFriendlyAuthError(err: unknown) {
+  const raw = err instanceof Error ? err.message : String(err ?? '')
+  const message = raw.toLowerCase()
+
+  if (
+    message.includes('fetch failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('econnreset') ||
+    message.includes('timeout')
+  ) {
+    return '无法连接认证服务，请检查网络、代理或稍后重试'
+  }
+
+  if (message.includes('invalid login credentials')) {
+    return '邮箱或密码错误，请确认后重试'
+  }
+
+  if (message.includes('email not confirmed')) {
+    return '邮箱尚未验证，请先前往邮箱完成验证'
+  }
+
+  return raw || '登录失败，请稍后重试'
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -18,7 +43,7 @@ export function useAuth() {
         setUser(session?.user ?? null)
       } catch (err) {
         console.error('Failed to load session:', err)
-        setError(err instanceof Error ? err.message : '加载会话失败')
+        setError(toFriendlyAuthError(err))
       } finally {
         setLoading(false)
       }
@@ -48,11 +73,48 @@ export function useAuth() {
     })
 
     if (error) {
-      setError(error.message)
+      setError(toFriendlyAuthError(error))
       throw error
     }
 
     setUser(data.user)
+    return data
+  }
+
+  // Send OTP / magic link to email
+  const signInWithOtp = async (email: string, emailRedirectTo?: string) => {
+    setError(null)
+    const { data, error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo,
+        shouldCreateUser: true,
+      },
+    })
+
+    if (error) {
+      setError(toFriendlyAuthError(error))
+      throw error
+    }
+
+    return data
+  }
+
+  // Verify 6-digit email OTP code
+  const verifyEmailOtp = async (email: string, token: string) => {
+    setError(null)
+    const { data, error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    })
+
+    if (error) {
+      setError(toFriendlyAuthError(error))
+      throw error
+    }
+
+    setUser(data.user ?? null)
     return data
   }
 
@@ -65,7 +127,7 @@ export function useAuth() {
     })
 
     if (error) {
-      setError(error.message)
+      setError(toFriendlyAuthError(error))
       throw error
     }
 
@@ -84,7 +146,7 @@ export function useAuth() {
     const { error } = await supabase.auth.signOut()
 
     if (error) {
-      setError(error.message)
+      setError(toFriendlyAuthError(error))
       throw error
     }
 
@@ -96,6 +158,8 @@ export function useAuth() {
     loading,
     error,
     signIn,
+    signInWithOtp,
+    verifyEmailOtp,
     signUp,
     signOut,
   }

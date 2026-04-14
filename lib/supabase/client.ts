@@ -12,7 +12,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    flowType: 'pkce',
+    // Use implicit flow for email magic-link/OTP in local dev.
+    // PKCE requires the same browser context that initiated sign-in.
+    flowType: 'implicit',
   },
 })
 

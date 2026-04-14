@@ -13,6 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@supabase/supabase-js": "^2.99.0",
+    "better-sqlite3": "^12.9.0",
     "iconv-lite": "^0.7.2",
     "lightweight-charts": "^4.2.3",
     "next": "^16.1.6",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

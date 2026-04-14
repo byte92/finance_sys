@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { canUseSupabaseAuth } from '@/lib/auth/mode'
 import type { User } from '@supabase/supabase-js'
 
 function toFriendlyAuthError(err: unknown) {
@@ -31,14 +32,23 @@ function toFriendlyAuthError(err: unknown) {
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(canUseSupabaseAuth())
   const [error, setError] = useState<string | null>(null)
+  const authEnabled = canUseSupabaseAuth()
 
   // Load session on mount
   useEffect(() => {
+    if (!authEnabled || !supabase) {
+      setLoading(false)
+      setUser(null)
+      setError(null)
+      return
+    }
+    const client = supabase
+
     const loadSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const { data: { session }, error } = await client.auth.getSession()
         if (error) throw error
         setUser(session?.user ?? null)
       } catch (err) {
@@ -52,7 +62,7 @@ export function useAuth() {
     loadSession()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = client.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null)
         setError(null)
@@ -62,12 +72,16 @@ export function useAuth() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [authEnabled])
 
   // Sign in with email and password
   const signIn = async (email: string, password: string) => {
+    if (!authEnabled || !supabase) {
+      throw new Error('当前为游客模式，未启用登录')
+    }
+    const client = supabase
     setError(null)
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await client.auth.signInWithPassword({
       email,
       password,
     })
@@ -83,8 +97,12 @@ export function useAuth() {
 
   // Send OTP / magic link to email
   const signInWithOtp = async (email: string, emailRedirectTo?: string) => {
+    if (!authEnabled || !supabase) {
+      throw new Error('当前为游客模式，未启用登录')
+    }
+    const client = supabase
     setError(null)
-    const { data, error } = await supabase.auth.signInWithOtp({
+    const { data, error } = await client.auth.signInWithOtp({
       email,
       options: {
         emailRedirectTo,
@@ -102,8 +120,12 @@ export function useAuth() {
 
   // Verify 6-digit email OTP code
   const verifyEmailOtp = async (email: string, token: string) => {
+    if (!authEnabled || !supabase) {
+      throw new Error('当前为游客模式，未启用登录')
+    }
+    const client = supabase
     setError(null)
-    const { data, error } = await supabase.auth.verifyOtp({
+    const { data, error } = await client.auth.verifyOtp({
       email,
       token,
       type: 'email',
@@ -120,8 +142,12 @@ export function useAuth() {
 
   // Sign up with email and password
   const signUp = async (email: string, password: string) => {
+    if (!authEnabled || !supabase) {
+      throw new Error('当前为游客模式，未启用登录')
+    }
+    const client = supabase
     setError(null)
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await client.auth.signUp({
       email,
       password,
     })
@@ -142,8 +168,13 @@ export function useAuth() {
 
   // Sign out
   const signOut = async () => {
+    if (!authEnabled || !supabase) {
+      setUser(null)
+      return
+    }
+    const client = supabase
     setError(null)
-    const { error } = await supabase.auth.signOut()
+    const { error } = await client.auth.signOut()
 
     if (error) {
       setError(toFriendlyAuthError(error))
@@ -156,6 +187,7 @@ export function useAuth() {
   return {
     user,
     loading,
+    authEnabled,
     error,
     signIn,
     signInWithOtp,

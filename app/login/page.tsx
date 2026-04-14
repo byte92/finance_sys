@@ -10,15 +10,13 @@ import { Card } from '@/components/ui/card'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { user, loading, signInWithOtp, verifyEmailOtp, error } = useAuth()
+  const { user, loading, authEnabled, signInWithOtp, verifyEmailOtp, error } = useAuth()
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
   const [otpSentTo, setOtpSentTo] = useState('')
   const [localError, setLocalError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
   useEffect(() => {
     if (!loading && user) {
       router.replace('/')
@@ -76,11 +74,14 @@ export default function LoginPage() {
     }
   }
 
-  if (!isSupabaseConfigured) {
+  if (!authEnabled) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-sm border-border bg-card p-6">
-          <div className="text-sm text-muted-foreground">未配置 Supabase 环境变量，无法登录。</div>
+          <div className="text-sm text-muted-foreground mb-3">当前未启用登录（游客模式）。</div>
+          <Button onClick={() => router.replace('/')} className="w-full">
+            直接进入系统
+          </Button>
         </Card>
       </div>
     )

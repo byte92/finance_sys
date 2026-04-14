@@ -1,22 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
+import { canUseSupabaseAuth } from '@/lib/auth/mode'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Please check .env.local')
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    // Use implicit flow for email magic-link/OTP in local dev.
-    // PKCE requires the same browser context that initiated sign-in.
-    flowType: 'implicit',
-  },
-})
+export const supabase = canUseSupabaseAuth() && supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        // Use implicit flow for email magic-link/OTP in local dev.
+        // PKCE requires the same browser context that initiated sign-in.
+        flowType: 'implicit',
+      },
+    })
+  : null
 
 // Database types
 export type Database = {

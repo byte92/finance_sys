@@ -11,17 +11,16 @@ const Dashboard = dynamic(() => import('@/components/Dashboard'), { ssr: false }
 
 export default function Home() {
   const router = useRouter()
-  const { user, loading } = useAuth()
-  const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const { user, loading, authEnabled } = useAuth()
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!authEnabled) return
     if (!loading && !user) {
       router.replace('/login')
     }
-  }, [loading, user, router, isSupabaseConfigured])
+  }, [loading, user, router, authEnabled])
 
-  if (isSupabaseConfigured && !user) {
+  if (authEnabled && !user) {
     return null
   }
 

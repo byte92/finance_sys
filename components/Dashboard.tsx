@@ -27,7 +27,7 @@ export default function Dashboard() {
   } = useStockStore()
   const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
-  const { user, loading: authLoading, signOut, signIn, signUp, error: authError } = useAuth()
+  const { user, loading: authLoading, authEnabled, signOut, signIn, signUp, error: authError } = useAuth()
 
   const [showAddStock, setShowAddStock] = useState(false)
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
@@ -130,7 +130,7 @@ export default function Dashboard() {
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加股票
             </Button>
-            {user ? (
+            {authEnabled && user ? (
               <div className="relative group">
                 <Button size="sm" variant="ghost" className="max-w-40 truncate">
                   {user.email || '已登录'}
@@ -156,10 +156,12 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : authEnabled ? (
               <Button size="sm" variant="outline" onClick={() => setShowAuth(true)}>
                 登录
               </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">游客模式</span>
             )}
           </div>
         </div>
@@ -286,13 +288,15 @@ export default function Dashboard() {
         />
       )}
 
-      <AuthModal
-        open={showAuth}
-        onOpenChange={setShowAuth}
-        signIn={signIn}
-        signUp={signUp}
-        error={authError}
-      />
+      {authEnabled && (
+        <AuthModal
+          open={showAuth}
+          onOpenChange={setShowAuth}
+          signIn={signIn}
+          signUp={signUp}
+          error={authError}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

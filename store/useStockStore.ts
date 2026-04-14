@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
 import { generateId } from "@/lib/finance";
 import { supabase } from "@/lib/supabase/client";
+import { canUseSupabaseAuth } from "@/lib/auth/mode";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
 
 export type SyncStatus = "idle" | "loading" | "synced" | "syncing" | "error" | "offline";
@@ -107,6 +108,18 @@ export const useStockStore = create<StockStore>()((set, get) => ({
   init: async () => {
     set({ syncStatus: "loading" });
     try {
+      if (!canUseSupabaseAuth() || !supabase) {
+        const local = loadFromLocalStorage();
+        set({
+          userId: null,
+          stocks: local.stocks,
+          config: local.config,
+          isOffline: true,
+          syncStatus: "offline",
+        });
+        return;
+      }
+
       const {
         data: { session },
         error,

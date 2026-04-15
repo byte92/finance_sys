@@ -1,5 +1,5 @@
 // 默认费用配置 - 可由用户在配置页修改
-import type { AppConfig, FeeConfig, Market } from '@/types'
+import type { AiConfig, AppConfig, FeeConfig, Market } from '@/types'
 
 export const DEFAULT_FEE_CONFIGS: Record<Market, FeeConfig> = {
   A: {
@@ -40,10 +40,23 @@ export const DEFAULT_FEE_CONFIGS: Record<Market, FeeConfig> = {
   },
 }
 
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  enabled: false,
+  provider: 'openai-compatible',
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+  temperature: 0.3,
+  maxTokens: 1400,
+  newsEnabled: true,
+  analysisLanguage: 'zh-CN',
+}
+
 export const DEFAULT_APP_CONFIG: AppConfig = {
   version: '1.0.0',
   defaultMarket: 'A',
   feeConfigs: DEFAULT_FEE_CONFIGS,
+  aiConfig: DEFAULT_AI_CONFIG,
   currency: {
     A: 'CNY',
     HK: 'HKD',

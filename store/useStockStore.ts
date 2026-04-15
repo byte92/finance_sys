@@ -38,6 +38,25 @@ type StoredPayload = {
   config: AppConfig;
 };
 
+function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
+  return {
+    ...DEFAULT_APP_CONFIG,
+    ...config,
+    feeConfigs: {
+      ...DEFAULT_APP_CONFIG.feeConfigs,
+      ...(config?.feeConfigs ?? {}),
+    },
+    aiConfig: {
+      ...DEFAULT_APP_CONFIG.aiConfig,
+      ...(config?.aiConfig ?? {}),
+    },
+    currency: {
+      ...DEFAULT_APP_CONFIG.currency,
+      ...(config?.currency ?? {}),
+    },
+  };
+}
+
 const LOCAL_KEY = "stock-tracker-storage";
 const LOCAL_SQLITE_USER_PREFIX = "local:";
 
@@ -48,7 +67,7 @@ function loadFromLocalStorage(): StoredPayload {
     const parsed = JSON.parse(raw) as Partial<StoredPayload>;
     return {
       stocks: parsed.stocks ?? [],
-      config: { ...DEFAULT_APP_CONFIG, ...(parsed.config ?? {}) },
+      config: mergeAppConfig(parsed.config),
     };
   } catch (error) {
     console.error("Failed to load local data:", error);
@@ -84,7 +103,7 @@ async function fetchRemote(userId: string): Promise<StoredPayload> {
   const payload = (await res.json()) as StoredPayload;
   return {
     stocks: payload.stocks ?? [],
-    config: { ...DEFAULT_APP_CONFIG, ...(payload.config ?? {}) },
+    config: mergeAppConfig(payload.config),
   };
 }
 
@@ -287,7 +306,22 @@ export const useStockStore = create<StockStore>()((set, get) => ({
   },
 
   updateConfig: async (configPatch) => {
-    const nextConfig = { ...get().config, ...configPatch };
+    const nextConfig = mergeAppConfig({
+      ...get().config,
+      ...configPatch,
+      feeConfigs: {
+        ...get().config.feeConfigs,
+        ...(configPatch.feeConfigs ?? {}),
+      },
+      aiConfig: {
+        ...get().config.aiConfig,
+        ...(configPatch.aiConfig ?? {}),
+      },
+      currency: {
+        ...get().config.currency,
+        ...(configPatch.currency ?? {}),
+      },
+    });
     const nextStocks = get().stocks;
     set({ config: nextConfig });
     saveToLocalStorage(nextStocks, nextConfig);
@@ -318,7 +352,7 @@ export const useStockStore = create<StockStore>()((set, get) => ({
   importData: (data) => {
     const next = {
       stocks: sortTrades(data.stocks),
-      config: { ...DEFAULT_APP_CONFIG, ...data.config },
+      config: mergeAppConfig(data.config),
     };
     set(next);
     saveToLocalStorage(next.stocks, next.config);

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Sun, Moon, Edit } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,12 +9,13 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
 import { useStockQuote } from '@/hooks/useStockQuote'
-import { useTheme } from '@/hooks/useTheme'
 import { useCurrency } from '@/hooks/useCurrency'
 import AddTradeModal from '@/components/AddTradeModal'
 import AddStockModal from '@/components/AddStockModal'
 import StockKline from '@/components/StockKline'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import PageHeader from '@/components/layout/PageHeader'
+import StockAnalysisPanel from '@/components/ai/StockAnalysisPanel'
 import type { Stock, Trade, TradePnlDetail } from '@/types'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
@@ -27,8 +28,7 @@ interface StockDetailProps {
 
 export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const { deleteTrade } = useStockStore()
-  const { theme, toggleTheme, mounted } = useTheme()
-  const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
+  const { displayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
   const [showAddTrade, setShowAddTrade] = useState(false)
   const [showEditStock, setShowEditStock] = useState(false)
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
@@ -163,37 +163,16 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection])
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* 顶部导航 */}
-      <header className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-foreground">{stock.name}</span>
-              <span className="text-xs text-muted-foreground font-mono">{stock.code}</span>
-              <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {mounted && (
-              <Button variant="ghost" size="sm" onClick={toggleTheme} title={theme === 'dark' ? '切换亮色' : '切换暗色'}>
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-            )}
-            <div className="flex items-center gap-1 mr-3">
-              <select
-                value={displayCurrency}
-                onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as any)}
-                className="text-xs bg-transparent border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="CNY">CNY</option>
-                <option value="HKD">HKD</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
+    <div className="min-h-screen">
+      <PageHeader
+        title={`${stock.name} · ${stock.code}`}
+        description={`市场：${MARKET_LABELS[stock.market]}，可在此查看交易、K 线、估值与 AI 深度分析。`}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+              返回持仓
+            </Button>
             <Button size="sm" onClick={() => setShowAddTrade(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加交易
@@ -202,11 +181,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               <Edit className="h-3.5 w-3.5 mr-1" />
               编辑股票
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 lg:px-6 space-y-6">
         {/* 汇总卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
@@ -356,6 +335,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             </CardContent>
           </Card>
         )}
+
+        <StockAnalysisPanel stock={stock} />
 
         {/* 盈亏曲线 */}
         {chartData.length > 1 && (

@@ -60,11 +60,26 @@ export interface FeeConfig {
   settlementFeeRate?: number  // 结算费率（港股用）
 }
 
+export type AiAnalysisLanguage = 'zh-CN' | 'en-US'
+
+export interface AiConfig {
+  enabled: boolean
+  provider: string
+  baseUrl: string
+  model: string
+  apiKey: string
+  temperature: number
+  maxTokens: number
+  newsEnabled: boolean
+  analysisLanguage: AiAnalysisLanguage
+}
+
 // 应用配置
 export interface AppConfig {
   version: string
   defaultMarket: Market
   feeConfigs: Record<Market, FeeConfig>
+  aiConfig: AiConfig
   currency: {
     A: 'CNY'
     HK: 'HKD'
@@ -109,4 +124,83 @@ export interface ExportData {
   }
   config: AppConfig
   stocks: Stock[]
+}
+
+export interface NewsItem {
+  title: string
+  source: string
+  publishedAt: string
+  summary: string
+  url: string
+}
+
+export interface TechnicalIndicatorSnapshot {
+  close: number
+  ma5: number | null
+  ma10: number | null
+  ma20: number | null
+  ema12: number | null
+  ema26: number | null
+  macd: {
+    dif: number | null
+    dea: number | null
+    histogram: number | null
+  }
+  rsi14: number | null
+  boll: {
+    upper: number | null
+    middle: number | null
+    lower: number | null
+  }
+  atr14: number | null
+  supportLevel: number | null
+  resistanceLevel: number | null
+  volumeRatio20: number | null
+  trendBias: 'bullish' | 'neutral' | 'bearish'
+}
+
+export interface AiProbabilityScenario {
+  label: string
+  probability: number
+  rationale: string
+}
+
+export interface AiTimeHorizonAssessment {
+  horizon: 'short' | 'medium'
+  summary: string
+  scenarios: AiProbabilityScenario[]
+}
+
+export interface AiTechnicalSignal {
+  name: string
+  value: string
+  interpretation: string
+}
+
+export interface AiNewsDriver {
+  headline: string
+  source: string
+  publishedAt: string
+  sentiment: 'positive' | 'neutral' | 'negative'
+  impact: string
+  url?: string
+}
+
+export interface AiAnalysisResult {
+  generatedAt: string
+  cached: boolean
+  summary: string
+  stance: string
+  timeHorizons: AiTimeHorizonAssessment[]
+  probabilityAssessment: AiProbabilityScenario[]
+  technicalSignals: AiTechnicalSignal[]
+  newsDrivers: AiNewsDriver[]
+  keyLevels: string[]
+  positionAdvice?: string[]
+  portfolioRiskNotes?: string[]
+  actionableObservations: string[]
+  risks: string[]
+  confidence: 'low' | 'medium' | 'high'
+  disclaimer: string
+  evidence: string[]
 }

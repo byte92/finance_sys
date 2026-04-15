@@ -4,10 +4,10 @@ import type { AppConfig, FeeConfig, Market } from '@/types'
 export const DEFAULT_FEE_CONFIGS: Record<Market, FeeConfig> = {
   A: {
     market: 'A',
-    commissionRate: 0.0003,    // 万三
+    commissionRate: 0.0001,    // 万一（可按券商实际费率调整）
     minCommission: 5,           // 最低5元
-    stampDutyRate: 0.001,       // 千一（仅卖出）
-    transferFeeRate: 0.00002,   // 沪市过户费 0.2‱
+    stampDutyRate: 0.0005,      // 万五（普通股票卖出）
+    transferFeeRate: 0.00001,   // 万0.1（普通股票双向）
   },
   HK: {
     market: 'HK',

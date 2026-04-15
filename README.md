@@ -24,7 +24,7 @@
 
 StockTracker 是一个开源股票交易记录与盈亏分析工具。MVP 以 **A股** 为核心，未来将逐步扩展支持港股、美股、基金、加密货币等资产类型。
 
-当前采用 **Supabase Auth + SQLite 本地存储**：登录鉴权由 Supabase 提供，交易与配置数据持久化到本地 SQLite，并支持 JSON 格式一键导出备份。
+当前采用 **SQLite 本地存储 + JSON 备份**：交易与配置数据持久化到本地 SQLite，并支持 JSON 格式一键导出与导入恢复。
 
 **核心理念：**
 - 本地优先，零隐私风险
@@ -57,8 +57,8 @@ StockTracker 是一个开源股票交易记录与盈亏分析工具。MVP 以 **
 - 5分钟缓存，避免频繁请求
 
 **数据管理**
-- SQLite（本地）持久化存储（按登录用户隔离）
-- LocalStorage 本地缓存兜底
+- SQLite（本地）持久化存储（按设备隔离）
+- LocalStorage 迁移与缓存兜底
 - 一键导出 JSON 格式备份文件
 - 从 JSON 文件导入恢复数据
 - 数据结构版本化，便于未来迁移
@@ -201,7 +201,7 @@ Components（AddTradeModal / Dashboard）
   ↓
 useStockStore（Zustand）
   ↓
-LocalStorage（自动持久化）
+SQLite（本地持久化）
   ↓
 calcStockSummary（lib/finance.ts 纯函数计算）
   ↓

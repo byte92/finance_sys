@@ -31,6 +31,7 @@ yarn-error.log*
 .vscode/
 .qoder/
 data/*.sqlite
+data/*.sqlite.backup-*
 
 # typescript
 *.tsbuildinfo

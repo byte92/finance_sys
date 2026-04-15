@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
-import { autoCalcFees, todayStr } from '@/lib/finance'
+import { autoCalcFees, calcStockSummary, todayStr } from '@/lib/finance'
 import type { Market, TradeType, Trade } from '@/types'
 
 interface AddTradeModalProps {
@@ -20,8 +20,20 @@ interface AddTradeModalProps {
 }
 
 export default function AddTradeModal({ stockId, stockCode, stockName, market, editTrade, onClose }: AddTradeModalProps) {
-  const { addTrade, updateTrade } = useStockStore()
+  const { addTrade, updateTrade, stocks, config } = useStockStore()
   const isEdit = !!editTrade
+  const currentStock = stocks.find((stock) => stock.id === stockId)
+  const stockWithoutEditingTrade = currentStock
+    ? {
+        ...currentStock,
+        trades: editTrade
+          ? currentStock.trades.filter((trade) => trade.id !== editTrade.id)
+          : currentStock.trades,
+      }
+    : null
+  const availableHolding = stockWithoutEditingTrade
+    ? calcStockSummary(stockWithoutEditingTrade).currentHolding
+    : 0
   const [type, setType] = useState<TradeType>('BUY')
   const [date, setDate] = useState(todayStr())
   const [price, setPrice] = useState('')
@@ -62,6 +74,13 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     }
   }, [editTrade])
 
+  useEffect(() => {
+    if (type !== 'DIVIDEND' || editTrade?.type === 'DIVIDEND' || dividendShares) return
+    if (availableHolding > 0) {
+      setDividendShares(String(availableHolding))
+    }
+  }, [type, availableHolding, editTrade?.type, dividendShares])
+
   const priceNum = parseFloat(price) || 0
   const quantityNum = parseInt(quantity) || 0
   const totalAmount = priceNum * quantityNum
@@ -77,7 +96,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   // 买卖手续费计算
   const calcFees = () => {
     if (priceNum > 0 && quantityNum > 0 && (type === 'BUY' || type === 'SELL')) {
-      return autoCalcFees(type, priceNum, quantityNum, market, stockCode)
+      return autoCalcFees(type, priceNum, quantityNum, market, stockCode, config.feeConfigs[market])
     }
     return { commission: 0, tax: 0, netAmount: 0 }
   }
@@ -86,12 +105,13 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     commission: parseFloat(commission) || 0,
     tax: parseFloat(tax) || 0,
     netAmount: type === 'BUY'
-      ? totalAmount + (parseFloat(commission) || 0)
+      ? totalAmount + (parseFloat(commission) || 0) + (parseFloat(tax) || 0)
       : totalAmount - (parseFloat(commission) || 0) - (parseFloat(tax) || 0)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
 
     const tradeData: Omit<Trade, 'id' | 'stockId' | 'createdAt' | 'updatedAt'> = {
       type,
@@ -114,6 +134,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
         setError('请填写分红时的持有股数')
         return
       }
+      if (dividendSharesNum > availableHolding) {
+        setError(`分红股数不能超过当前持仓 ${availableHolding.toLocaleString()} 股`)
+        return
+      }
       // 分红记录：price=每股分红, quantity=持有股数, netAmount=税后实收
       tradeData.price = dividendPerShareNum
       tradeData.quantity = dividendSharesNum
@@ -125,6 +149,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     } else {
       if (!price || !quantity || priceNum <= 0 || quantityNum <= 0) {
         setError('请填写有效的价格和数量')
+        return
+      }
+      if (type === 'SELL' && quantityNum > availableHolding) {
+        setError(`当前最多可卖出 ${availableHolding.toLocaleString()} 股，请先检查持仓或交易顺序`)
         return
       }
       tradeData.price = priceNum
@@ -256,7 +284,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             <div className="space-y-3">
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="text-xs text-muted-foreground mb-2">
-                  录入分红后，系统将自动摊薄持仓成本（分红视为资本返还）
+                  录入分红后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  当前可分红持股数：{availableHolding.toLocaleString()} 股
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

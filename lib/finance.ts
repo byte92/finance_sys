@@ -8,20 +8,101 @@ import type {
   TradePnlDetail,
 } from "@/types";
 
+type FeeBreakdown = {
+  commission: number;
+  tax: number;
+  transferFee: number;
+  netAmount: number;
+};
+
+type MainlandFeeProfile = "A_STOCK" | "A_ETF_OR_FUND";
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function calcCommission(totalAmount: number, config: FeeConfig): number {
+  return roundMoney(
+    Math.max(totalAmount * config.commissionRate, config.minCommission),
+  );
+}
+
+function getMainlandFeeProfile(
+  market: Market,
+  stockCode?: string,
+): MainlandFeeProfile | null {
+  if (market === "FUND") return "A_ETF_OR_FUND";
+  if (market !== "A") return null;
+  if (!stockCode) return "A_STOCK";
+
+  const normalized = stockCode.trim().toUpperCase();
+  const etfPrefixes = ["5", "15", "16", "18"];
+  return etfPrefixes.some((prefix) => normalized.startsWith(prefix))
+    ? "A_ETF_OR_FUND"
+    : "A_STOCK";
+}
+
+function calcBuyCharges(
+  totalAmount: number,
+  config: FeeConfig,
+  market: Market,
+  stockCode?: string,
+): FeeBreakdown {
+  const commission = calcCommission(totalAmount, config);
+  const mainlandProfile = getMainlandFeeProfile(market, stockCode);
+
+  let stampDuty = 0;
+  let transferFee = 0;
+  let settlementFee = 0;
+
+  if (market === "HK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+  } else if (mainlandProfile === "A_STOCK") {
+    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+  }
+
+  const tax = roundMoney(stampDuty + transferFee + settlementFee);
+  const netAmount = roundMoney(totalAmount + commission + tax);
+  return { commission, tax, transferFee, netAmount };
+}
+
+function calcSellCharges(
+  totalAmount: number,
+  config: FeeConfig,
+  market: Market,
+  stockCode?: string,
+): FeeBreakdown {
+  const commission = calcCommission(totalAmount, config);
+  const mainlandProfile = getMainlandFeeProfile(market, stockCode);
+
+  let stampDuty = 0;
+  let transferFee = 0;
+  let settlementFee = 0;
+
+  if (market === "HK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+  } else if (mainlandProfile === "A_STOCK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+  }
+
+  const tax = roundMoney(stampDuty + transferFee + settlementFee);
+  const netAmount = roundMoney(totalAmount - commission - tax);
+  return { commission, tax, transferFee, netAmount };
+}
+
 // 计算单笔买入的实际成本（含手续费）
 export function calcBuyNetAmount(
   price: number,
   quantity: number,
   config: FeeConfig,
-): { commission: number; tax: number; netAmount: number } {
+  market?: Market,
+  stockCode?: string,
+): FeeBreakdown {
   const totalAmount = price * quantity;
-  const commission = Math.max(
-    totalAmount * config.commissionRate,
-    config.minCommission,
-  );
-  const tax = 0; // 买入不收印花税
-  const netAmount = totalAmount + commission + tax;
-  return { commission, tax, netAmount };
+  return calcBuyCharges(totalAmount, config, market ?? config.market, stockCode);
 }
 
 // 计算单笔卖出的实际到账（扣手续费）
@@ -30,20 +111,9 @@ export function calcSellNetAmount(
   quantity: number,
   config: FeeConfig,
   stockCode?: string,
-): { commission: number; tax: number; transferFee: number; netAmount: number } {
+): FeeBreakdown {
   const totalAmount = price * quantity;
-  const commission = Math.max(
-    totalAmount * config.commissionRate,
-    config.minCommission,
-  );
-  const tax = totalAmount * config.stampDutyRate;
-  // 沪市过户费（上交所：6xxxxx / 5xxxxx ETF）
-  const isSH = stockCode
-    ? stockCode.startsWith("6") || stockCode.startsWith("5")
-    : false;
-  const transferFee = isSH ? totalAmount * config.transferFeeRate : 0;
-  const netAmount = totalAmount - commission - tax - transferFee;
-  return { commission, tax: tax + transferFee, transferFee, netAmount };
+  return calcSellCharges(totalAmount, config, config.market, stockCode);
 }
 
 // 自动计算手续费并生成Trade对象的费用字段
@@ -53,15 +123,23 @@ export function autoCalcFees(
   quantity: number,
   market: Market,
   stockCode?: string,
+  config?: FeeConfig,
 ): { commission: number; tax: number; netAmount: number } {
-  const config = DEFAULT_FEE_CONFIGS[market];
+  const feeConfig = config ?? DEFAULT_FEE_CONFIGS[market];
   if (type === "BUY") {
-    return calcBuyNetAmount(price, quantity, config);
+    const { commission, tax, netAmount } = calcBuyNetAmount(
+      price,
+      quantity,
+      feeConfig,
+      market,
+      stockCode,
+    );
+    return { commission, tax, netAmount };
   } else {
     const { commission, tax, netAmount } = calcSellNetAmount(
       price,
       quantity,
-      config,
+      feeConfig,
       stockCode,
     );
     return { commission, tax, netAmount };
@@ -85,7 +163,7 @@ export function calcStockSummary(
   let tradeCount = 0;
 
   // FIFO 成本队列：{ price: 每股摊薄成本, quantity: 数量 }
-  const costQueue: Array<{ price: number; quantity: number }> = [];
+  const costQueue: Array<{ tradeId: string; price: number; quantity: number }> = [];
 
   // 每笔交易盈亏明细
   const tradePnlDetails: TradePnlDetail[] = [];
@@ -98,6 +176,7 @@ export function calcStockSummary(
       currentHolding += trade.quantity;
       // 每股均摊成本（含手续费）
       costQueue.push({
+        tradeId: trade.id,
         price: trade.netAmount / trade.quantity,
         quantity: trade.quantity,
       });
@@ -110,6 +189,7 @@ export function calcStockSummary(
         pnlPercent: 0,
         costBasis: trade.netAmount,
         proceeds: 0,
+        holdingAfterTrade: currentHolding,
       });
     } else if (trade.type === "SELL") {
       tradeCount++;
@@ -145,30 +225,14 @@ export function calcStockSummary(
         pnlPercent,
         costBasis,
         proceeds: trade.netAmount,
+        holdingAfterTrade: currentHolding,
       });
     } else if (trade.type === "DIVIDEND") {
-      // 分红：直接计入已实现盈亏，并摊薄持仓成本
-      // netAmount = 实际到账分红金额（price * quantity = 每股分红 * 持股数）
+      // 分红：计入已实现盈亏，但不再二次摊薄持仓成本。
+      // 否则会同时把分红算作收益、又降低未来卖出成本，导致收益被双重放大。
       const dividendAmount = trade.netAmount; // 税后到手
       totalDividend += dividendAmount;
       realizedPnl += dividendAmount;
-
-      // 分红摊薄持仓成本：在 FIFO 队列中按比例降低每股成本
-      // 逻辑：总持仓成本 -= 分红金额（分红视为资本返还降低成本基础）
-      if (currentHolding > 0 && costQueue.length > 0) {
-        const totalRemainingCost = costQueue.reduce(
-          (s, i) => s + i.price * i.quantity,
-          0,
-        );
-        const newTotalCost = totalRemainingCost - dividendAmount;
-        // 按比例缩减每一批次的成本
-        if (newTotalCost > 0) {
-          const ratio = newTotalCost / totalRemainingCost;
-          for (const item of costQueue) {
-            item.price = item.price * ratio;
-          }
-        }
-      }
 
       tradePnlDetails.push({
         tradeId: trade.id,
@@ -178,10 +242,31 @@ export function calcStockSummary(
         pnlPercent: 0,
         costBasis: 0,
         proceeds: dividendAmount,
+        holdingAfterTrade: currentHolding,
         isDividend: true,
       });
     }
   }
+
+  const remainingQuantityByTradeId = new Map<string, number>();
+  for (const item of costQueue) {
+    remainingQuantityByTradeId.set(
+      item.tradeId,
+      (remainingQuantityByTradeId.get(item.tradeId) ?? 0) + item.quantity,
+    );
+  }
+
+  const normalizedTradePnlDetails = tradePnlDetails.map((detail) =>
+    detail.type === "BUY"
+      ? {
+          ...detail,
+          soldQuantity:
+            ((stock.trades.find((trade) => trade.id === detail.tradeId)?.quantity ?? 0) -
+              (remainingQuantityByTradeId.get(detail.tradeId) ?? 0)),
+          remainingQuantity: remainingQuantityByTradeId.get(detail.tradeId) ?? 0,
+        }
+      : detail,
+  );
 
   // 剩余持仓成本
   const remainingCost = costQueue.reduce(
@@ -212,7 +297,7 @@ export function calcStockSummary(
     totalCommission,
     totalDividend,
     tradeCount,
-    tradePnlDetails,
+    tradePnlDetails: normalizedTradePnlDetails,
   };
 }
 

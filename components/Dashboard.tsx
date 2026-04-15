@@ -1,48 +1,36 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, Sun, Moon, Database, WifiOff, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, ChevronRight, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
-import { useTheme } from '@/hooks/useTheme'
-import { useAuth } from '@/hooks/useAuth'
-import AuthModal from '@/components/AuthModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useStockQuote } from '@/hooks/useStockQuote'
 import AddStockModal from '@/components/AddStockModal'
+import SettingsModal from '@/components/SettingsModal'
 import StockDetail from '@/components/StockDetail'
 import type { Stock } from '@/types'
 
 export default function Dashboard() {
   const {
     stocks,
-    syncStatus,
-    isOffline,
     init,
-    sync,
     deleteStock,
   } = useStockStore()
-  const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
-  const { user, loading: authLoading, authEnabled, signOut, signIn, signUp, error: authError } = useAuth()
 
   const [showAddStock, setShowAddStock] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
-  const [showAuth, setShowAuth] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
 
   useEffect(() => {
     init()
   }, [init])
-
-  useEffect(() => {
-    if (!authLoading) {
-      init()
-    }
-  }, [user?.id, authLoading, init])
 
   const selectedStock = useMemo(
     () => stocks.find((s) => s.id === selectedStockId) || null,
@@ -50,7 +38,7 @@ export default function Dashboard() {
   )
 
   const portfolio = useMemo(() => {
-    let totalPnl = 0
+    let totalRealizedPnl = 0
     let totalInvested = 0
     let totalCommission = 0
     let totalDividend = 0
@@ -58,16 +46,23 @@ export default function Dashboard() {
 
     for (const stock of stocks) {
       const summary = calcStockSummary(stock)
-      totalPnl += convertAmountSync(summary.totalPnl, stock.market)
+      totalRealizedPnl += convertAmountSync(summary.realizedPnl, stock.market)
       totalInvested += convertAmountSync(summary.totalBuyAmount, stock.market)
       totalCommission += convertAmountSync(summary.totalCommission, stock.market)
       totalDividend += convertAmountSync(summary.totalDividend, stock.market)
       totalHolding += summary.currentHolding
     }
 
-    const totalPnlPercent = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+    const totalRealizedPnlPercent = totalInvested > 0 ? (totalRealizedPnl / totalInvested) * 100 : 0
 
-    return { totalPnl, totalInvested, totalPnlPercent, totalCommission, totalDividend, totalHolding }
+    return {
+      totalRealizedPnl,
+      totalInvested,
+      totalRealizedPnlPercent,
+      totalCommission,
+      totalDividend,
+      totalHolding,
+    }
   }, [stocks, convertAmountSync])
 
   if (selectedStock) {
@@ -83,28 +78,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center">
-          <div className="flex items-center gap-3">
-            <div className="text-sm font-semibold">StockTracker</div>
-            {isOffline ? (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-muted-foreground/60" />
-                <WifiOff className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    syncStatus === 'syncing'
-                      ? 'bg-primary animate-pulse'
-                      : syncStatus === 'error'
-                        ? 'bg-destructive'
-                        : 'bg-emerald-500'
-                  }`}
-                />
-                <Database className="h-3.5 w-3.5" />
-              </span>
-            )}
-          </div>
+          <div className="text-sm font-semibold">StockTracker</div>
 
           <div className="flex items-center gap-2 ml-auto">
             <div className="flex items-center gap-1 mr-2">
@@ -118,51 +92,14 @@ export default function Dashboard() {
                 <option value="USD">USD</option>
               </select>
             </div>
-            {mounted && (
-              null
-            )}
-            {!isOffline && (
-              <Button size="sm" variant="ghost" onClick={sync}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            )}
+            <Button size="sm" variant="ghost" onClick={() => setShowSettings(true)}>
+              <Settings className="h-4 w-4" />
+            </Button>
             <Button size="sm" onClick={() => setShowAddStock(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加股票
             </Button>
-            {authEnabled && user ? (
-              <div className="relative group">
-                <Button size="sm" variant="ghost" className="max-w-40 truncate">
-                  {user.email || '已登录'}
-                </Button>
-                <div className="absolute right-0 top-full pt-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
-                  <div className="w-40 rounded-lg border border-border bg-card shadow-lg">
-                    <button
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-foreground hover:bg-secondary/60 rounded-lg"
-                      onClick={toggleTheme}
-                    >
-                      主题
-                      {theme === 'dark' ? <Moon className="h-4 w-4 text-muted-foreground" /> : <Sun className="h-4 w-4 text-muted-foreground" />}
-                    </button>
-                    <button
-                      className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-secondary/60 rounded-lg"
-                      onClick={async () => {
-                        await signOut()
-                        init()
-                      }}
-                    >
-                      退出
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : authEnabled ? (
-              <Button size="sm" variant="outline" onClick={() => setShowAuth(true)}>
-                登录
-              </Button>
-            ) : (
-              <span className="text-xs text-muted-foreground">游客模式</span>
-            )}
+            <span className="text-xs text-muted-foreground">本地模式</span>
           </div>
         </div>
       </header>
@@ -171,16 +108,16 @@ export default function Dashboard() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">资产概览</h2>
-            <div className="text-xs text-muted-foreground">基于已录入交易</div>
+            <div className="text-xs text-muted-foreground">概览默认按已实现收益统计，不混入实时浮盈</div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总盈亏</div>
-            <div className={`text-xl font-bold font-mono ${portfolio.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(portfolio.totalPnl, displayCurrency)}
+            <div className="text-xs text-muted-foreground mb-1">累计已实现收益</div>
+            <div className={`text-xl font-bold font-mono ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+              {formatPnl(portfolio.totalRealizedPnl, displayCurrency)}
             </div>
-            <div className={`text-xs mt-1 ${portfolio.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPercent(portfolio.totalPnlPercent)}
+            <div className={`text-xs mt-1 ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+              {formatPercent(portfolio.totalRealizedPnlPercent)}
             </div>
           </Card>
 
@@ -224,55 +161,24 @@ export default function Dashboard() {
             </Card>
           ) : (
             <Card className="border-border bg-card/60 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border/70 flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">名称 / 代码</div>
-                <div className="text-xs text-muted-foreground hidden md:block">持仓与成本</div>
-                <div className="text-xs text-muted-foreground hidden md:block">盈亏</div>
-                <div className="text-xs text-muted-foreground">操作</div>
+              <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.8fr)_auto] gap-4 px-4 py-3 border-b border-border/70">
+                <div className="text-xs text-muted-foreground">名称</div>
+                <div className="text-xs text-muted-foreground">持仓成本</div>
+                <div className="text-xs text-muted-foreground">盈亏</div>
+                <div className="text-xs text-muted-foreground text-right">操作</div>
               </div>
               <div className="divide-y divide-border/70">
                 {stocks.map((stock: Stock) => {
-                  const summary = calcStockSummary(stock)
-                  const totalPnl = convertAmountSync(summary.totalPnl, stock.market)
                   return (
-                    <div
+                    <StockListRow
                       key={stock.id}
-                      className="px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 group cursor-pointer hover:bg-secondary/30 transition-colors"
-                      onClick={() => setSelectedStockId(stock.id)}
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div className="font-semibold text-foreground truncate">{stock.name}</div>
-                          <span className="text-xs text-muted-foreground font-mono">{stock.code}</span>
-                          <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          持仓 {summary.currentHolding.toLocaleString()} 股 · 均成本 {formatWithCurrency(convertAmountSync(summary.avgCostPrice, stock.market))}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between md:justify-end gap-4 md:gap-6">
-                        <div className="text-right">
-                          <div className={`text-sm font-mono font-semibold ${totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-                            {formatPnl(totalPnl, displayCurrency)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">已实现</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setDeleteTarget({ id: stock.id, name: stock.name, code: stock.code })
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
+                      stock={stock}
+                      displayCurrency={displayCurrency}
+                      convertAmountSync={convertAmountSync}
+                      formatWithCurrency={formatWithCurrency}
+                      onOpen={() => setSelectedStockId(stock.id)}
+                      onDelete={() => setDeleteTarget({ id: stock.id, name: stock.name, code: stock.code })}
+                    />
                   )
                 })}
               </div>
@@ -288,15 +194,10 @@ export default function Dashboard() {
         />
       )}
 
-      {authEnabled && (
-        <AuthModal
-          open={showAuth}
-          onOpenChange={setShowAuth}
-          signIn={signIn}
-          signUp={signUp}
-          error={authError}
-        />
-      )}
+      <SettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
@@ -312,6 +213,96 @@ export default function Dashboard() {
           setDeleteTarget(null)
         }}
       />
+    </div>
+  )
+}
+
+function StockListRow({
+  stock,
+  displayCurrency,
+  convertAmountSync,
+  formatWithCurrency,
+  onOpen,
+  onDelete,
+}: {
+  stock: Stock
+  displayCurrency: string
+  convertAmountSync: (amount: number, fromMarket: string) => number
+  formatWithCurrency: (amount: number) => string
+  onOpen: () => void
+  onDelete: () => void
+}) {
+  const { quote } = useStockQuote(stock.code, stock.market, { autoRefresh: true, refreshInterval: 60000 })
+  const summary = calcStockSummary(stock, quote?.price)
+  const totalCost = convertAmountSync(summary.avgCostPrice * summary.currentHolding, stock.market)
+  const avgCost = convertAmountSync(summary.avgCostPrice, stock.market)
+  const realizedPnl = convertAmountSync(summary.realizedPnl, stock.market)
+  const unrealizedPnl = quote ? convertAmountSync(summary.unrealizedPnl, stock.market) : null
+  const totalPnl = quote ? convertAmountSync(summary.totalPnl, stock.market) : null
+  const currentPrice = quote ? convertAmountSync(quote.price, stock.market) : null
+
+  return (
+    <div
+      className="px-4 py-4 grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.8fr)_auto] gap-3 md:gap-4 md:items-center group cursor-pointer hover:bg-secondary/30 transition-colors"
+      onClick={onOpen}
+    >
+      <div className="min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-foreground truncate">{stock.name}</div>
+          <span className="text-xs text-muted-foreground font-mono">{stock.code}</span>
+          <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {stock.code} · {MARKET_LABELS[stock.market]}
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="text-sm font-mono font-semibold text-foreground">
+          {formatWithCurrency(totalCost)}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          持仓 {summary.currentHolding.toLocaleString()} 股
+        </div>
+        <div className="text-xs text-muted-foreground">
+          均价 {formatWithCurrency(avgCost)}
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className={`text-sm font-mono font-semibold ${(totalPnl ?? realizedPnl) >= 0 ? 'profit-text' : 'loss-text'}`}>
+          {formatPnl(totalPnl ?? realizedPnl, displayCurrency)}
+        </div>
+        {totalPnl === null ? (
+          <div className="text-xs text-muted-foreground">
+            已实现收益
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground">
+              已实现 {formatPnl(realizedPnl, displayCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              现价 {formatWithCurrency(currentPrice ?? 0)}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between md:justify-end gap-1">
+        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive opacity-70 md:opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   )
 }

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { stockPriceService } from '@/lib/StockPriceService'
+import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import type { Market } from '@/types'
+import type { StockQuote } from '@/types/stockApi'
 
 const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
+const yahooValuationSource = new YahooFinanceSource({ provider: 'yahoo-finance' })
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -23,7 +26,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const quote = await stockPriceService.getQuote(symbol, market)
+    const baseQuote = await stockPriceService.getQuote(symbol, market)
+    const quote = await enrichQuoteWithValuation(baseQuote, symbol, market)
     if (!quote) {
       return NextResponse.json({ quote: null, error: '暂无行情数据' }, { status: 404 })
     }
@@ -32,4 +36,38 @@ export async function GET(request: Request) {
     console.error('[api/stock/quote] failed:', error)
     return NextResponse.json({ error: '获取行情失败' }, { status: 500 })
   }
+}
+
+async function enrichQuoteWithValuation(
+  quote: StockQuote | null,
+  symbol: string,
+  market: Market,
+): Promise<StockQuote | null> {
+  if (!quote) return null
+  if (market === 'FUND' || market === 'CRYPTO') return quote
+  if (hasValuationData(quote)) return quote
+
+  try {
+    const yahooQuote = await yahooValuationSource.getQuote(symbol, market)
+    if (!yahooQuote) return quote
+    return {
+      ...quote,
+      peTtm: yahooQuote.peTtm ?? quote.peTtm ?? null,
+      epsTtm: yahooQuote.epsTtm ?? quote.epsTtm ?? null,
+      pb: yahooQuote.pb ?? quote.pb ?? null,
+      marketCap: yahooQuote.marketCap ?? quote.marketCap ?? null,
+      valuationSource: yahooQuote.valuationSource ?? quote.valuationSource,
+    }
+  } catch {
+    return quote
+  }
+}
+
+function hasValuationData(quote: StockQuote) {
+  return (
+    quote.peTtm !== undefined ||
+    quote.epsTtm !== undefined ||
+    quote.pb !== undefined ||
+    quote.marketCap !== undefined
+  )
 }

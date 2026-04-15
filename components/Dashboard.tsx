@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Trash2, ChevronRight, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,10 +13,10 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useStockQuote } from '@/hooks/useStockQuote'
 import AddStockModal from '@/components/AddStockModal'
 import SettingsModal from '@/components/SettingsModal'
-import StockDetail from '@/components/StockDetail'
 import type { Stock } from '@/types'
 
 export default function Dashboard() {
+  const router = useRouter()
   const {
     stocks,
     init,
@@ -25,17 +26,11 @@ export default function Dashboard() {
 
   const [showAddStock, setShowAddStock] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
 
   useEffect(() => {
     init()
   }, [init])
-
-  const selectedStock = useMemo(
-    () => stocks.find((s) => s.id === selectedStockId) || null,
-    [stocks, selectedStockId]
-  )
 
   const portfolio = useMemo(() => {
     let totalRealizedPnl = 0
@@ -64,15 +59,6 @@ export default function Dashboard() {
       totalHolding,
     }
   }, [stocks, convertAmountSync])
-
-  if (selectedStock) {
-    return (
-      <StockDetail
-        stock={selectedStock}
-        onBack={() => setSelectedStockId(null)}
-      />
-    )
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -176,7 +162,7 @@ export default function Dashboard() {
                       displayCurrency={displayCurrency}
                       convertAmountSync={convertAmountSync}
                       formatWithCurrency={formatWithCurrency}
-                      onOpen={() => setSelectedStockId(stock.id)}
+                      onOpen={() => router.push(`/stock/${stock.id}`)}
                       onDelete={() => setDeleteTarget({ id: stock.id, name: stock.name, code: stock.code })}
                     />
                   )
@@ -190,7 +176,7 @@ export default function Dashboard() {
       {showAddStock && (
         <AddStockModal
           onClose={() => setShowAddStock(false)}
-          onAdded={(id) => setSelectedStockId(id)}
+          onAdded={(id) => router.push(`/stock/${id}`)}
         />
       )}
 

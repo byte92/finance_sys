@@ -115,8 +115,6 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
     if (!match) return null
     const parts = match[1].split('~')
 
-    console.log('[TencentFinance] Debug - parts:', parts.slice(0, 10), 'total:', parts.length)
-
     if (parts.length < 50) return null
 
     // 检查是否返回了有效数据（第一个字段应该不是空）

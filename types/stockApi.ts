@@ -9,6 +9,11 @@ export interface StockQuote {
   change: number          // 涨跌额
   changePercent: number   // 涨跌幅(%)
   volume?: number         // 成交量
+  peTtm?: number | null   // 市盈率(TTM)
+  epsTtm?: number | null  // 每股收益(TTM)
+  pb?: number | null      // 市净率
+  marketCap?: number | null // 总市值
+  valuationSource?: string // 估值字段来源
   timestamp: string       // 时间戳
   currency: string        // 货币单位
   source: string          // 数据源标识

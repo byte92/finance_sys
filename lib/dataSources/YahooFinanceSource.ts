@@ -28,7 +28,7 @@ export class YahooFinanceSource implements StockDataSource {
   async getQuote(symbol: string, market: Market): Promise<StockQuote | null> {
     try {
       const std = toYahooSymbol(symbol, market)
-      const query = `symbols=${encodeURIComponent(std)}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName`
+      const query = `symbols=${encodeURIComponent(std)}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const result = await this.fetchFirstQuoteResult(query)
       if (!result) {
         return null
@@ -51,6 +51,11 @@ export class YahooFinanceSource implements StockDataSource {
         change: change || 0,
         changePercent: changePercent || 0,
         volume: volume || 0,
+        peTtm: parseOptionalNumber(result.trailingPE),
+        epsTtm: parseOptionalNumber(result.epsTrailingTwelveMonths),
+        pb: parseOptionalNumber(result.priceToBook),
+        marketCap: parseOptionalNumber(result.marketCap),
+        valuationSource: 'yahoo-finance',
         timestamp: new Date().toISOString(),
         currency: getCurrency(market),
         source: 'yahoo-finance',
@@ -64,7 +69,7 @@ export class YahooFinanceSource implements StockDataSource {
   async getBatchQuotes(symbols: string[], market: Market): Promise<StockQuote[]> {
     try {
       const stdSymbols = symbols.map(s => toYahooSymbol(s, market))
-      const query = `symbols=${encodeURIComponent(stdSymbols.join(','))}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName`
+      const query = `symbols=${encodeURIComponent(stdSymbols.join(','))}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const results = await this.fetchQuoteResults(query)
       if (!results.length) return []
       
@@ -77,6 +82,11 @@ export class YahooFinanceSource implements StockDataSource {
           change: r.regularMarketChange || 0,
           changePercent: r.regularMarketChangePercent || 0,
           volume: r.regularMarketVolume || 0,
+          peTtm: parseOptionalNumber(r.trailingPE),
+          epsTtm: parseOptionalNumber(r.epsTrailingTwelveMonths),
+          pb: parseOptionalNumber(r.priceToBook),
+          marketCap: parseOptionalNumber(r.marketCap),
+          valuationSource: 'yahoo-finance',
           timestamp: new Date().toISOString(),
           currency: getCurrency(market),
           source: 'yahoo-finance',
@@ -116,6 +126,10 @@ export class YahooFinanceSource implements StockDataSource {
     }
     return []
   }
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function toYahooSymbol(code: string, market: Market): string {

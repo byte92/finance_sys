@@ -43,6 +43,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const currentPriceNum = quote?.price || parseFloat(manualPrice) || undefined
   const summary = calcStockSummary(stock, currentPriceNum)
   const convertMoney = (amount: number) => convertAmountSync(amount, stock.market)
+  const isFundLike = stock.market === 'FUND' || isEtfLikeCode(stock.code, stock.market)
 
   // 按日期倒序展示，且 tradePnlDetails 与 trades 对齐
   const sortedTrades = [...stock.trades].sort((a, b) => b.date.localeCompare(a.date))
@@ -50,18 +51,14 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const pnlMap = new Map<string, TradePnlDetail>(
     summary.tradePnlDetails.map((d) => [d.tradeId, d])
   )
-  const { closingTradeIds, holdingAfterTrade } = (() => {
+  const closingTradeIds = (() => {
     const sorted = [...stock.trades].sort((a, b) => a.date.localeCompare(b.date))
     let holding = 0
     const ids = new Set<string>()
-    const holdingMap = new Map<string, number>()
 
     for (const trade of sorted) {
       if (trade.type === 'BUY') {
         holding += trade.quantity
-      } else if (trade.type === 'DIVIDEND') {
-        holdingMap.set(trade.id, holding)
-        continue
       } else if (trade.type === 'SELL') {
         const nextHolding = holding - trade.quantity
         if (holding > 0 && nextHolding === 0) {
@@ -69,11 +66,9 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         }
         holding = nextHolding
       }
-
-      holdingMap.set(trade.id, holding)
     }
 
-    return { closingTradeIds: ids, holdingAfterTrade: holdingMap }
+    return ids
   })()
 
   // 构建盈亏曲线数据（按时间正序，只显示有盈亏变化的点）
@@ -257,6 +252,37 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
           </Card>
         )}
 
+        {(quote || !isFundLike) && (
+          <Card className="border-border bg-card">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-foreground">估值信息</div>
+                {quote?.valuationSource && (
+                  <div className="text-xs text-muted-foreground">估值源：{quote.valuationSource}</div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetricCard
+                  label="PE(TTM)"
+                  value={isFundLike ? '不适用' : formatOptionalRatio(quote?.peTtm)}
+                />
+                <MetricCard
+                  label="EPS(TTM)"
+                  value={isFundLike ? '不适用' : formatOptionalMoney(quote?.epsTtm, quote?.currency)}
+                />
+                <MetricCard
+                  label="PB"
+                  value={isFundLike ? '不适用' : formatOptionalRatio(quote?.pb)}
+                />
+                <MetricCard
+                  label="总市值"
+                  value={isFundLike ? '不适用' : formatOptionalMarketCap(quote?.marketCap, quote?.currency)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 盈亏曲线 */}
         {chartData.length > 1 && (
           <Card className="border-border">
@@ -350,7 +376,6 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   trade={trade}
                   pnlDetail={pnlMap.get(trade.id)}
                   isClosingTrade={closingTradeIds.has(trade.id)}
-                  holdingAfterTrade={holdingAfterTrade.get(trade.id) ?? 0}
                   market={stock.market}
                   displayCurrency={displayCurrency}
                   convertAmountSync={convertAmountSync}
@@ -413,13 +438,62 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   )
 }
 
+function isEtfLikeCode(code: string, market: Stock['market']) {
+  if (market !== 'A') return false
+  return ['5', '15', '16', '18'].some((prefix) => code.startsWith(prefix))
+}
+
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-sm font-mono font-semibold text-foreground">{value}</div>
+    </div>
+  )
+}
+
+function formatOptionalRatio(value?: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '--'
+  return value.toFixed(2)
+}
+
+function formatOptionalMoney(value?: number | null, currency = 'CNY'): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--'
+  const symbols: Record<string, string> = {
+    CNY: '¥',
+    HKD: 'HK$',
+    USD: '$',
+    USDT: '$',
+  }
+  return `${symbols[currency] ?? ''}${value.toFixed(2)}`
+}
+
+function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): string {
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '--'
+  const symbols: Record<string, string> = {
+    CNY: '¥',
+    HKD: 'HK$',
+    USD: '$',
+    USDT: '$',
+  }
+  const abs = Math.abs(value)
+  const units = [
+    { threshold: 1e12, suffix: 'T' },
+    { threshold: 1e9, suffix: 'B' },
+    { threshold: 1e6, suffix: 'M' },
+    { threshold: 1e4, suffix: '万' },
+  ]
+  const unit = units.find((item) => abs >= item.threshold)
+  if (!unit) return `${symbols[currency] ?? ''}${value.toFixed(0)}`
+  return `${symbols[currency] ?? ''}${(value / unit.threshold).toFixed(2)}${unit.suffix}`
+}
+
 function TradeRow({
-  trade, pnlDetail, isClosingTrade, holdingAfterTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+  trade, pnlDetail, isClosingTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
 }: {
   trade: Trade
   pnlDetail?: TradePnlDetail
   isClosingTrade: boolean
-  holdingAfterTrade: number
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
@@ -491,7 +565,8 @@ function TradeRow({
           {isBuy && (
             <div className="mt-1 space-y-1 text-xs text-muted-foreground">
               <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
-              <div>当时总持仓 {holdingAfterTrade.toLocaleString()} 股</div>
+              <div>当时总持仓 {(pnlDetail?.holdingAfterTrade ?? 0).toLocaleString()} 股</div>
+              <div>该笔剩余 {(pnlDetail?.remainingQuantity ?? 0).toLocaleString()} 股</div>
             </div>
           )}
           {isDividend && (

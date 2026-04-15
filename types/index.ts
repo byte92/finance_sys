@@ -32,6 +32,8 @@ export interface TradePnlDetail {
   pnlPercent: number    // 盈亏率
   costBasis: number     // 对应的买入成本
   proceeds: number      // 卖出实收（含税后）
+  holdingAfterTrade?: number   // 该笔交易完成后的总持仓
+  remainingQuantity?: number   // 对买入记录而言，该笔买入当前尚未卖出的剩余股数
   isDividend?: boolean
 }
 

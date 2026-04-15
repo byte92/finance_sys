@@ -163,7 +163,7 @@ export function calcStockSummary(
   let tradeCount = 0;
 
   // FIFO 成本队列：{ price: 每股摊薄成本, quantity: 数量 }
-  const costQueue: Array<{ price: number; quantity: number }> = [];
+  const costQueue: Array<{ tradeId: string; price: number; quantity: number }> = [];
 
   // 每笔交易盈亏明细
   const tradePnlDetails: TradePnlDetail[] = [];
@@ -176,6 +176,7 @@ export function calcStockSummary(
       currentHolding += trade.quantity;
       // 每股均摊成本（含手续费）
       costQueue.push({
+        tradeId: trade.id,
         price: trade.netAmount / trade.quantity,
         quantity: trade.quantity,
       });
@@ -188,6 +189,7 @@ export function calcStockSummary(
         pnlPercent: 0,
         costBasis: trade.netAmount,
         proceeds: 0,
+        holdingAfterTrade: currentHolding,
       });
     } else if (trade.type === "SELL") {
       tradeCount++;
@@ -223,6 +225,7 @@ export function calcStockSummary(
         pnlPercent,
         costBasis,
         proceeds: trade.netAmount,
+        holdingAfterTrade: currentHolding,
       });
     } else if (trade.type === "DIVIDEND") {
       // 分红：计入已实现盈亏，但不再二次摊薄持仓成本。
@@ -239,10 +242,28 @@ export function calcStockSummary(
         pnlPercent: 0,
         costBasis: 0,
         proceeds: dividendAmount,
+        holdingAfterTrade: currentHolding,
         isDividend: true,
       });
     }
   }
+
+  const remainingQuantityByTradeId = new Map<string, number>();
+  for (const item of costQueue) {
+    remainingQuantityByTradeId.set(
+      item.tradeId,
+      (remainingQuantityByTradeId.get(item.tradeId) ?? 0) + item.quantity,
+    );
+  }
+
+  const normalizedTradePnlDetails = tradePnlDetails.map((detail) =>
+    detail.type === "BUY"
+      ? {
+          ...detail,
+          remainingQuantity: remainingQuantityByTradeId.get(detail.tradeId) ?? 0,
+        }
+      : detail,
+  );
 
   // 剩余持仓成本
   const remainingCost = costQueue.reduce(
@@ -273,7 +294,7 @@ export function calcStockSummary(
     totalCommission,
     totalDividend,
     tradeCount,
-    tradePnlDetails,
+    tradePnlDetails: normalizedTradePnlDetails,
   };
 }
 

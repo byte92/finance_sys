@@ -1,21 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-import { useEffect, useRef } from "react";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
 import { getDeviceId } from "@/lib/device-id";
 import { generateId } from "@/lib/finance";
-import { supabase } from "@/lib/supabase/client";
-import { canUseSupabaseAuth } from "@/lib/auth/mode";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
-
-export type SyncStatus = "idle" | "loading" | "synced" | "syncing" | "error" | "offline";
 
 interface StockStore {
   stocks: Stock[];
   config: AppConfig;
-  syncStatus: SyncStatus;
-  isOffline: boolean;
   userId: string | null;
 
   init: () => Promise<void>;
@@ -75,10 +68,6 @@ function createLocalSqliteUserId() {
   return `${LOCAL_SQLITE_USER_PREFIX}${getDeviceId()}`;
 }
 
-function isLocalSqliteUserId(userId: string | null) {
-  return Boolean(userId?.startsWith(LOCAL_SQLITE_USER_PREFIX));
-}
-
 function hasStoredData(payload: StoredPayload) {
   return (
     payload.stocks.length > 0 ||
@@ -118,74 +107,34 @@ function sortTrades(stocks: Stock[]) {
 export const useStockStore = create<StockStore>()((set, get) => ({
   stocks: [],
   config: DEFAULT_APP_CONFIG,
-  syncStatus: "idle",
-  isOffline: false,
   userId: null,
 
   init: async () => {
-    set({ syncStatus: "loading" });
     try {
-      if (!canUseSupabaseAuth() || !supabase) {
-        const local = loadFromLocalStorage();
-        const userId = createLocalSqliteUserId();
-        const sqlitePayload = await fetchRemote(userId);
-        const nextPayload = hasStoredData(sqlitePayload) ? sqlitePayload : local;
-        const normalized = sortTrades(nextPayload.stocks);
+      const local = loadFromLocalStorage();
+      const userId = createLocalSqliteUserId();
+      const sqlitePayload = await fetchRemote(userId);
+      const nextPayload = hasStoredData(sqlitePayload) ? sqlitePayload : local;
+      const normalized = sortTrades(nextPayload.stocks);
 
-        if (!hasStoredData(sqlitePayload) && hasStoredData(local)) {
-          await persistRemote(userId, normalized, nextPayload.config);
-        }
-
-        saveToLocalStorage(normalized, nextPayload.config);
-        set({
-          userId,
-          stocks: normalized,
-          config: nextPayload.config,
-          isOffline: true,
-          syncStatus: "offline",
-        });
-        return;
+      if (!hasStoredData(sqlitePayload) && hasStoredData(local)) {
+        await persistRemote(userId, normalized, nextPayload.config);
       }
 
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-      if (error) throw error;
-
-      if (!session?.user?.id) {
-        const local = loadFromLocalStorage();
-        set({
-          userId: null,
-          stocks: local.stocks,
-          config: local.config,
-          isOffline: true,
-          syncStatus: "offline",
-        });
-        return;
-      }
-
-      const userId = session.user.id;
-      const remote = await fetchRemote(userId);
-      const normalized = sortTrades(remote.stocks);
-      saveToLocalStorage(normalized, remote.config);
+      saveToLocalStorage(normalized, nextPayload.config);
       set({
         userId,
         stocks: normalized,
-        config: remote.config,
-        isOffline: false,
-        syncStatus: "synced",
+        config: nextPayload.config,
       });
     } catch (error) {
       console.error("Failed to initialize store:", error);
       const local = loadFromLocalStorage();
-      const userId = !canUseSupabaseAuth() || !supabase ? createLocalSqliteUserId() : null;
+      const userId = createLocalSqliteUserId();
       set({
         userId,
         stocks: local.stocks,
         config: local.config,
-        isOffline: true,
-        syncStatus: "error",
       });
     }
   },
@@ -193,8 +142,6 @@ export const useStockStore = create<StockStore>()((set, get) => ({
   sync: async () => {
     const userId = get().userId;
     if (!userId) return;
-    const isLocalOnly = isLocalSqliteUserId(userId);
-    set({ syncStatus: isLocalOnly ? "loading" : "syncing" });
     try {
       const remote = await fetchRemote(userId);
       const normalized = sortTrades(remote.stocks);
@@ -202,12 +149,9 @@ export const useStockStore = create<StockStore>()((set, get) => ({
       set({
         stocks: normalized,
         config: remote.config,
-        isOffline: isLocalOnly,
-        syncStatus: isLocalOnly ? "offline" : "synced",
       });
     } catch (error) {
       console.error("Sync failed:", error);
-      set({ syncStatus: "error", isOffline: true });
     }
   },
 
@@ -228,13 +172,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Persist stock failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
     return stock;
@@ -249,13 +190,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Update stock failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -268,13 +206,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Delete stock failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -298,13 +233,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Add trade failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -328,13 +260,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Update trade failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -349,13 +278,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Delete trade failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -368,13 +294,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
     const userId = get().userId;
     if (userId) {
-      const isLocalOnly = isLocalSqliteUserId(userId);
       try {
         await persistRemote(userId, nextStocks, nextConfig);
-        set({ syncStatus: isLocalOnly ? "offline" : "synced", isOffline: isLocalOnly });
       } catch (error) {
         console.error("Update config failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       }
     }
   },
@@ -404,7 +327,6 @@ export const useStockStore = create<StockStore>()((set, get) => ({
     if (userId) {
       void persistRemote(userId, next.stocks, next.config).catch((error) => {
         console.error("Import data failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       });
     }
   },
@@ -418,28 +340,7 @@ export const useStockStore = create<StockStore>()((set, get) => ({
     if (userId) {
       void persistRemote(userId, next.stocks, next.config).catch((error) => {
         console.error("Clear data failed:", error);
-        set({ syncStatus: "error", isOffline: true });
       });
     }
   },
 }));
-
-export function useInitStore() {
-  const { init, syncStatus } = useStockStore();
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (!initialized.current) {
-      init();
-      initialized.current = true;
-    }
-  }, [init]);
-
-  return { syncStatus };
-}
-
-export function useSyncStatus() {
-  const syncStatus = useStockStore((state) => state.syncStatus);
-  const isOffline = useStockStore((state) => state.isOffline);
-  return { syncStatus, isOffline };
-}

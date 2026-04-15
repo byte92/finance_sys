@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, Trash2, ChevronRight, Settings } from 'lucide-react'
+import { Plus, Trash2, ChevronRight, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
@@ -17,9 +17,7 @@ import type { Stock } from '@/types'
 export default function Dashboard() {
   const {
     stocks,
-    isOffline,
     init,
-    sync,
     deleteStock,
   } = useStockStore()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
@@ -86,11 +84,6 @@ export default function Dashboard() {
                 <option value="USD">USD</option>
               </select>
             </div>
-            {!isOffline && (
-              <Button size="sm" variant="ghost" onClick={sync}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            )}
             <Button size="sm" variant="ghost" onClick={() => setShowSettings(true)}>
               <Settings className="h-4 w-4" />
             </Button>

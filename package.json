@@ -13,7 +13,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.99.0",
     "better-sqlite3": "^12.9.0",
     "iconv-lite": "^0.7.2",
     "lightweight-charts": "^4.2.3",

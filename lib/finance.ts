@@ -154,28 +154,11 @@ export function calcStockSummary(
         proceeds: trade.netAmount,
       });
     } else if (trade.type === "DIVIDEND") {
-      // 分红：直接计入已实现盈亏，并摊薄持仓成本
-      // netAmount = 实际到账分红金额（price * quantity = 每股分红 * 持股数）
+      // 分红：计入已实现盈亏，但不再二次摊薄持仓成本。
+      // 否则会同时把分红算作收益、又降低未来卖出成本，导致收益被双重放大。
       const dividendAmount = trade.netAmount; // 税后到手
       totalDividend += dividendAmount;
       realizedPnl += dividendAmount;
-
-      // 分红摊薄持仓成本：在 FIFO 队列中按比例降低每股成本
-      // 逻辑：总持仓成本 -= 分红金额（分红视为资本返还降低成本基础）
-      if (currentHolding > 0 && costQueue.length > 0) {
-        const totalRemainingCost = costQueue.reduce(
-          (s, i) => s + i.price * i.quantity,
-          0,
-        );
-        const newTotalCost = totalRemainingCost - dividendAmount;
-        // 按比例缩减每一批次的成本
-        if (newTotalCost > 0) {
-          const ratio = newTotalCost / totalRemainingCost;
-          for (const item of costQueue) {
-            item.price = item.price * ratio;
-          }
-        }
-      }
 
       tradePnlDetails.push({
         tradeId: trade.id,

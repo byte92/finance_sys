@@ -284,7 +284,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             <div className="space-y-3">
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="text-xs text-muted-foreground mb-2">
-                  录入分红后，系统将自动摊薄持仓成本（分红视为资本返还）
+                  录入分红后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
                   当前可分红持股数：{availableHolding.toLocaleString()} 股

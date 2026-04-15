@@ -86,7 +86,7 @@ test('FIFO 计算已实现盈亏和剩余持仓成本', () => {
   assert.equal(Number(summary.totalCommission.toFixed(2)), 17.25)
 })
 
-test('分红会计入已实现盈亏并摊薄剩余持仓成本', () => {
+test('分红会计入已实现盈亏，但不会重复摊薄剩余持仓成本', () => {
   const stock = createStock([
     {
       id: 't1',
@@ -123,5 +123,5 @@ test('分红会计入已实现盈亏并摊薄剩余持仓成本', () => {
   assert.equal(summary.totalDividend, 80)
   assert.equal(summary.realizedPnl, 80)
   assert.equal(summary.currentHolding, 100)
-  assert.equal(Number(summary.avgCostPrice.toFixed(2)), 9.25)
+  assert.equal(Number(summary.avgCostPrice.toFixed(2)), 10.05)
 })

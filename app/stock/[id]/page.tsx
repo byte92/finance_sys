@@ -4,7 +4,6 @@ import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useState, useEffect } from 'react'
 import { useStockStore } from '@/store/useStockStore'
-import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 
@@ -13,31 +12,42 @@ const StockDetail = dynamic(() => import('@/components/StockDetail'), { ssr: fal
 export default function StockDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { stocks, sync } = useStockStore()
+  const { stocks, init } = useStockStore()
   const stockId = params.id as string
 
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
   const stock = stocks.find((s) => s.id === stockId)
 
-  // 当 stock 不存在时，尝试从服务端重新加载数据
   useEffect(() => {
-    if (!stock && !isLoading && !notFound) {
+    let cancelled = false
+
+    const load = async () => {
       setIsLoading(true)
-      sync().then(() => {
-        setIsLoading(false)
-        // 重新检查是否找到
+      setNotFound(false)
+      try {
+        await init()
+        if (cancelled) return
         const found = useStockStore.getState().stocks.find((s) => s.id === stockId)
-        if (!found) {
+        setNotFound(!found)
+      } catch {
+        if (!cancelled) {
           setNotFound(true)
         }
-      }).catch(() => {
-        setIsLoading(false)
-        setNotFound(true)
-      })
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
     }
-  }, [stockId, stock, isLoading, notFound])
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [init, stockId])
 
   if (isLoading) {
     return (
@@ -56,7 +66,22 @@ export default function StockDetailPage() {
         <div className="text-center">
           <p className="text-muted-foreground mb-4">未找到该股票 (ID: {stockId.slice(0, 8)}...)</p>
           <div className="flex gap-2 justify-center">
-            <Button variant="outline" onClick={() => { setNotFound(false); setIsLoading(false); }}>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                setIsLoading(true)
+                setNotFound(false)
+                try {
+                  await init()
+                  const found = useStockStore.getState().stocks.find((s) => s.id === stockId)
+                  setNotFound(!found)
+                } catch {
+                  setNotFound(true)
+                } finally {
+                  setIsLoading(false)
+                }
+              }}
+            >
               重试
             </Button>
             <Button onClick={() => router.push('/')}>返回首页</Button>

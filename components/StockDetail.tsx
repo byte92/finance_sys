@@ -50,6 +50,25 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const pnlMap = new Map<string, TradePnlDetail>(
     summary.tradePnlDetails.map((d) => [d.tradeId, d])
   )
+  const closingTradeIds = (() => {
+    const sorted = [...stock.trades].sort((a, b) => a.date.localeCompare(b.date))
+    let holding = 0
+    const ids = new Set<string>()
+
+    for (const trade of sorted) {
+      if (trade.type === 'BUY') {
+        holding += trade.quantity
+      } else if (trade.type === 'SELL') {
+        const nextHolding = holding - trade.quantity
+        if (holding > 0 && nextHolding === 0) {
+          ids.add(trade.id)
+        }
+        holding = nextHolding
+      }
+    }
+
+    return ids
+  })()
 
   // 构建盈亏曲线数据（按时间正序，只显示有盈亏变化的点）
   const chartData = (() => {
@@ -324,7 +343,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   key={trade.id}
                   trade={trade}
                   pnlDetail={pnlMap.get(trade.id)}
-                  currentPrice={currentPriceNum}
+                  isClosingTrade={closingTradeIds.has(trade.id)}
                   market={stock.market}
                   displayCurrency={displayCurrency}
                   convertAmountSync={convertAmountSync}
@@ -388,11 +407,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 }
 
 function TradeRow({
-  trade, pnlDetail, currentPrice, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+  trade, pnlDetail, isClosingTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
 }: {
   trade: Trade
   pnlDetail?: TradePnlDetail
-  currentPrice?: number
+  isClosingTrade: boolean
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
@@ -406,11 +425,6 @@ function TradeRow({
 
   // 每笔卖出的盈亏
   const hasPnl = isSell && pnlDetail && pnlDetail.pnl !== 0
-
-  // 买入交易的未实现盈亏（基于当前价格）
-  const unrealizedPnl = isBuy && currentPrice && currentPrice > 0
-    ? (currentPrice - trade.price) * trade.quantity
-    : undefined
   const convertMoney = (amount: number) => convertAmountSync(amount, market)
 
   return (
@@ -429,6 +443,11 @@ function TradeRow({
               {isBuy ? '买入' : isDividend ? '分红' : '卖出'}
             </span>
             <span className="text-xs text-muted-foreground">{trade.date}</span>
+            {isSell && isClosingTrade && (
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-primary">
+                清仓
+              </span>
+            )}
           </div>
           <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
@@ -459,12 +478,6 @@ function TradeRow({
             <div className={`text-sm font-mono ${pnlDetail.pnl >= 0 ? 'profit-text' : 'loss-text'}`}>
               {formatPnl(convertMoney(pnlDetail.pnl), displayCurrency)}
               <span className="ml-1 text-xs opacity-75">({formatPercent(pnlDetail.pnlPercent)})</span>
-            </div>
-          )}
-          {isBuy && unrealizedPnl !== undefined && (
-            <div className={`text-sm font-mono ${unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              浮动 {formatPnl(convertMoney(unrealizedPnl), displayCurrency)}
-              <span className="ml-1 text-xs opacity-75">({formatPercent((unrealizedPnl / trade.netAmount) * 100)})</span>
             </div>
           )}
           {isBuy && (

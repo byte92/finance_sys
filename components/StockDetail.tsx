@@ -344,6 +344,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   trade={trade}
                   pnlDetail={pnlMap.get(trade.id)}
                   isClosingTrade={closingTradeIds.has(trade.id)}
+                  currentHolding={summary.currentHolding}
                   market={stock.market}
                   displayCurrency={displayCurrency}
                   convertAmountSync={convertAmountSync}
@@ -407,11 +408,12 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 }
 
 function TradeRow({
-  trade, pnlDetail, isClosingTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+  trade, pnlDetail, isClosingTrade, currentHolding, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
 }: {
   trade: Trade
   pnlDetail?: TradePnlDetail
   isClosingTrade: boolean
+  currentHolding: number
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
@@ -444,7 +446,7 @@ function TradeRow({
             </span>
             <span className="text-xs text-muted-foreground">{trade.date}</span>
             {isSell && isClosingTrade && (
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-primary">
+              <span className="inline-flex items-center rounded-md bg-primary px-2.5 py-1 text-[11px] font-bold tracking-[0.08em] text-primary-foreground shadow-sm">
                 清仓
               </span>
             )}
@@ -481,8 +483,9 @@ function TradeRow({
             </div>
           )}
           {isBuy && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}
+            <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+              <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
+              <div>当前总持仓 {currentHolding.toLocaleString()} 股</div>
             </div>
           )}
           {isDividend && (

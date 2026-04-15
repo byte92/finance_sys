@@ -6,6 +6,14 @@ import type { Market } from '@/types'
 
 const API_BASE = 'https://qt.gtimg.cn'
 
+type TencentValuation = {
+  peTtm?: number
+  epsTtm?: number
+  pb?: number
+  marketCap?: number
+  valuationSource?: string
+}
+
 // 将腾讯API返回的GBK编码数据解码为UTF-8
 async function decodeGBK(res: Response): Promise<string> {
   const buffer = await res.arrayBuffer()
@@ -139,6 +147,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
     const volume = parseInt(parts[6]) || 0        // 成交量（手）
     const date = parts[30]                   // 日期 YYYYMMDD
     const time = parts[31] || '000000'       // 时间 HHmmss
+    const valuation = parseTencentValuation(parts, price, market)
 
     const dateStr = date && date.length === 8
       ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}+08:00`
@@ -151,6 +160,11 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
       change,
       changePercent,
       volume,
+      ...(valuation.peTtm !== undefined ? { peTtm: valuation.peTtm } : {}),
+      ...(valuation.epsTtm !== undefined ? { epsTtm: valuation.epsTtm } : {}),
+      ...(valuation.pb !== undefined ? { pb: valuation.pb } : {}),
+      ...(valuation.marketCap !== undefined ? { marketCap: valuation.marketCap } : {}),
+      ...(valuation.valuationSource !== undefined ? { valuationSource: valuation.valuationSource } : {}),
       timestamp: dateStr,
       currency: market === 'HK' ? 'HKD' : 'CNY',
       source: 'tencent',
@@ -159,4 +173,47 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
     console.error('[TencentFinance] 解析失败:', e)
     return null
   }
+}
+
+function parseTencentValuation(parts: string[], price: number, market: Market): TencentValuation {
+  if (market === 'FUND') {
+    return {}
+  }
+
+  if (market === 'HK') {
+    const peTtm = parsePositiveNumber(parts[57]) ?? parsePositiveNumber(parts[39]) ?? parsePositiveNumber(parts[71])
+    const pb = parsePositiveNumber(parts[58])
+    const marketCap = parsePositiveNumber(parts[44]) ? Number(parts[44]) * 1e8 : undefined
+
+    return {
+      ...(peTtm !== undefined ? { peTtm } : {}),
+      ...(peTtm !== undefined ? { epsTtm: roundNumber(price / peTtm, 4) } : {}),
+      ...(pb !== undefined ? { pb } : {}),
+      ...(marketCap !== undefined ? { marketCap } : {}),
+      valuationSource: 'tencent',
+    }
+  }
+
+  const peTtm = parsePositiveNumber(parts[53]) ?? parsePositiveNumber(parts[52]) ?? parsePositiveNumber(parts[39])
+  const pb = parsePositiveNumber(parts[46])
+  const marketCap = parsePositiveNumber(parts[44]) ? Number(parts[44]) * 1e8 : undefined
+
+  return {
+    ...(peTtm !== undefined ? { peTtm } : {}),
+    ...(peTtm !== undefined ? { epsTtm: roundNumber(price / peTtm, 4) } : {}),
+    ...(pb !== undefined ? { pb } : {}),
+    ...(marketCap !== undefined ? { marketCap } : {}),
+    valuationSource: 'tencent',
+  }
+}
+
+function parsePositiveNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function roundNumber(value: number, decimals: number) {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
 }

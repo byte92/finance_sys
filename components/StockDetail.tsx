@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Sun, Moon, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,14 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
   const [manualPrice, setManualPrice] = useState('')
   const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(null)
+  const [tradeKeyword, setTradeKeyword] = useState('')
+  const [tradeTypeFilter, setTradeTypeFilter] = useState<'ALL' | 'BUY' | 'SELL' | 'DIVIDEND'>('ALL')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [specialFilter, setSpecialFilter] = useState<'ALL' | 'CLOSING' | 'OPEN_BUY' | 'CLOSED_BUY' | 'REALIZED'>('ALL')
+  const [resultFilter, setResultFilter] = useState<'ALL' | 'PROFIT' | 'LOSS' | 'BREAKEVEN'>('ALL')
+  const [noteFilter, setNoteFilter] = useState<'ALL' | 'WITH_NOTE' | 'WITHOUT_NOTE'>('ALL')
+  const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc')
 
   const { quote, loading, error, forceRefresh } = useStockQuote(
     stock.code, stock.market,
@@ -45,7 +53,6 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const convertMoney = (amount: number) => convertAmountSync(amount, stock.market)
   const isFundLike = stock.market === 'FUND' || isEtfLikeCode(stock.code, stock.market)
 
-  // 按日期倒序展示，且 tradePnlDetails 与 trades 对齐
   const sortedTrades = [...stock.trades].sort((a, b) => b.date.localeCompare(a.date))
   // 构建 tradeId -> pnlDetail 的映射（finance.ts 按时间正序计算）
   const pnlMap = new Map<string, TradePnlDetail>(
@@ -92,6 +99,68 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   })()
 
   const isProfitable = summary.realizedPnl >= 0
+  const tradeRows = useMemo(() => {
+    const rows = stock.trades.map((trade) => {
+      const pnlDetail = pnlMap.get(trade.id)
+      const typeLabel = trade.type === 'BUY' ? '买入' : trade.type === 'SELL' ? '卖出' : '分红'
+      const feeTotal = trade.commission + trade.tax
+      const realizedAmount = trade.type === 'SELL' || trade.type === 'DIVIDEND' ? pnlDetail?.pnl ?? 0 : null
+      const buyRemaining = trade.type === 'BUY' ? (pnlDetail?.remainingQuantity ?? 0) : null
+      const buySold = trade.type === 'BUY' ? (pnlDetail?.soldQuantity ?? 0) : null
+      const holdingAfterTrade = pnlDetail?.holdingAfterTrade ?? 0
+      const isClosingTrade = closingTradeIds.has(trade.id)
+      const buyLotState = trade.type === 'BUY'
+        ? (buyRemaining && buyRemaining > 0 ? '持有中' : '已卖完')
+        : null
+
+      return {
+        trade,
+        pnlDetail,
+        typeLabel,
+        feeTotal,
+        realizedAmount,
+        buyRemaining,
+        buySold,
+        holdingAfterTrade,
+        isClosingTrade,
+        buyLotState,
+      }
+    })
+
+    return rows
+      .filter((row) => {
+        if (tradeTypeFilter !== 'ALL' && row.trade.type !== tradeTypeFilter) return false
+        if (dateFrom && row.trade.date < dateFrom) return false
+        if (dateTo && row.trade.date > dateTo) return false
+        if (specialFilter === 'CLOSING' && !row.isClosingTrade) return false
+        if (specialFilter === 'OPEN_BUY' && !(row.trade.type === 'BUY' && (row.buyRemaining ?? 0) > 0)) return false
+        if (specialFilter === 'CLOSED_BUY' && !(row.trade.type === 'BUY' && (row.buyRemaining ?? 0) === 0)) return false
+        if (specialFilter === 'REALIZED' && !(row.trade.type === 'SELL' || row.trade.type === 'DIVIDEND')) return false
+        if (resultFilter === 'PROFIT' && !((row.realizedAmount ?? 0) > 0)) return false
+        if (resultFilter === 'LOSS' && !((row.realizedAmount ?? 0) < 0)) return false
+        if (resultFilter === 'BREAKEVEN' && row.realizedAmount !== 0) return false
+        if (noteFilter === 'WITH_NOTE' && !row.trade.note?.trim()) return false
+        if (noteFilter === 'WITHOUT_NOTE' && !!row.trade.note?.trim()) return false
+
+        if (tradeKeyword.trim()) {
+          const keyword = tradeKeyword.trim().toLowerCase()
+          const haystacks = [
+            row.trade.date,
+            row.typeLabel,
+            row.trade.note ?? '',
+            row.buyLotState ?? '',
+            row.isClosingTrade ? '清仓' : '',
+          ]
+          if (!haystacks.some((item) => item.toLowerCase().includes(keyword))) return false
+        }
+
+        return true
+      })
+      .sort((a, b) => {
+        const delta = a.trade.date.localeCompare(b.trade.date)
+        return sortDirection === 'desc' ? -delta : delta
+      })
+  }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection])
 
   return (
     <div className="min-h-screen bg-background">
@@ -362,7 +431,93 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
         {/* 交易记录列表 */}
         <div>
-          <h3 className="text-sm font-medium text-foreground mb-3">交易记录</h3>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-sm font-medium text-foreground">交易记录</h3>
+            <div className="text-xs text-muted-foreground">共 {tradeRows.length} / {stock.trades.length} 条</div>
+          </div>
+
+          <Card className="border-border bg-card mb-3">
+            <CardContent className="p-4 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-3">
+                <Input
+                  value={tradeKeyword}
+                  onChange={(e) => setTradeKeyword(e.target.value)}
+                  placeholder="搜索备注 / 操作 / 状态"
+                  className="xl:col-span-2"
+                />
+                <select
+                  value={tradeTypeFilter}
+                  onChange={(e) => setTradeTypeFilter(e.target.value as typeof tradeTypeFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部类型</option>
+                  <option value="BUY">买入</option>
+                  <option value="SELL">卖出</option>
+                  <option value="DIVIDEND">分红</option>
+                </select>
+                <select
+                  value={specialFilter}
+                  onChange={(e) => setSpecialFilter(e.target.value as typeof specialFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部状态</option>
+                  <option value="CLOSING">只看清仓</option>
+                  <option value="OPEN_BUY">只看仍持有批次</option>
+                  <option value="CLOSED_BUY">只看已卖完批次</option>
+                  <option value="REALIZED">只看已实现记录</option>
+                </select>
+                <select
+                  value={resultFilter}
+                  onChange={(e) => setResultFilter(e.target.value as typeof resultFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部结果</option>
+                  <option value="PROFIT">只看盈利</option>
+                  <option value="LOSS">只看亏损</option>
+                  <option value="BREAKEVEN">只看持平</option>
+                </select>
+                <select
+                  value={noteFilter}
+                  onChange={(e) => setNoteFilter(e.target.value as typeof noteFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部备注</option>
+                  <option value="WITH_NOTE">只看有备注</option>
+                  <option value="WITHOUT_NOTE">只看无备注</option>
+                </select>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortDirection((current) => current === 'desc' ? 'asc' : 'desc')}
+                >
+                  时间排序：{sortDirection === 'desc' ? '最新在前' : '最早在前'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTradeKeyword('')
+                    setTradeTypeFilter('ALL')
+                    setDateFrom('')
+                    setDateTo('')
+                    setSpecialFilter('ALL')
+                    setResultFilter('ALL')
+                    setNoteFilter('ALL')
+                    setSortDirection('desc')
+                  }}
+                >
+                  重置筛选
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           {sortedTrades.length === 0 ? (
             <Card className="border-border border-dashed">
               <CardContent className="py-12 text-center">
@@ -374,22 +529,46 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-2">
-              {sortedTrades.map((trade) => (
-                <TradeRow
-                  key={trade.id}
-                  trade={trade}
-                  pnlDetail={pnlMap.get(trade.id)}
-                  isClosingTrade={closingTradeIds.has(trade.id)}
-                  market={stock.market}
-                  displayCurrency={displayCurrency}
-                  convertAmountSync={convertAmountSync}
-                  formatWithCurrency={formatWithCurrency}
-                  onEdit={() => setEditTrade(trade)}
-                  onDelete={() => setDeleteTradeTarget(trade)}
-                />
-              ))}
-            </div>
+            <Card className="border-border bg-card overflow-hidden">
+              <div className="overflow-x-auto max-h-[720px]">
+                <table className="min-w-[1180px] w-full text-sm">
+                  <thead className="sticky top-0 z-[1] bg-muted/95 border-b border-border backdrop-blur">
+                    <tr className="text-left">
+                      <th className="px-4 py-3 font-medium text-muted-foreground">日期</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">操作</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">价格 / 数量</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">费用 / 金额</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">批次 / 持仓状态</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">已实现结果</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">备注</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tradeRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                          当前筛选条件下没有匹配的交易记录
+                        </td>
+                      </tr>
+                    ) : (
+                      tradeRows.map((row) => (
+                        <TradeTableRow
+                          key={row.trade.id}
+                          row={row}
+                          market={stock.market}
+                          displayCurrency={displayCurrency}
+                          convertAmountSync={convertAmountSync}
+                          formatWithCurrency={formatWithCurrency}
+                          onEdit={() => setEditTrade(row.trade)}
+                          onDelete={() => setDeleteTradeTarget(row.trade)}
+                        />
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
         </div>
       </main>
@@ -503,12 +682,21 @@ function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): strin
   return `${symbols[currency] ?? ''}${(value / unit.threshold).toFixed(2)}${unit.suffix}`
 }
 
-function TradeRow({
-  trade, pnlDetail, isClosingTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+function TradeTableRow({
+  row, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
 }: {
-  trade: Trade
-  pnlDetail?: TradePnlDetail
-  isClosingTrade: boolean
+  row: {
+    trade: Trade
+    pnlDetail?: TradePnlDetail
+    typeLabel: string
+    feeTotal: number
+    realizedAmount: number | null
+    buyRemaining: number | null
+    buySold: number | null
+    holdingAfterTrade: number
+    isClosingTrade: boolean
+    buyLotState: string | null
+  }
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
@@ -516,96 +704,112 @@ function TradeRow({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const { trade, pnlDetail, isClosingTrade, typeLabel, feeTotal, realizedAmount, buyRemaining, buySold, holdingAfterTrade, buyLotState } = row
   const isBuy = trade.type === 'BUY'
   const isSell = trade.type === 'SELL'
   const isDividend = trade.type === 'DIVIDEND'
-
-  // 每笔卖出的盈亏
-  const hasPnl = isSell && pnlDetail && pnlDetail.pnl !== 0
   const convertMoney = (amount: number) => convertAmountSync(amount, market)
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 hover:border-border/80 transition-all group">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-              isBuy ? 'bg-profit/15' : isDividend ? 'bg-primary/15' : 'bg-loss/15'
-            }`}>
-              {isBuy ? <TrendingUp className="h-3.5 w-3.5 text-profit" />
-                : isDividend ? <Gift className="h-3.5 w-3.5 text-primary" />
-                : <TrendingDown className="h-3.5 w-3.5 text-loss" />}
+    <tr className="border-b border-border last:border-b-0 align-top hover:bg-muted/20">
+      <td className="px-4 py-3 font-mono text-foreground whitespace-nowrap">{trade.date}</td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+            isBuy ? 'bg-profit/15' : isDividend ? 'bg-primary/15' : 'bg-loss/15'
+          }`}>
+            {isBuy ? <TrendingUp className="h-3.5 w-3.5 text-profit" />
+              : isDividend ? <Gift className="h-3.5 w-3.5 text-primary" />
+              : <TrendingDown className="h-3.5 w-3.5 text-loss" />}
+          </div>
+          <div className="space-y-1">
+            <div className={`font-medium ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
+              {typeLabel}
             </div>
-            <span className={`text-xs font-semibold ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
-              {isBuy ? '买入' : isDividend ? '分红' : '卖出'}
-            </span>
-            <span className="text-xs text-muted-foreground">{trade.date}</span>
-            {isSell && isClosingTrade && (
-              <span className="inline-flex items-center rounded-md bg-primary px-2.5 py-1 text-[11px] font-bold tracking-[0.08em] text-primary-foreground shadow-sm">
-                清仓
-              </span>
+            <div className="flex flex-wrap items-center gap-1">
+              {isSell && isClosingTrade && (
+                <span className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">
+                  清仓
+                </span>
+              )}
+              {isBuy && buyLotState && (
+                <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                  buyLotState === '持有中' ? 'bg-profit/15 text-profit' : 'bg-muted text-muted-foreground'
+                }`}>
+                  {buyLotState}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="space-y-1 text-xs">
+          <div className="font-mono text-foreground">{formatWithCurrency(convertMoney(trade.price))}</div>
+          <div className="text-muted-foreground">{trade.quantity.toLocaleString()} 股</div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="space-y-1 text-xs">
+          <div className="text-muted-foreground">费用 {formatWithCurrency(convertMoney(feeTotal))}</div>
+          <div className={`font-mono ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
+            {isBuy ? '-' : '+'}{formatWithCurrency(convertMoney(Math.abs(trade.netAmount)))}
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <div>当时总持仓 {holdingAfterTrade.toLocaleString()} 股</div>
+          {isBuy ? (
+            <>
+              <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
+              <div>该笔已卖出 {(buySold ?? 0).toLocaleString()} 股</div>
+              <div>该笔剩余 {(buyRemaining ?? 0).toLocaleString()} 股</div>
+            </>
+          ) : isDividend ? (
+            <div>税前分红 {formatWithCurrency(convertMoney(trade.totalAmount))}</div>
+          ) : (
+            <div>成本基础 {formatWithCurrency(convertMoney(pnlDetail?.costBasis ?? 0))}</div>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        {realizedAmount === null ? (
+          <span className="text-xs text-muted-foreground">未实现</span>
+        ) : (
+          <div className="space-y-1 text-xs">
+            <div className={`font-mono ${realizedAmount >= 0 ? 'profit-text' : 'loss-text'}`}>
+              {formatPnl(convertMoney(realizedAmount), displayCurrency)}
+            </div>
+            {pnlDetail && (trade.type === 'SELL') && (
+              <div className={`${pnlDetail.pnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+                {formatPercent(pnlDetail.pnlPercent)}
+              </div>
             )}
           </div>
-          <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
-              <div className="text-[11px] text-muted-foreground">{isDividend ? '分红基数' : '数量'}</div>
-              <div className="text-xs font-mono text-foreground">{trade.quantity.toLocaleString()} 股</div>
-            </div>
-            <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
-              <div className="text-[11px] text-muted-foreground">{isDividend ? '每股分红' : '成交价'}</div>
-              <div className="text-xs font-mono text-foreground">{formatWithCurrency(convertMoney(trade.price))}</div>
-            </div>
-            <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
-              <div className="text-[11px] text-muted-foreground">{isDividend ? '税费/手续费' : '费用'}</div>
-              <div className="text-xs font-mono text-foreground">{formatWithCurrency(convertMoney(trade.commission + trade.tax))}</div>
-            </div>
-            <div className="rounded-md bg-muted/40 px-2.5 py-1.5">
-              <div className="text-[11px] text-muted-foreground">{isBuy ? '成交额' : isDividend ? '税后实收' : '到账额'}</div>
-              <div className={`text-xs font-mono ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
-                {isBuy ? '-' : '+'}{formatWithCurrency(convertMoney(Math.abs(trade.netAmount)))}
-              </div>
-            </div>
-          </div>
-          {trade.note && (
-            <div className="mt-2 text-xs text-muted-foreground">备注：{trade.note}</div>
-          )}
+        )}
+      </td>
+      <td className="px-4 py-3 max-w-[260px]">
+        <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words">
+          {trade.note || '--'}
         </div>
-        <div className="text-right shrink-0">
-          {hasPnl && pnlDetail && (
-            <div className={`text-sm font-mono ${pnlDetail.pnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(convertMoney(pnlDetail.pnl), displayCurrency)}
-              <span className="ml-1 text-xs opacity-75">({formatPercent(pnlDetail.pnlPercent)})</span>
-            </div>
-          )}
-          {isBuy && (
-            <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-              <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
-              <div>当时总持仓 {(pnlDetail?.holdingAfterTrade ?? 0).toLocaleString()} 股</div>
-              <div>该笔已卖出 {(pnlDetail?.soldQuantity ?? 0).toLocaleString()} 股</div>
-              <div>该笔剩余 {(pnlDetail?.remainingQuantity ?? 0).toLocaleString()} 股</div>
-            </div>
-          )}
-          {isDividend && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              税前分红 {formatWithCurrency(convertMoney(trade.totalAmount))}
-            </div>
-          )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
+          >
+            <Edit className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
-      </div>
-      <div className="mt-3 flex items-center justify-end gap-1">
-        <button
-          onClick={onEdit}
-          className="opacity-70 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all"
-        >
-          <Edit className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={onDelete}
-          className="opacity-70 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
+      </td>
+    </tr>
   )
 }

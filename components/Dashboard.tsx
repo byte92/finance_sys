@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ChevronRight, Settings } from 'lucide-react'
+import { Plus, Trash2, ChevronRight, Settings, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
@@ -11,6 +11,7 @@ import { MARKET_LABELS } from '@/config/defaults'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useStockQuote } from '@/hooks/useStockQuote'
+import { useTheme } from '@/hooks/useTheme'
 import AddStockModal from '@/components/AddStockModal'
 import SettingsModal from '@/components/SettingsModal'
 import type { Stock } from '@/types'
@@ -22,6 +23,7 @@ export default function Dashboard() {
     init,
     deleteStock,
   } = useStockStore()
+  const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
 
   const [showAddStock, setShowAddStock] = useState(false)
@@ -67,6 +69,11 @@ export default function Dashboard() {
           <div className="text-sm font-semibold">StockTracker</div>
 
           <div className="flex items-center gap-2 ml-auto">
+            {mounted && (
+              <Button variant="ghost" size="sm" onClick={toggleTheme} title={theme === 'dark' ? '切换亮色' : '切换暗色'}>
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+            )}
             <div className="flex items-center gap-1 mr-2">
               <select
                 value={displayCurrency}

@@ -88,7 +88,8 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   // 分红计算
   const dividendPerShareNum = parseFloat(dividendPerShare) || 0
   const dividendSharesNum = parseInt(dividendShares) || 0
-  const dividendTaxRate = parseFloat(dividendTax) / 100 || 0.2
+  const parsedDividendTax = Number(dividendTax)
+  const dividendTaxRate = Number.isFinite(parsedDividendTax) ? parsedDividendTax / 100 : 0.2
   const grossDividend = dividendPerShareNum * dividendSharesNum
   const dividendTaxAmount = grossDividend * dividendTaxRate
   const netDividend = grossDividend - dividendTaxAmount  // 税后实收

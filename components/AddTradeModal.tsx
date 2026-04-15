@@ -74,6 +74,13 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     }
   }, [editTrade])
 
+  useEffect(() => {
+    if (type !== 'DIVIDEND' || editTrade?.type === 'DIVIDEND' || dividendShares) return
+    if (availableHolding > 0) {
+      setDividendShares(String(availableHolding))
+    }
+  }, [type, availableHolding, editTrade?.type, dividendShares])
+
   const priceNum = parseFloat(price) || 0
   const quantityNum = parseInt(quantity) || 0
   const totalAmount = priceNum * quantityNum
@@ -125,6 +132,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
       }
       if (!dividendShares || dividendSharesNum <= 0) {
         setError('请填写分红时的持有股数')
+        return
+      }
+      if (dividendSharesNum > availableHolding) {
+        setError(`分红股数不能超过当前持仓 ${availableHolding.toLocaleString()} 股`)
         return
       }
       // 分红记录：price=每股分红, quantity=持有股数, netAmount=税后实收
@@ -274,6 +285,9 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="text-xs text-muted-foreground mb-2">
                   录入分红后，系统将自动摊薄持仓成本（分红视为资本返还）
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  当前可分红持股数：{availableHolding.toLocaleString()} 股
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">

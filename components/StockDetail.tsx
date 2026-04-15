@@ -330,7 +330,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         title="确认删除交易"
         description={
           deleteTradeTarget
-            ? `确定删除 ${deleteTradeTarget.date} 的${deleteTradeTarget.type === 'BUY' ? '买入' : deleteTradeTarget.type === 'SELL' ? '卖出' : '分红'}记录？该操作不可恢复。`
+            ? `确定删除 ${deleteTradeTarget.date} 的${deleteTradeTarget.type === 'BUY' ? '买入' : deleteTradeTarget.type === 'SELL' ? '卖出' : '分红'}记录？删除后会重算后续持仓成本和 FIFO 盈亏，该操作不可恢复。`
             : undefined
         }
         confirmText="删除"

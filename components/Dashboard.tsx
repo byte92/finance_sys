@@ -161,11 +161,11 @@ export default function Dashboard() {
             </Card>
           ) : (
             <Card className="border-border bg-card/60 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border/70 flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">名称 / 代码</div>
-                <div className="text-xs text-muted-foreground hidden md:block">持仓与成本</div>
-                <div className="text-xs text-muted-foreground hidden md:block">盈亏</div>
-                <div className="text-xs text-muted-foreground">操作</div>
+              <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.8fr)_auto] gap-4 px-4 py-3 border-b border-border/70">
+                <div className="text-xs text-muted-foreground">名称</div>
+                <div className="text-xs text-muted-foreground">持仓成本</div>
+                <div className="text-xs text-muted-foreground">盈亏</div>
+                <div className="text-xs text-muted-foreground text-right">操作</div>
               </div>
               <div className="divide-y divide-border/70">
                 {stocks.map((stock: Stock) => {
@@ -243,7 +243,7 @@ function StockListRow({
 
   return (
     <div
-      className="px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 group cursor-pointer hover:bg-secondary/30 transition-colors"
+      className="px-4 py-4 grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,1.6fr)_minmax(0,1.8fr)_auto] gap-3 md:gap-4 md:items-center group cursor-pointer hover:bg-secondary/30 transition-colors"
       onClick={onOpen}
     >
       <div className="min-w-0 space-y-1">
@@ -253,46 +253,55 @@ function StockListRow({
           <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          持仓 {summary.currentHolding.toLocaleString()} 股 · 成本 {formatWithCurrency(totalCost)} · 均价 {formatWithCurrency(avgCost)}
+          {stock.code} · {MARKET_LABELS[stock.market]}
         </div>
       </div>
-      <div className="flex items-center justify-between md:justify-end gap-4 md:gap-6">
-        <div className="text-right">
-          {totalPnl === null ? (
-            <>
-              <div className={`text-sm font-mono font-semibold ${realizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-                {formatPnl(realizedPnl, displayCurrency)}
-              </div>
-              <div className="text-xs text-muted-foreground">已实现收益</div>
-            </>
-          ) : (
-            <>
-              <div className={`text-sm font-mono font-semibold ${totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-                {formatPnl(totalPnl, displayCurrency)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                总收益 = 已实现 {formatPnl(realizedPnl, displayCurrency)} + 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                现价 {formatWithCurrency(currentPrice ?? 0)}
-              </div>
-            </>
-          )}
+
+      <div className="space-y-1">
+        <div className="text-sm font-mono font-semibold text-foreground">
+          {formatWithCurrency(totalCost)}
         </div>
-        <div className="flex items-center gap-1">
-          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete()
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+        <div className="text-xs text-muted-foreground">
+          持仓 {summary.currentHolding.toLocaleString()} 股
         </div>
+        <div className="text-xs text-muted-foreground">
+          均价 {formatWithCurrency(avgCost)}
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className={`text-sm font-mono font-semibold ${(totalPnl ?? realizedPnl) >= 0 ? 'profit-text' : 'loss-text'}`}>
+          {formatPnl(totalPnl ?? realizedPnl, displayCurrency)}
+        </div>
+        {totalPnl === null ? (
+          <div className="text-xs text-muted-foreground">
+            已实现收益
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground">
+              已实现 {formatPnl(realizedPnl, displayCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              现价 {formatWithCurrency(currentPrice ?? 0)}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between md:justify-end gap-1">
+        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive opacity-70 md:opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   )

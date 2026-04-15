@@ -13,27 +13,48 @@ import type { StockQuote } from '@/types/stockApi'
 interface AddStockModalProps {
   onClose: () => void
   onAdded?: (stockId: string) => void
+  editStock?: {
+    id: string
+    code: string
+    name: string
+    market: Market
+    note?: string
+  }
 }
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 
-export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) {
-  const { addStock, config } = useStockStore()
+export default function AddStockModal({ onClose, onAdded, editStock }: AddStockModalProps) {
+  const { addStock, updateStock, config } = useStockStore()
+  const isEdit = !!editStock
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [market, setMarket] = useState<Market>(config.defaultMarket)
+  const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [isValidated, setIsValidated] = useState(false)
 
   useEffect(() => {
+    if (editStock) {
+      setCode(editStock.code)
+      setName(editStock.name)
+      setMarket(editStock.market)
+      setNote(editStock.note || '')
+      setIsValidated(true)
+      return
+    }
     setMarket(config.defaultMarket)
-  }, [config.defaultMarket])
+  }, [config.defaultMarket, editStock])
 
   // 当代码改变时，自动搜索股票名称
   useEffect(() => {
     const searchStock = async () => {
       const trimmedCode = code.trim()
+      if (isEdit) {
+        setIsValidated(Boolean(trimmedCode && name.trim()))
+        return
+      }
       if (!trimmedCode || trimmedCode.length < 4) {
         setIsValidated(false)
         return
@@ -68,7 +89,7 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
 
     const timer = setTimeout(searchStock, 500)
     return () => clearTimeout(timer)
-  }, [code, market])
+  }, [code, market, isEdit, name])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -82,12 +103,20 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
       return
     }
     try {
-      const stock = await addStock({ code: trimmedCode.toUpperCase(), name: name.trim(), market })
-      onAdded?.(stock.id)
+      if (isEdit && editStock) {
+        await updateStock(editStock.id, {
+          code: trimmedCode.toUpperCase(),
+          name: name.trim(),
+          note: note.trim(),
+        })
+      } else {
+        const stock = await addStock({ code: trimmedCode.toUpperCase(), name: name.trim(), market, note: note.trim() })
+        onAdded?.(stock.id)
+      }
       onClose()
     } catch (error) {
-      console.error('添加股票失败:', error)
-      setError('添加失败，请重试')
+      console.error(isEdit ? '更新股票失败:' : '添加股票失败:', error)
+      setError(isEdit ? '保存失败，请重试' : '添加失败，请重试')
     }
   }
 
@@ -99,7 +128,7 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border p-5">
-          <h2 className="text-base font-semibold">添加股票/资产</h2>
+          <h2 className="text-base font-semibold">{isEdit ? '编辑股票/资产' : '添加股票/资产'}</h2>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-secondary transition-colors">
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -118,6 +147,9 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
                 <option key={m} value={m}>{MARKET_LABELS[m]}</option>
               ))}
             </select>
+            {isEdit && (
+              <p className="text-[11px] text-muted-foreground">编辑模式下暂不支持直接修改市场，如需变更建议新建后迁移交易。</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -148,11 +180,23 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor="note">备注（可选）</Label>
+            <Input
+              id="note"
+              placeholder="记录这只资产的计划或说明"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <div className="flex gap-2 pt-1">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">取消</Button>
-            <Button type="submit" className="flex-1" disabled={!isValidated || isValidating}>添加</Button>
+            <Button type="submit" className="flex-1" disabled={!isValidated || isValidating}>
+              {isEdit ? '保存' : '添加'}
+            </Button>
           </div>
         </form>
       </div>

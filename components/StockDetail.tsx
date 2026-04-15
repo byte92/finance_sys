@@ -12,6 +12,7 @@ import { useStockQuote } from '@/hooks/useStockQuote'
 import { useTheme } from '@/hooks/useTheme'
 import { useCurrency } from '@/hooks/useCurrency'
 import AddTradeModal from '@/components/AddTradeModal'
+import AddStockModal from '@/components/AddStockModal'
 import StockKline from '@/components/StockKline'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import type { Stock, Trade, TradePnlDetail } from '@/types'
@@ -29,6 +30,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
   const [showAddTrade, setShowAddTrade] = useState(false)
+  const [showEditStock, setShowEditStock] = useState(false)
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
   const [manualPrice, setManualPrice] = useState('')
   const [deleteTradeTarget, setDeleteTradeTarget] = useState<Trade | null>(null)
@@ -106,6 +108,10 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             <Button size="sm" onClick={() => setShowAddTrade(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加交易
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowEditStock(true)}>
+              <Edit className="h-3.5 w-3.5 mr-1" />
+              编辑股票
             </Button>
           </div>
         </div>
@@ -277,6 +283,15 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
         <StockKline symbol={stock.code} market={stock.market} trades={stock.trades} />
 
+        {stock.note && (
+          <Card className="border-border bg-card">
+            <CardContent className="p-4">
+              <div className="text-xs text-muted-foreground mb-2">股票备注</div>
+              <div className="text-sm text-foreground whitespace-pre-wrap">{stock.note}</div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 交易记录列表 */}
         <div>
           <h3 className="text-sm font-medium text-foreground mb-3">交易记录</h3>
@@ -322,6 +337,19 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             setShowAddTrade(false)
             setEditTrade(undefined)
           }}
+        />
+      )}
+
+      {showEditStock && (
+        <AddStockModal
+          editStock={{
+            id: stock.id,
+            code: stock.code,
+            name: stock.name,
+            market: stock.market,
+            note: stock.note,
+          }}
+          onClose={() => setShowEditStock(false)}
         />
       )}
 

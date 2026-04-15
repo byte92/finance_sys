@@ -39,6 +39,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [specialFilter, setSpecialFilter] = useState<'ALL' | 'CLOSING' | 'OPEN_BUY' | 'CLOSED_BUY' | 'REALIZED'>('ALL')
+  const [resultFilter, setResultFilter] = useState<'ALL' | 'PROFIT' | 'LOSS' | 'BREAKEVEN'>('ALL')
+  const [noteFilter, setNoteFilter] = useState<'ALL' | 'WITH_NOTE' | 'WITHOUT_NOTE'>('ALL')
   const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc')
 
   const { quote, loading, error, forceRefresh } = useStockQuote(
@@ -134,6 +136,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         if (specialFilter === 'OPEN_BUY' && !(row.trade.type === 'BUY' && (row.buyRemaining ?? 0) > 0)) return false
         if (specialFilter === 'CLOSED_BUY' && !(row.trade.type === 'BUY' && (row.buyRemaining ?? 0) === 0)) return false
         if (specialFilter === 'REALIZED' && !(row.trade.type === 'SELL' || row.trade.type === 'DIVIDEND')) return false
+        if (resultFilter === 'PROFIT' && !((row.realizedAmount ?? 0) > 0)) return false
+        if (resultFilter === 'LOSS' && !((row.realizedAmount ?? 0) < 0)) return false
+        if (resultFilter === 'BREAKEVEN' && row.realizedAmount !== 0) return false
+        if (noteFilter === 'WITH_NOTE' && !row.trade.note?.trim()) return false
+        if (noteFilter === 'WITHOUT_NOTE' && !!row.trade.note?.trim()) return false
 
         if (tradeKeyword.trim()) {
           const keyword = tradeKeyword.trim().toLowerCase()
@@ -153,7 +160,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         const delta = a.trade.date.localeCompare(b.trade.date)
         return sortDirection === 'desc' ? -delta : delta
       })
-  }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, tradeKeyword, sortDirection])
+  }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection])
 
   return (
     <div className="min-h-screen bg-background">
@@ -431,7 +438,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
           <Card className="border-border bg-card mb-3">
             <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-8 gap-3">
                 <Input
                   value={tradeKeyword}
                   onChange={(e) => setTradeKeyword(e.target.value)}
@@ -459,6 +466,25 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   <option value="CLOSED_BUY">只看已卖完批次</option>
                   <option value="REALIZED">只看已实现记录</option>
                 </select>
+                <select
+                  value={resultFilter}
+                  onChange={(e) => setResultFilter(e.target.value as typeof resultFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部结果</option>
+                  <option value="PROFIT">只看盈利</option>
+                  <option value="LOSS">只看亏损</option>
+                  <option value="BREAKEVEN">只看持平</option>
+                </select>
+                <select
+                  value={noteFilter}
+                  onChange={(e) => setNoteFilter(e.target.value as typeof noteFilter)}
+                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ALL">全部备注</option>
+                  <option value="WITH_NOTE">只看有备注</option>
+                  <option value="WITHOUT_NOTE">只看无备注</option>
+                </select>
                 <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>
@@ -481,6 +507,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                     setDateFrom('')
                     setDateTo('')
                     setSpecialFilter('ALL')
+                    setResultFilter('ALL')
+                    setNoteFilter('ALL')
                     setSortDirection('desc')
                   }}
                 >
@@ -502,9 +530,9 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             </Card>
           ) : (
             <Card className="border-border bg-card overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-[720px]">
                 <table className="min-w-[1180px] w-full text-sm">
-                  <thead className="bg-muted/30 border-b border-border">
+                  <thead className="sticky top-0 z-[1] bg-muted/95 border-b border-border backdrop-blur">
                     <tr className="text-left">
                       <th className="px-4 py-3 font-medium text-muted-foreground">日期</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground">操作</th>

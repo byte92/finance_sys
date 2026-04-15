@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Search, Loader2 } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useStockStore } from '@/store/useStockStore'
-import { stockPriceService } from '@/lib/StockPriceService'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { Market } from '@/types'
+import type { StockQuote } from '@/types/stockApi'
 
 interface AddStockModalProps {
   onClose: () => void
@@ -43,14 +43,19 @@ export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) 
       setError('')
 
       try {
-        const quote = await stockPriceService.getQuote(trimmedCode, market)
+        const res = await fetch(
+          `/api/stock/quote?symbol=${encodeURIComponent(trimmedCode)}&market=${encodeURIComponent(market)}`,
+          { cache: 'no-store' }
+        )
+        const data = await res.json()
+        const quote = (data?.quote ?? null) as StockQuote | null
         if (quote && quote.name) {
           setName(quote.name)
           setIsValidated(true)
           setError('')
         } else {
           setIsValidated(false)
-          setError('未找到该股票，请检查代码或市场是否正确')
+          setError(data?.error ?? '未找到该股票，请检查代码或市场是否正确')
         }
       } catch (e) {
         console.error('搜索股票失败:', e)

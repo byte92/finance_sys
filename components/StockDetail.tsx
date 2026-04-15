@@ -121,17 +121,23 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         {/* 汇总卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总盈亏</div>
+            <div className="text-xs text-muted-foreground mb-1">总收益</div>
             <div className={`text-xl font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
               {formatPnl(convertMoney(summary.totalPnl), displayCurrency)}
             </div>
-            <div className={`text-xs mt-1 ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPercent(summary.totalPnlPercent)}
-            </div>
+            {summary.currentHolding > 0 && currentPriceNum ? (
+              <div className="text-xs text-muted-foreground mt-1">
+                已实现 + 浮动
+              </div>
+            ) : (
+              <div className={`text-xs mt-1 ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+                {formatPercent(summary.totalPnlPercent)}
+              </div>
+            )}
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">已实现盈亏</div>
+            <div className="text-xs text-muted-foreground mb-1">已实现收益</div>
             <div className={`text-lg font-bold font-mono ${summary.realizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
               {formatPnl(convertMoney(summary.realizedPnl), displayCurrency)}
             </div>
@@ -206,6 +212,12 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                     <div className="text-xs text-muted-foreground">市值</div>
                     <div className="text-base font-bold font-mono text-foreground">
                       {formatWithCurrency(convertMoney(currentPriceNum * summary.currentHolding))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">总收益</div>
+                    <div className={`text-base font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+                      {formatPnl(convertMoney(summary.totalPnl), displayCurrency)}
                     </div>
                   </div>
                   <div>

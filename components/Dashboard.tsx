@@ -38,7 +38,7 @@ export default function Dashboard() {
   )
 
   const portfolio = useMemo(() => {
-    let totalPnl = 0
+    let totalRealizedPnl = 0
     let totalInvested = 0
     let totalCommission = 0
     let totalDividend = 0
@@ -46,16 +46,23 @@ export default function Dashboard() {
 
     for (const stock of stocks) {
       const summary = calcStockSummary(stock)
-      totalPnl += convertAmountSync(summary.totalPnl, stock.market)
+      totalRealizedPnl += convertAmountSync(summary.realizedPnl, stock.market)
       totalInvested += convertAmountSync(summary.totalBuyAmount, stock.market)
       totalCommission += convertAmountSync(summary.totalCommission, stock.market)
       totalDividend += convertAmountSync(summary.totalDividend, stock.market)
       totalHolding += summary.currentHolding
     }
 
-    const totalPnlPercent = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+    const totalRealizedPnlPercent = totalInvested > 0 ? (totalRealizedPnl / totalInvested) * 100 : 0
 
-    return { totalPnl, totalInvested, totalPnlPercent, totalCommission, totalDividend, totalHolding }
+    return {
+      totalRealizedPnl,
+      totalInvested,
+      totalRealizedPnlPercent,
+      totalCommission,
+      totalDividend,
+      totalHolding,
+    }
   }, [stocks, convertAmountSync])
 
   if (selectedStock) {
@@ -101,16 +108,16 @@ export default function Dashboard() {
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">资产概览</h2>
-            <div className="text-xs text-muted-foreground">基于已录入交易</div>
+            <div className="text-xs text-muted-foreground">概览默认按已实现收益统计，不混入实时浮盈</div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总盈亏</div>
-            <div className={`text-xl font-bold font-mono ${portfolio.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(portfolio.totalPnl, displayCurrency)}
+            <div className="text-xs text-muted-foreground mb-1">累计已实现收益</div>
+            <div className={`text-xl font-bold font-mono ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+              {formatPnl(portfolio.totalRealizedPnl, displayCurrency)}
             </div>
-            <div className={`text-xs mt-1 ${portfolio.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPercent(portfolio.totalPnlPercent)}
+            <div className={`text-xs mt-1 ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+              {formatPercent(portfolio.totalRealizedPnlPercent)}
             </div>
           </Card>
 
@@ -229,6 +236,8 @@ function StockListRow({
   const summary = calcStockSummary(stock, quote?.price)
   const totalCost = convertAmountSync(summary.avgCostPrice * summary.currentHolding, stock.market)
   const avgCost = convertAmountSync(summary.avgCostPrice, stock.market)
+  const realizedPnl = convertAmountSync(summary.realizedPnl, stock.market)
+  const unrealizedPnl = quote ? convertAmountSync(summary.unrealizedPnl, stock.market) : null
   const totalPnl = quote ? convertAmountSync(summary.totalPnl, stock.market) : null
   const currentPrice = quote ? convertAmountSync(quote.price, stock.market) : null
 
@@ -251,8 +260,10 @@ function StockListRow({
         <div className="text-right">
           {totalPnl === null ? (
             <>
-              <div className="text-sm font-mono font-semibold text-muted-foreground">--</div>
-              <div className="text-xs text-muted-foreground">待获取行情</div>
+              <div className={`text-sm font-mono font-semibold ${realizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+                {formatPnl(realizedPnl, displayCurrency)}
+              </div>
+              <div className="text-xs text-muted-foreground">已实现收益</div>
             </>
           ) : (
             <>
@@ -260,7 +271,10 @@ function StockListRow({
                 {formatPnl(totalPnl, displayCurrency)}
               </div>
               <div className="text-xs text-muted-foreground">
-                总盈亏 · 现价 {formatWithCurrency(currentPrice ?? 0)}
+                总收益 = 已实现 {formatPnl(realizedPnl, displayCurrency)} + 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                现价 {formatWithCurrency(currentPrice ?? 0)}
               </div>
             </>
           )}

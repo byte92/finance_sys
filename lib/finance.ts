@@ -13,13 +13,17 @@ export function calcBuyNetAmount(
   price: number,
   quantity: number,
   config: FeeConfig,
+  market?: Market,
 ): { commission: number; tax: number; netAmount: number } {
   const totalAmount = price * quantity;
   const commission = Math.max(
     totalAmount * config.commissionRate,
     config.minCommission,
   );
-  const tax = 0; // 买入不收印花税
+  const stampDuty = market === "HK" ? totalAmount * config.stampDutyRate : 0;
+  const settlementFee =
+    market === "HK" ? totalAmount * (config.settlementFeeRate ?? 0) : 0;
+  const tax = stampDuty + settlementFee;
   const netAmount = totalAmount + commission + tax;
   return { commission, tax, netAmount };
 }
@@ -36,14 +40,17 @@ export function calcSellNetAmount(
     totalAmount * config.commissionRate,
     config.minCommission,
   );
-  const tax = totalAmount * config.stampDutyRate;
+  const stampDuty = totalAmount * config.stampDutyRate;
+  const settlementFee =
+    config.market === "HK" ? totalAmount * (config.settlementFeeRate ?? 0) : 0;
   // 沪市过户费（上交所：6xxxxx / 5xxxxx ETF）
   const isSH = stockCode
     ? stockCode.startsWith("6") || stockCode.startsWith("5")
     : false;
   const transferFee = isSH ? totalAmount * config.transferFeeRate : 0;
-  const netAmount = totalAmount - commission - tax - transferFee;
-  return { commission, tax: tax + transferFee, transferFee, netAmount };
+  const tax = stampDuty + settlementFee + transferFee;
+  const netAmount = totalAmount - commission - tax;
+  return { commission, tax, transferFee, netAmount };
 }
 
 // 自动计算手续费并生成Trade对象的费用字段
@@ -56,7 +63,7 @@ export function autoCalcFees(
 ): { commission: number; tax: number; netAmount: number } {
   const config = DEFAULT_FEE_CONFIGS[market];
   if (type === "BUY") {
-    return calcBuyNetAmount(price, quantity, config);
+    return calcBuyNetAmount(price, quantity, config, market);
   } else {
     const { commission, tax, netAmount } = calcSellNetAmount(
       price,

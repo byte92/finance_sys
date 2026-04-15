@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
-import { autoCalcFees, todayStr } from '@/lib/finance'
+import { autoCalcFees, calcStockSummary, todayStr } from '@/lib/finance'
 import type { Market, TradeType, Trade } from '@/types'
 
 interface AddTradeModalProps {
@@ -20,8 +20,20 @@ interface AddTradeModalProps {
 }
 
 export default function AddTradeModal({ stockId, stockCode, stockName, market, editTrade, onClose }: AddTradeModalProps) {
-  const { addTrade, updateTrade } = useStockStore()
+  const { addTrade, updateTrade, stocks } = useStockStore()
   const isEdit = !!editTrade
+  const currentStock = stocks.find((stock) => stock.id === stockId)
+  const stockWithoutEditingTrade = currentStock
+    ? {
+        ...currentStock,
+        trades: editTrade
+          ? currentStock.trades.filter((trade) => trade.id !== editTrade.id)
+          : currentStock.trades,
+      }
+    : null
+  const availableHolding = stockWithoutEditingTrade
+    ? calcStockSummary(stockWithoutEditingTrade).currentHolding
+    : 0
   const [type, setType] = useState<TradeType>('BUY')
   const [date, setDate] = useState(todayStr())
   const [price, setPrice] = useState('')
@@ -92,6 +104,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
 
     const tradeData: Omit<Trade, 'id' | 'stockId' | 'createdAt' | 'updatedAt'> = {
       type,
@@ -125,6 +138,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     } else {
       if (!price || !quantity || priceNum <= 0 || quantityNum <= 0) {
         setError('请填写有效的价格和数量')
+        return
+      }
+      if (type === 'SELL' && quantityNum > availableHolding) {
+        setError(`当前最多可卖出 ${availableHolding.toLocaleString()} 股，请先检查持仓或交易顺序`)
         return
       }
       tradeData.price = priceNum

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, Sun, Moon, Database, WifiOff, Trash2, ChevronRight } from 'lucide-react'
+import { Plus, RefreshCw, Sun, Moon, Trash2, ChevronRight, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
@@ -13,13 +13,13 @@ import AuthModal from '@/components/AuthModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useCurrency } from '@/hooks/useCurrency'
 import AddStockModal from '@/components/AddStockModal'
+import SettingsModal from '@/components/SettingsModal'
 import StockDetail from '@/components/StockDetail'
 import type { Stock } from '@/types'
 
 export default function Dashboard() {
   const {
     stocks,
-    syncStatus,
     isOffline,
     init,
     sync,
@@ -30,6 +30,7 @@ export default function Dashboard() {
   const { user, loading: authLoading, authEnabled, signOut, signIn, signUp, error: authError } = useAuth()
 
   const [showAddStock, setShowAddStock] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
   const [showAuth, setShowAuth] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
@@ -83,28 +84,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center">
-          <div className="flex items-center gap-3">
-            <div className="text-sm font-semibold">StockTracker</div>
-            {isOffline ? (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-muted-foreground/60" />
-                <WifiOff className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    syncStatus === 'syncing'
-                      ? 'bg-primary animate-pulse'
-                      : syncStatus === 'error'
-                        ? 'bg-destructive'
-                        : 'bg-emerald-500'
-                  }`}
-                />
-                <Database className="h-3.5 w-3.5" />
-              </span>
-            )}
-          </div>
+          <div className="text-sm font-semibold">StockTracker</div>
 
           <div className="flex items-center gap-2 ml-auto">
             <div className="flex items-center gap-1 mr-2">
@@ -126,6 +106,9 @@ export default function Dashboard() {
                 <RefreshCw className="h-4 w-4" />
               </Button>
             )}
+            <Button size="sm" variant="ghost" onClick={() => setShowSettings(true)}>
+              <Settings className="h-4 w-4" />
+            </Button>
             <Button size="sm" onClick={() => setShowAddStock(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加股票
@@ -287,6 +270,11 @@ export default function Dashboard() {
           onAdded={(id) => setSelectedStockId(id)}
         />
       )}
+
+      <SettingsModal
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
 
       {authEnabled && (
         <AuthModal

@@ -18,13 +18,17 @@ interface AddStockModalProps {
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 
 export default function AddStockModal({ onClose, onAdded }: AddStockModalProps) {
-  const { addStock } = useStockStore()
+  const { addStock, config } = useStockStore()
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [market, setMarket] = useState<Market>('A')
+  const [market, setMarket] = useState<Market>(config.defaultMarket)
   const [error, setError] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [isValidated, setIsValidated] = useState(false)
+
+  useEffect(() => {
+    setMarket(config.defaultMarket)
+  }, [config.defaultMarket])
 
   // 当代码改变时，自动搜索股票名称
   useEffect(() => {

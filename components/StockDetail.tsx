@@ -50,14 +50,18 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const pnlMap = new Map<string, TradePnlDetail>(
     summary.tradePnlDetails.map((d) => [d.tradeId, d])
   )
-  const closingTradeIds = (() => {
+  const { closingTradeIds, holdingAfterTrade } = (() => {
     const sorted = [...stock.trades].sort((a, b) => a.date.localeCompare(b.date))
     let holding = 0
     const ids = new Set<string>()
+    const holdingMap = new Map<string, number>()
 
     for (const trade of sorted) {
       if (trade.type === 'BUY') {
         holding += trade.quantity
+      } else if (trade.type === 'DIVIDEND') {
+        holdingMap.set(trade.id, holding)
+        continue
       } else if (trade.type === 'SELL') {
         const nextHolding = holding - trade.quantity
         if (holding > 0 && nextHolding === 0) {
@@ -65,9 +69,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         }
         holding = nextHolding
       }
+
+      holdingMap.set(trade.id, holding)
     }
 
-    return ids
+    return { closingTradeIds: ids, holdingAfterTrade: holdingMap }
   })()
 
   // 构建盈亏曲线数据（按时间正序，只显示有盈亏变化的点）
@@ -344,7 +350,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   trade={trade}
                   pnlDetail={pnlMap.get(trade.id)}
                   isClosingTrade={closingTradeIds.has(trade.id)}
-                  currentHolding={summary.currentHolding}
+                  holdingAfterTrade={holdingAfterTrade.get(trade.id) ?? 0}
                   market={stock.market}
                   displayCurrency={displayCurrency}
                   convertAmountSync={convertAmountSync}
@@ -408,12 +414,12 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 }
 
 function TradeRow({
-  trade, pnlDetail, isClosingTrade, currentHolding, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+  trade, pnlDetail, isClosingTrade, holdingAfterTrade, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
 }: {
   trade: Trade
   pnlDetail?: TradePnlDetail
   isClosingTrade: boolean
-  currentHolding: number
+  holdingAfterTrade: number
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
@@ -485,7 +491,7 @@ function TradeRow({
           {isBuy && (
             <div className="mt-1 space-y-1 text-xs text-muted-foreground">
               <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
-              <div>当前总持仓 {currentHolding.toLocaleString()} 股</div>
+              <div>当时总持仓 {holdingAfterTrade.toLocaleString()} 股</div>
             </div>
           )}
           {isDividend && (

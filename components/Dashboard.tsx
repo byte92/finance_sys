@@ -1,15 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, Sun, Moon, Trash2, ChevronRight, Settings } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, ChevronRight, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
-import { useTheme } from '@/hooks/useTheme'
-import { useAuth } from '@/hooks/useAuth'
-import AuthModal from '@/components/AuthModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useCurrency } from '@/hooks/useCurrency'
 import AddStockModal from '@/components/AddStockModal'
@@ -25,25 +22,16 @@ export default function Dashboard() {
     sync,
     deleteStock,
   } = useStockStore()
-  const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
-  const { user, loading: authLoading, authEnabled, signOut, signIn, signUp, error: authError } = useAuth()
 
   const [showAddStock, setShowAddStock] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null)
-  const [showAuth, setShowAuth] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
 
   useEffect(() => {
     init()
   }, [init])
-
-  useEffect(() => {
-    if (!authLoading) {
-      init()
-    }
-  }, [user?.id, authLoading, init])
 
   const selectedStock = useMemo(
     () => stocks.find((s) => s.id === selectedStockId) || null,
@@ -98,9 +86,6 @@ export default function Dashboard() {
                 <option value="USD">USD</option>
               </select>
             </div>
-            {mounted && (
-              null
-            )}
             {!isOffline && (
               <Button size="sm" variant="ghost" onClick={sync}>
                 <RefreshCw className="h-4 w-4" />
@@ -113,39 +98,7 @@ export default function Dashboard() {
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加股票
             </Button>
-            {authEnabled && user ? (
-              <div className="relative group">
-                <Button size="sm" variant="ghost" className="max-w-40 truncate">
-                  {user.email || '已登录'}
-                </Button>
-                <div className="absolute right-0 top-full pt-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
-                  <div className="w-40 rounded-lg border border-border bg-card shadow-lg">
-                    <button
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-foreground hover:bg-secondary/60 rounded-lg"
-                      onClick={toggleTheme}
-                    >
-                      主题
-                      {theme === 'dark' ? <Moon className="h-4 w-4 text-muted-foreground" /> : <Sun className="h-4 w-4 text-muted-foreground" />}
-                    </button>
-                    <button
-                      className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-secondary/60 rounded-lg"
-                      onClick={async () => {
-                        await signOut()
-                        init()
-                      }}
-                    >
-                      退出
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : authEnabled ? (
-              <Button size="sm" variant="outline" onClick={() => setShowAuth(true)}>
-                登录
-              </Button>
-            ) : (
-              <span className="text-xs text-muted-foreground">游客模式</span>
-            )}
+            <span className="text-xs text-muted-foreground">本地模式</span>
           </div>
         </div>
       </header>
@@ -275,16 +228,6 @@ export default function Dashboard() {
         open={showSettings}
         onClose={() => setShowSettings(false)}
       />
-
-      {authEnabled && (
-        <AuthModal
-          open={showAuth}
-          onOpenChange={setShowAuth}
-          signIn={signIn}
-          signUp={signUp}
-          error={authError}
-        />
-      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

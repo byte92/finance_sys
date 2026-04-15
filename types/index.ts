@@ -15,7 +15,7 @@ export interface Trade {
   price: number         // 成交价格（分红时为每股分红金额）
   quantity: number      // 成交数量（分红时为持有股数）
   commission: number    // 手续费（元）
-  tax: number           // 印花税（元，仅卖出时收取）
+  tax: number           // 税费合计（如印花税、过户费、结算费）
   totalAmount: number   // 总金额（price * quantity，不含费用）
   netAmount: number     // 实际金额（买入含费用，卖出/分红扣费用）
   note?: string
@@ -52,8 +52,8 @@ export interface FeeConfig {
   market: Market
   commissionRate: number      // 佣金率（如 0.0003 = 万三）
   minCommission: number       // 最低佣金（元）
-  stampDutyRate: number       // 印花税率（卖出时收）
-  transferFeeRate: number     // 过户费率（沪市收）
+  stampDutyRate: number       // 印花税率（按该市场的默认口径）
+  transferFeeRate: number     // 过户费率（按该市场的默认口径）
   settlementFeeRate?: number  // 结算费率（港股用）
 }
 

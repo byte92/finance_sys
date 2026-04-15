@@ -20,7 +20,7 @@ interface AddTradeModalProps {
 }
 
 export default function AddTradeModal({ stockId, stockCode, stockName, market, editTrade, onClose }: AddTradeModalProps) {
-  const { addTrade, updateTrade, stocks } = useStockStore()
+  const { addTrade, updateTrade, stocks, config } = useStockStore()
   const isEdit = !!editTrade
   const currentStock = stocks.find((stock) => stock.id === stockId)
   const stockWithoutEditingTrade = currentStock
@@ -96,7 +96,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   // 买卖手续费计算
   const calcFees = () => {
     if (priceNum > 0 && quantityNum > 0 && (type === 'BUY' || type === 'SELL')) {
-      return autoCalcFees(type, priceNum, quantityNum, market, stockCode)
+      return autoCalcFees(type, priceNum, quantityNum, market, stockCode, config.feeConfigs[market])
     }
     return { commission: 0, tax: 0, netAmount: 0 }
   }
@@ -105,7 +105,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
     commission: parseFloat(commission) || 0,
     tax: parseFloat(tax) || 0,
     netAmount: type === 'BUY'
-      ? totalAmount + (parseFloat(commission) || 0)
+      ? totalAmount + (parseFloat(commission) || 0) + (parseFloat(tax) || 0)
       : totalAmount - (parseFloat(commission) || 0) - (parseFloat(tax) || 0)
   }
 

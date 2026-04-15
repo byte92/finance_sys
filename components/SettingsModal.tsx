@@ -144,7 +144,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           <section className="space-y-3">
             <div>
               <div className="text-sm font-medium text-foreground">手续费配置</div>
-              <div className="text-xs text-muted-foreground mt-1">费率字段使用小数形式，例如万三填写 `0.0003`</div>
+              <div className="text-xs text-muted-foreground mt-1">
+                自动计算会优先按市场与代码套用规则。
+                例如普通 A 股卖出会收印花税，ETF 默认免印花税；费率字段使用小数形式，例如万一填写 `0.0001`
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -158,7 +161,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                         <Label>佣金率</Label>
                         <Input
                           type="number"
-                          step="0.0001"
+                          step="0.00001"
                           min="0"
                           value={fee.commissionRate}
                           onChange={(e) => updateFeeField(market, 'commissionRate', e.target.value)}
@@ -178,7 +181,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                         <Label>印花税率</Label>
                         <Input
                           type="number"
-                          step="0.0001"
+                          step="0.00001"
                           min="0"
                           value={fee.stampDutyRate}
                           onChange={(e) => updateFeeField(market, 'stampDutyRate', e.target.value)}
@@ -188,7 +191,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                         <Label>过户费率</Label>
                         <Input
                           type="number"
-                          step="0.0001"
+                          step="0.00001"
                           min="0"
                           value={fee.transferFeeRate}
                           onChange={(e) => updateFeeField(market, 'transferFeeRate', e.target.value)}
@@ -198,7 +201,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                         <Label>结算费率</Label>
                         <Input
                           type="number"
-                          step="0.0001"
+                          step="0.00001"
                           min="0"
                           value={fee.settlementFeeRate ?? 0}
                           onChange={(e) => updateFeeField(market, 'settlementFeeRate', e.target.value)}

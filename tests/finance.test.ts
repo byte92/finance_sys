@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { autoCalcFees, calcSellNetAmount, calcStockSummary } from '@/lib/finance'
+import { autoCalcFees, calcBuyNetAmount, calcSellNetAmount, calcStockSummary } from '@/lib/finance'
 import { DEFAULT_FEE_CONFIGS } from '@/config/defaults'
-import type { Stock } from '@/types'
+import type { FeeConfig, Stock } from '@/types'
 
 function createStock(trades: Stock['trades']): Stock {
   return {
@@ -24,12 +24,41 @@ test('港股买入自动手续费包含印花税和结算费', () => {
   assert.equal(fees.netAmount, 10063.2)
 })
 
-test('A股沪市卖出自动手续费包含印花税和过户费', () => {
+test('A股普通股票买入自动手续费包含佣金和双向过户费', () => {
+  const fees = calcBuyNetAmount(10, 1000, DEFAULT_FEE_CONFIGS.A, 'A', '600519')
+
+  assert.equal(fees.commission, 5)
+  assert.equal(fees.tax, 0.1)
+  assert.equal(Number(fees.netAmount.toFixed(2)), 10005.1)
+})
+
+test('A股普通股票卖出自动手续费包含印花税和过户费', () => {
   const fees = calcSellNetAmount(10, 1000, DEFAULT_FEE_CONFIGS.A, '600519')
 
   assert.equal(fees.commission, 5)
-  assert.equal(fees.tax, 10.2)
-  assert.equal(Number(fees.netAmount.toFixed(2)), 9984.8)
+  assert.equal(fees.tax, 5.1)
+  assert.equal(Number(fees.netAmount.toFixed(2)), 9989.9)
+})
+
+test('A股 ETF 自动手续费只收佣金，不收印花税和过户费', () => {
+  const fees = autoCalcFees('SELL', 5, 10000, 'A', '510300')
+
+  assert.equal(fees.commission, 5)
+  assert.equal(fees.tax, 0)
+  assert.equal(fees.netAmount, 49995)
+})
+
+test('自动手续费会读取用户配置的佣金率，而不是写死默认值', () => {
+  const customAConfig: FeeConfig = {
+    ...DEFAULT_FEE_CONFIGS.A,
+    commissionRate: 0.0002,
+    minCommission: 0,
+  }
+  const fees = autoCalcFees('BUY', 10, 1000, 'A', '600519', customAConfig)
+
+  assert.equal(fees.commission, 2)
+  assert.equal(fees.tax, 0.1)
+  assert.equal(fees.netAmount, 10002.1)
 })
 
 test('FIFO 计算已实现盈亏和剩余持仓成本', () => {

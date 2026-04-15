@@ -8,24 +8,101 @@ import type {
   TradePnlDetail,
 } from "@/types";
 
+type FeeBreakdown = {
+  commission: number;
+  tax: number;
+  transferFee: number;
+  netAmount: number;
+};
+
+type MainlandFeeProfile = "A_STOCK" | "A_ETF_OR_FUND";
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function calcCommission(totalAmount: number, config: FeeConfig): number {
+  return roundMoney(
+    Math.max(totalAmount * config.commissionRate, config.minCommission),
+  );
+}
+
+function getMainlandFeeProfile(
+  market: Market,
+  stockCode?: string,
+): MainlandFeeProfile | null {
+  if (market === "FUND") return "A_ETF_OR_FUND";
+  if (market !== "A") return null;
+  if (!stockCode) return "A_STOCK";
+
+  const normalized = stockCode.trim().toUpperCase();
+  const etfPrefixes = ["5", "15", "16", "18"];
+  return etfPrefixes.some((prefix) => normalized.startsWith(prefix))
+    ? "A_ETF_OR_FUND"
+    : "A_STOCK";
+}
+
+function calcBuyCharges(
+  totalAmount: number,
+  config: FeeConfig,
+  market: Market,
+  stockCode?: string,
+): FeeBreakdown {
+  const commission = calcCommission(totalAmount, config);
+  const mainlandProfile = getMainlandFeeProfile(market, stockCode);
+
+  let stampDuty = 0;
+  let transferFee = 0;
+  let settlementFee = 0;
+
+  if (market === "HK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+  } else if (mainlandProfile === "A_STOCK") {
+    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+  }
+
+  const tax = roundMoney(stampDuty + transferFee + settlementFee);
+  const netAmount = roundMoney(totalAmount + commission + tax);
+  return { commission, tax, transferFee, netAmount };
+}
+
+function calcSellCharges(
+  totalAmount: number,
+  config: FeeConfig,
+  market: Market,
+  stockCode?: string,
+): FeeBreakdown {
+  const commission = calcCommission(totalAmount, config);
+  const mainlandProfile = getMainlandFeeProfile(market, stockCode);
+
+  let stampDuty = 0;
+  let transferFee = 0;
+  let settlementFee = 0;
+
+  if (market === "HK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+  } else if (mainlandProfile === "A_STOCK") {
+    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
+    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+  }
+
+  const tax = roundMoney(stampDuty + transferFee + settlementFee);
+  const netAmount = roundMoney(totalAmount - commission - tax);
+  return { commission, tax, transferFee, netAmount };
+}
+
 // 计算单笔买入的实际成本（含手续费）
 export function calcBuyNetAmount(
   price: number,
   quantity: number,
   config: FeeConfig,
   market?: Market,
-): { commission: number; tax: number; netAmount: number } {
+  stockCode?: string,
+): FeeBreakdown {
   const totalAmount = price * quantity;
-  const commission = Math.max(
-    totalAmount * config.commissionRate,
-    config.minCommission,
-  );
-  const stampDuty = market === "HK" ? totalAmount * config.stampDutyRate : 0;
-  const settlementFee =
-    market === "HK" ? totalAmount * (config.settlementFeeRate ?? 0) : 0;
-  const tax = stampDuty + settlementFee;
-  const netAmount = totalAmount + commission + tax;
-  return { commission, tax, netAmount };
+  return calcBuyCharges(totalAmount, config, market ?? config.market, stockCode);
 }
 
 // 计算单笔卖出的实际到账（扣手续费）
@@ -34,23 +111,9 @@ export function calcSellNetAmount(
   quantity: number,
   config: FeeConfig,
   stockCode?: string,
-): { commission: number; tax: number; transferFee: number; netAmount: number } {
+): FeeBreakdown {
   const totalAmount = price * quantity;
-  const commission = Math.max(
-    totalAmount * config.commissionRate,
-    config.minCommission,
-  );
-  const stampDuty = totalAmount * config.stampDutyRate;
-  const settlementFee =
-    config.market === "HK" ? totalAmount * (config.settlementFeeRate ?? 0) : 0;
-  // 沪市过户费（上交所：6xxxxx / 5xxxxx ETF）
-  const isSH = stockCode
-    ? stockCode.startsWith("6") || stockCode.startsWith("5")
-    : false;
-  const transferFee = isSH ? totalAmount * config.transferFeeRate : 0;
-  const tax = stampDuty + settlementFee + transferFee;
-  const netAmount = totalAmount - commission - tax;
-  return { commission, tax, transferFee, netAmount };
+  return calcSellCharges(totalAmount, config, config.market, stockCode);
 }
 
 // 自动计算手续费并生成Trade对象的费用字段
@@ -60,15 +123,23 @@ export function autoCalcFees(
   quantity: number,
   market: Market,
   stockCode?: string,
+  config?: FeeConfig,
 ): { commission: number; tax: number; netAmount: number } {
-  const config = DEFAULT_FEE_CONFIGS[market];
+  const feeConfig = config ?? DEFAULT_FEE_CONFIGS[market];
   if (type === "BUY") {
-    return calcBuyNetAmount(price, quantity, config, market);
+    const { commission, tax, netAmount } = calcBuyNetAmount(
+      price,
+      quantity,
+      feeConfig,
+      market,
+      stockCode,
+    );
+    return { commission, tax, netAmount };
   } else {
     const { commission, tax, netAmount } = calcSellNetAmount(
       price,
       quantity,
-      config,
+      feeConfig,
       stockCode,
     );
     return { commission, tax, netAmount };

@@ -264,7 +264,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <MetricCard
                   label="PE(TTM)"
-                  value={isFundLike ? '不适用' : formatOptionalRatio(quote?.peTtm)}
+                  value={isFundLike ? '不适用' : formatPeTtm(quote?.peTtm, quote?.epsTtm)}
                 />
                 <MetricCard
                   label="EPS(TTM)"
@@ -279,6 +279,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   value={isFundLike ? '不适用' : formatOptionalMarketCap(quote?.marketCap, quote?.currency)}
                 />
               </div>
+              {!isFundLike && (
+                <div className="text-xs text-muted-foreground">
+                  `暂无数据` 表示当前行情源未返回该字段，`亏损` 表示 TTM 每股收益小于等于 0。
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -450,6 +455,13 @@ function MetricCard({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-sm font-mono font-semibold text-foreground">{value}</div>
     </div>
   )
+}
+
+function formatPeTtm(pe?: number | null, eps?: number | null): string {
+  if (eps !== null && eps !== undefined && Number.isFinite(eps) && eps <= 0) return '亏损'
+  if (pe === null || pe === undefined) return '暂无数据'
+  if (!Number.isFinite(pe) || pe <= 0) return '不适用'
+  return pe.toFixed(2)
 }
 
 function formatOptionalRatio(value?: number | null): string {

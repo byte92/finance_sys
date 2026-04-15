@@ -33,6 +33,7 @@ export interface TradePnlDetail {
   costBasis: number     // 对应的买入成本
   proceeds: number      // 卖出实收（含税后）
   holdingAfterTrade?: number   // 该笔交易完成后的总持仓
+  soldQuantity?: number        // 对买入记录而言，该笔买入已被卖出的数量
   remainingQuantity?: number   // 对买入记录而言，该笔买入当前尚未卖出的剩余股数
   isDividend?: boolean
 }

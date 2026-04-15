@@ -453,12 +453,14 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 }
 
 function formatOptionalRatio(value?: number | null): string {
-  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '--'
+  if (value === null || value === undefined) return '暂无数据'
+  if (!Number.isFinite(value) || value <= 0) return '不适用'
   return value.toFixed(2)
 }
 
 function formatOptionalMoney(value?: number | null, currency = 'CNY'): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return '--'
+  if (value === null || value === undefined) return '暂无数据'
+  if (!Number.isFinite(value)) return '不适用'
   const symbols: Record<string, string> = {
     CNY: '¥',
     HKD: 'HK$',
@@ -469,7 +471,8 @@ function formatOptionalMoney(value?: number | null, currency = 'CNY'): string {
 }
 
 function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): string {
-  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return '--'
+  if (value === null || value === undefined) return '暂无数据'
+  if (!Number.isFinite(value) || value <= 0) return '不适用'
   const symbols: Record<string, string> = {
     CNY: '¥',
     HKD: 'HK$',
@@ -566,6 +569,7 @@ function TradeRow({
             <div className="mt-1 space-y-1 text-xs text-muted-foreground">
               <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
               <div>当时总持仓 {(pnlDetail?.holdingAfterTrade ?? 0).toLocaleString()} 股</div>
+              <div>该笔已卖出 {(pnlDetail?.soldQuantity ?? 0).toLocaleString()} 股</div>
               <div>该笔剩余 {(pnlDetail?.remainingQuantity ?? 0).toLocaleString()} 股</div>
             </div>
           )}

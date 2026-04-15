@@ -260,6 +260,9 @@ export function calcStockSummary(
     detail.type === "BUY"
       ? {
           ...detail,
+          soldQuantity:
+            ((stock.trades.find((trade) => trade.id === detail.tradeId)?.quantity ?? 0) -
+              (remainingQuantityByTradeId.get(detail.tradeId) ?? 0)),
           remainingQuantity: remainingQuantityByTradeId.get(detail.tradeId) ?? 0,
         }
       : detail,

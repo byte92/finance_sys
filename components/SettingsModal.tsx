@@ -101,7 +101,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
         className="relative w-full max-w-4xl rounded-xl border border-border bg-card shadow-2xl max-h-[90vh] overflow-y-auto"

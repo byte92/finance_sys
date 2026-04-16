@@ -77,6 +77,12 @@ type MarketAnalysisContext = {
   news: NewsItem[]
 }
 
+type MarketFallbackProbabilityInput = {
+  bias: 'bullish' | 'neutral' | 'bearish'
+  confidence: AiConfidence
+  note: string
+}
+
 const MARKET_INDEX_DEFINITIONS: MarketIndexDefinition[] = [
   { id: 'shanghai-composite', code: '000001', name: '上证指数', region: 'A', market: 'A', tencentCode: 'sh000001' },
   { id: 'shenzhen-component', code: '399001', name: '深证成指', region: 'A', market: 'A', tencentCode: 'sz399001' },
@@ -207,12 +213,54 @@ function extractJsonBlock(content: string) {
   return objectMatch?.[0]?.trim() ?? content.trim()
 }
 
-function buildFallbackProbability(summary: string): AiProbabilityScenario[] {
+function buildFallbackProbability({ bias, confidence, note }: MarketFallbackProbabilityInput): AiProbabilityScenario[] {
+  const templates = bias === 'bullish'
+    ? { up: 52, flat: 28, down: 20 }
+    : bias === 'bearish'
+      ? { up: 18, flat: 30, down: 52 }
+      : confidence === 'low'
+        ? { up: 30, flat: 40, down: 30 }
+        : { up: 34, flat: 38, down: 28 }
+
   return [
-    { label: '上涨', probability: 34, rationale: `${summary}，但仍要等待更多确认信号。` },
-    { label: '震荡', probability: 41, rationale: '当前更适合视为震荡消化阶段，而非单边趋势。' },
-    { label: '下跌', probability: 25, rationale: '若关键支撑失守或宏观利空扩散，下行压力会升高。' },
+    {
+      label: '上涨',
+      probability: templates.up,
+      rationale: bias === 'bullish'
+        ? `当前风险偏好更偏向延续，前提是 ${note}。`
+        : `当前没有足够证据支持全面走强，除非 ${note}。`,
+    },
+    {
+      label: '震荡',
+      probability: templates.flat,
+      rationale: bias === 'neutral'
+        ? `当前更像分化与等待确认阶段，重点观察 ${note}。`
+        : `即便市场已有方向倾向，也可能先通过震荡完成消化，重点看 ${note}。`,
+    },
+    {
+      label: '下跌',
+      probability: templates.down,
+      rationale: bias === 'bearish'
+        ? `当前下行或防守压力更大，若 ${note} 迟迟不改善，弱势更可能延续。`
+        : `若 ${note} 被证伪，防守压力会明显抬升。`,
+    },
   ]
+}
+
+function inferMarketFallback(context: MarketAnalysisContext): MarketFallbackProbabilityInput {
+  const spread = context.totalUpCount - context.totalDownCount
+  const strongest = context.strongestIndex?.changePercent ?? 0
+  const weakest = context.weakestIndex?.changePercent ?? 0
+  const bias: MarketFallbackProbabilityInput['bias'] =
+    spread >= 2 && strongest > Math.abs(weakest) ? 'bullish'
+      : spread <= -2 || Math.abs(weakest) > strongest + 1 ? 'bearish'
+        : 'neutral'
+  const confidence: AiConfidence = context.news.length > 0 ? 'medium' : 'low'
+  return {
+    bias,
+    confidence,
+    note: '三地强弱排序是否继续维持，以及最强市场能否继续扩散带动风险偏好',
+  }
 }
 
 function normalizeMarketAnalysisResult(
@@ -225,7 +273,8 @@ function normalizeMarketAnalysisResult(
   },
 ): AiAnalysisResult {
   const summary = parsed?.summary?.trim() || fallback.summary
-  const probabilityAssessment = parsed?.probabilityAssessment?.length ? parsed.probabilityAssessment : buildFallbackProbability(summary)
+  const fallbackInput = { bias: 'neutral' as const, confidence: 'medium' as const, note: '三地强弱排序与风险偏好是否继续延续' }
+  const probabilityAssessment = parsed?.probabilityAssessment?.length ? parsed.probabilityAssessment : buildFallbackProbability(fallbackInput)
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
@@ -248,7 +297,7 @@ function normalizeMarketAnalysisResult(
     keyLevels: parsed?.keyLevels?.length ? parsed.keyLevels : ['关注三地大盘代表指数的近期支撑与阻力位'],
     actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把大盘分析作为节奏参考，仍需结合个股与仓位管理。'],
     risks: parsed?.risks?.length ? parsed.risks : ['外部指数、新闻和技术指标数据可能延迟或缺失。'],
-    confidence: parsed?.confidence ?? 'medium',
+    confidence: parsed?.confidence ?? fallbackInput.confidence,
     disclaimer: parsed?.disclaimer?.trim() || '以上内容仅基于当前大盘数据进行条件式分析，不构成投资建议或收益承诺。',
     evidence: parsed?.evidence?.length ? parsed.evidence : fallback.evidence,
   }
@@ -295,6 +344,8 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
         '必须区分事实与推断。',
         '必须给出概率分析，且概率总和为 100。',
         '高强度模式下可以给更直接的节奏倾向，但不能承诺收益。',
+        '必须明确回答当前更适合偏进攻还是偏防守，以及现在不适合做什么。',
+        '不能只写“关注节奏变化”，必须指出最值得优先观察的市场和触发条件。',
       ],
       context,
       outputContract: {
@@ -547,6 +598,11 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
     signals: mapMarketSignals(indices),
     news: toAiNewsDrivers(news),
   })
+  if (!parsed?.probabilityAssessment?.length) {
+    const inferred = inferMarketFallback(context)
+    result.probabilityAssessment = buildFallbackProbability(inferred)
+    result.confidence = parsed?.confidence ?? inferred.confidence
+  }
 
   setCachedMarketAnalysis(cacheKey, result, 900)
   return result

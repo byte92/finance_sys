@@ -53,6 +53,12 @@ type StockAnalysisContext = {
   news: NewsItem[]
 }
 
+type FallbackProbabilityInput = {
+  bias: 'bullish' | 'neutral' | 'bearish'
+  confidence: AiConfidence
+  note: string
+}
+
 function getCacheKey(prefix: string, payload: unknown) {
   return `${prefix}:${createHash('sha1').update(JSON.stringify(payload)).digest('hex')}`
 }
@@ -100,8 +106,10 @@ function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputCon
         '必须先得出结论，再给出证据依据。',
         '必须把事实与推断分开表达。',
         '必须给出概率分析，且概率总和为 100。',
-        '高强度模式下必须给明确倾向；弱强度模式下减少指令感。',
+        '高强度模式下必须给明确倾向，且必须回答“现在更应该做什么”“现在不该做什么”。',
+        '结论不能停留在“继续观察”这种空泛表述，除非你明确说明观察的原因、等待的信号和不建议动作的原因。',
         '如果证据不足，请明确写出信息不足和需要继续观察的信号。',
+        '如果新闻、技术面、盈亏结构彼此矛盾，必须指出矛盾来源，并说明当前更应优先看哪一项。',
       ],
       context,
       outputContract,
@@ -326,17 +334,82 @@ function mapTechnicalSignals(snapshot: TechnicalIndicatorSnapshot | null): AiTec
   ]
 }
 
-function buildFallbackProbability(summary: string): AiProbabilityScenario[] {
+function buildFallbackProbability({ bias, confidence, note }: FallbackProbabilityInput): AiProbabilityScenario[] {
+  const templates = bias === 'bullish'
+    ? { up: 50, flat: 30, down: 20 }
+    : bias === 'bearish'
+      ? { up: 20, flat: 30, down: 50 }
+      : confidence === 'low'
+        ? { up: 30, flat: 40, down: 30 }
+        : { up: 33, flat: 37, down: 30 }
+
   return [
-    { label: '上涨', probability: 35, rationale: `${summary}，但仍需等待更多确认信号。` },
-    { label: '震荡', probability: 40, rationale: '当前信息更支持波动与消化，而非单边行情。' },
-    { label: '下跌', probability: 25, rationale: '若关键支撑失守或负面新闻扩散，下行概率会抬升。' },
+    {
+      label: '上涨',
+      probability: templates.up,
+      rationale: bias === 'bullish'
+        ? `当前证据更偏向上行延续，前提是 ${note}。`
+        : `当前没有足够证据支持强势上行，除非 ${note}。`,
+    },
+    {
+      label: '震荡',
+      probability: templates.flat,
+      rationale: bias === 'neutral'
+        ? `现阶段更像等待确认的震荡区间，核心观察点是 ${note}。`
+        : `即便当前有方向倾向，仍可能先进入震荡消化，重点看 ${note}。`,
+    },
+    {
+      label: '下跌',
+      probability: templates.down,
+      rationale: bias === 'bearish'
+        ? `当前下行风险更高，若 ${note} 未改善，弱势更容易延续。`
+        : `若 ${note} 被证伪，回撤风险会明显抬升。`,
+    },
   ]
+}
+
+function inferPortfolioFallback(context: PortfolioAnalysisContext) {
+  const topHolding = [...context.summaries].sort((left, right) => right.holdingWeight - left.holdingWeight)[0] ?? null
+  const winRate = context.summaries.length > 0 ? context.profitableCount / context.summaries.length : 0
+  const bias: FallbackProbabilityInput['bias'] =
+    context.totalUnrealizedPnl > 0 && winRate >= 0.6 ? 'bullish'
+      : context.totalUnrealizedPnl < 0 && winRate < 0.5 ? 'bearish'
+        : 'neutral'
+  const confidence: AiConfidence = context.summaries.length >= 3 ? 'medium' : 'low'
+  const note = topHolding
+    ? `${topHolding.name} 的仓位权重与浮盈回撤是否继续稳定`
+    : '组合中核心仓位是否继续稳定'
+  return { bias, confidence, note }
+}
+
+function inferStockFallback(context: StockAnalysisContext) {
+  const { indicators, quote } = context
+  const changePercent = quote?.changePercent ?? 0
+  const trendBias = indicators?.trendBias ?? 'neutral'
+  const newsNegative = context.news.filter((item) => /下调|调查|下跌|利空|风险|裁员|诉讼|减持/i.test(`${item.title} ${item.summary}`)).length
+  const newsPositive = context.news.filter((item) => /上调|增长|盈利|利好|合作|回购|新高|超预期/i.test(`${item.title} ${item.summary}`)).length
+
+  let bias: FallbackProbabilityInput['bias'] = 'neutral'
+  if (trendBias === 'bullish' && changePercent >= 0 && newsPositive >= newsNegative) bias = 'bullish'
+  if (trendBias === 'bearish' || newsNegative > newsPositive + 1 || changePercent <= -3) bias = 'bearish'
+
+  const confidence: AiConfidence =
+    indicators && context.news.length > 0 ? 'high'
+      : indicators || context.news.length > 0 ? 'medium'
+        : 'low'
+  const note = indicators?.supportLevel && indicators?.resistanceLevel
+    ? `是否守住 ${indicators.supportLevel.toFixed(2)} 附近支撑并挑战 ${indicators.resistanceLevel.toFixed(2)} 附近阻力`
+    : '关键价位与新闻情绪是否继续同向'
+
+  return { bias, confidence, note }
 }
 
 function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallback: { summary: string; evidence: string[]; signals?: AiTechnicalSignal[]; news?: AiNewsDriver[]; mode: 'portfolio' | 'stock' }): AiAnalysisResult {
   const summary = parsed?.summary?.trim() || fallback.summary
-  const probabilityAssessment = parsed?.probabilityAssessment?.length ? parsed.probabilityAssessment : buildFallbackProbability(summary)
+  const fallbackInput = fallback.mode === 'portfolio'
+    ? { bias: 'neutral' as const, confidence: 'medium' as const, note: '组合集中度与盈利回撤是否继续改善' }
+    : { bias: 'neutral' as const, confidence: 'medium' as const, note: '关键价位与新闻情绪是否继续同向' }
+  const probabilityAssessment = parsed?.probabilityAssessment?.length ? parsed.probabilityAssessment : buildFallbackProbability(fallbackInput)
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
@@ -365,7 +438,7 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
     portfolioRiskNotes: fallback.mode === 'portfolio' ? (parsed?.portfolioRiskNotes?.length ? parsed.portfolioRiskNotes : ['优先留意单一标的过度集中和盈利回撤风险。']) : undefined,
     actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把 AI 结论作为复盘辅助，而不是独立交易依据。'],
     risks: parsed?.risks?.length ? parsed.risks : ['外部新闻、行情与估值数据可能延迟或缺失。'],
-    confidence: parsed?.confidence ?? 'medium',
+    confidence: parsed?.confidence ?? fallbackInput.confidence,
     disclaimer: parsed?.disclaimer?.trim() || '以上内容仅基于当前数据进行条件式分析，不构成投资建议或收益承诺。',
     evidence: parsed?.evidence?.length ? parsed.evidence : fallback.evidence,
   }
@@ -562,6 +635,11 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
     ],
     mode: 'portfolio',
   })
+  if (!parsed?.probabilityAssessment?.length) {
+    const inferred = inferPortfolioFallback(context)
+    result.probabilityAssessment = buildFallbackProbability(inferred)
+    result.confidence = parsed?.confidence ?? inferred.confidence
+  }
   setCachedAnalysis(cacheKey, result, 900)
   return result
 }
@@ -605,6 +683,11 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
     news: toAiNewsDrivers(news),
     mode: 'stock',
   })
+  if (!parsed?.probabilityAssessment?.length) {
+    const inferred = inferStockFallback(context)
+    result.probabilityAssessment = buildFallbackProbability(inferred)
+    result.confidence = parsed?.confidence ?? inferred.confidence
+  }
   setCachedAnalysis(cacheKey, result, 600)
   return result
 }

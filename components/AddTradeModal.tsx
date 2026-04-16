@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
 import { autoCalcFees, calcStockSummary, todayStr } from '@/lib/finance'
+import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
 import type { Market, TradeType, Trade } from '@/types'
 
 interface AddTradeModalProps {
@@ -48,6 +49,9 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   const [tax, setTax] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
+  const marketCurrency = MARKET_CURRENCY[market] || 'CNY'
+  const currencySymbol = CURRENCY_SYMBOLS[marketCurrency]
+  const currencyUnitLabel = getCurrencyUnitLabel(marketCurrency)
 
   // 编辑模式：初始化表单数据
   useEffect(() => {
@@ -147,7 +151,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
       tradeData.tax = dividendTaxAmount
       tradeData.totalAmount = grossDividend
       tradeData.netAmount = netDividend
-      tradeData.note = note || `每股分红¥${dividendPerShareNum}，税率${dividendTax}%`
+      tradeData.note = note || `每股分红${currencySymbol}${dividendPerShareNum}，税率${dividendTax}%`
     } else {
       if (!price || !quantity || priceNum <= 0 || quantityNum <= 0) {
         setError('请填写有效的价格和数量')
@@ -227,7 +231,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="price">成交价格（元）</Label>
+                  <Label htmlFor="price">成交价格（{currencyUnitLabel}）</Label>
                   <Input id="price" type="number" step="0.001" min="0" placeholder="0.00"
                     value={price} onChange={(e) => setPrice(e.target.value)} required />
                 </div>
@@ -239,7 +243,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 <div className="space-y-1.5 col-span-2">
                   <Label>成交金额</Label>
                   <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted text-sm text-foreground font-mono">
-                    ¥{totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                    {currencySymbol}{totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
@@ -255,14 +259,14 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">佣金（元）</Label>
+                    <Label className="text-xs">佣金（{currencyUnitLabel}）</Label>
                     <Input type="number" step="0.01" min="0" placeholder="0.00"
                       value={autoFee ? fees.commission.toFixed(2) : commission}
                       onChange={(e) => setCommission(e.target.value)}
                       disabled={autoFee} className="h-8 text-xs" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">税费（元）</Label>
+                    <Label className="text-xs">税费（{currencyUnitLabel}）</Label>
                     <Input type="number" step="0.01" min="0" placeholder="0.00"
                       value={autoFee ? fees.tax.toFixed(2) : tax}
                       onChange={(e) => setTax(e.target.value)}
@@ -274,7 +278,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                     {type === 'BUY' ? '实际买入成本' : '实际到账金额'}
                   </span>
                   <span className={`text-sm font-bold font-mono ${type === 'BUY' ? 'text-profit' : 'text-loss'}`}>
-                    ¥{fees.netAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                    {currencySymbol}{fees.netAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -293,7 +297,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="dps">每股分红（元）</Label>
+                    <Label htmlFor="dps">每股分红（{currencyUnitLabel}）</Label>
                     <Input id="dps" type="number" step="0.0001" min="0" placeholder="0.10"
                       value={dividendPerShare} onChange={(e) => setDividendPerShare(e.target.value)} required />
                   </div>
@@ -308,9 +312,9 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                       value={dividendTax} onChange={(e) => setDividendTax(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>税额（元）</Label>
+                    <Label>税额（{currencyUnitLabel}）</Label>
                     <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted text-sm font-mono text-muted-foreground">
-                      ¥{dividendTaxAmount.toFixed(2)}
+                      {currencySymbol}{dividendTaxAmount.toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -319,11 +323,11 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                   <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-muted-foreground">税前分红</span>
-                      <div className="font-mono text-foreground font-medium">¥{grossDividend.toFixed(2)}</div>
+                      <div className="font-mono text-foreground font-medium">{currencySymbol}{grossDividend.toFixed(2)}</div>
                     </div>
                     <div>
                       <span className="text-muted-foreground">税后实收</span>
-                      <div className="font-mono text-primary font-bold">¥{netDividend.toFixed(2)}</div>
+                      <div className="font-mono text-primary font-bold">{currencySymbol}{netDividend.toFixed(2)}</div>
                     </div>
                   </div>
                 )}
@@ -353,4 +357,11 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
       </div>
     </div>
   )
+}
+
+function getCurrencyUnitLabel(currency: keyof typeof CURRENCY_SYMBOLS) {
+  if (currency === 'USD') return '美元'
+  if (currency === 'HKD') return '港元'
+  if (currency === 'USDT') return 'USDT'
+  return '元'
 }

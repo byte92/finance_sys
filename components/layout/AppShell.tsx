@@ -158,13 +158,6 @@ function SidebarContent({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className={`border-b border-border py-5 ${collapsed ? 'px-3' : 'px-4'}`}>
-        <div className={`font-semibold ${collapsed ? 'text-center text-xs' : 'text-sm'}`}>StockTracker</div>
-        {!collapsed && (
-          <div className="mt-1 text-xs text-muted-foreground">持仓、交易与 AI 投研助手</div>
-        )}
-      </div>
-
       <nav className={`flex-1 min-h-0 overflow-y-auto space-y-1 py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
         {NAV_ITEMS.map((item) => {
           const active = item.match(pathname)

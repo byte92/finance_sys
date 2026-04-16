@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Check, Loader2, MonitorCog, Upload, Download, Trash2, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Check, ChevronDown, ChevronRight, Loader2, Upload, Download, Trash2, Sparkles, SlidersHorizontal, Settings2, FilePenLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
@@ -15,6 +16,7 @@ import type { AiAnalysisLanguage, AiAnalysisStrength, AiPromptTemplates, AiProvi
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
 type PromptField = keyof AiPromptTemplates
+type SectionId = 'basic' | 'ai' | 'preferences' | 'prompts'
 
 const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }> = [
   { key: 'baseSystem', label: '基础系统提示词', hint: '定义 AI 的角色、边界、客观性要求与输出纪律。' },
@@ -40,21 +42,44 @@ export default function SettingsContent({
   const [defaultMarket, setDefaultMarket] = useState<Market>(config.defaultMarket)
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
   const [aiConfig, setAiConfig] = useState(config.aiConfig)
+  const [draftDisplayCurrency, setDraftDisplayCurrency] = useState(displayCurrency)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [testingModel, setTestingModel] = useState(false)
   const [testMessage, setTestMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>({
+    basic: true,
+    ai: true,
+    preferences: false,
+    prompts: false,
+  })
 
   useEffect(() => {
     setDefaultMarket(config.defaultMarket)
     setFeeConfigs(config.feeConfigs)
     setAiConfig(config.aiConfig)
+    setDraftDisplayCurrency(displayCurrency)
     setError('')
     setSuccessMessage('')
     setTestMessage('')
-  }, [config])
+  }, [config, displayCurrency])
+
+  const isDirty = useMemo(() => {
+    const currentConfigSnapshot = JSON.stringify({
+      defaultMarket,
+      feeConfigs,
+      aiConfig,
+    })
+    const savedConfigSnapshot = JSON.stringify({
+      defaultMarket: config.defaultMarket,
+      feeConfigs: config.feeConfigs,
+      aiConfig: config.aiConfig,
+    })
+
+    return currentConfigSnapshot !== savedConfigSnapshot || draftDisplayCurrency !== displayCurrency
+  }, [aiConfig, config.aiConfig, config.defaultMarket, config.feeConfigs, defaultMarket, displayCurrency, draftDisplayCurrency, feeConfigs])
 
   const updateFeeField = (market: Market, field: FeeField, value: string) => {
     const numericValue = Number(value)
@@ -78,6 +103,7 @@ export default function SettingsContent({
   }
 
   const handleSave = async () => {
+    if (!isDirty) return
     setSaving(true)
     setError('')
     try {
@@ -86,6 +112,9 @@ export default function SettingsContent({
         feeConfigs,
         aiConfig,
       })
+      if (draftDisplayCurrency !== displayCurrency) {
+        setDisplayCurrency(draftDisplayCurrency)
+      }
       setSuccessMessage('设置已成功保存到本地 SQLite')
       setTimeout(() => setSuccessMessage(''), 2500)
       onSaved?.()
@@ -155,68 +184,155 @@ export default function SettingsContent({
     }
   }
 
+  const toggleSection = (section: SectionId) => {
+    setOpenSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }))
+  }
+
+  const renderSection = ({
+    id,
+    icon,
+    title,
+    description,
+    content,
+  }: {
+    id: SectionId
+    icon: ReactNode
+    title: string
+    description: string
+    content: ReactNode
+  }) => (
+    <Card className="border-border">
+      <button
+        type="button"
+        onClick={() => toggleSection(id)}
+        className="flex w-full items-start gap-3 rounded-lg p-5 text-left transition-colors hover:bg-muted/30"
+      >
+        <div className="mt-0.5 text-primary">{icon}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-foreground">{title}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{description}</div>
+        </div>
+        <div className="pt-0.5 text-muted-foreground">
+          {openSections[id] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </div>
+      </button>
+      {openSections[id] && (
+        <CardContent className="border-t border-border pt-5">
+          {content}
+        </CardContent>
+      )}
+    </Card>
+  )
+
   return (
     <div className="space-y-6">
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">基础设置</div>
-          <div className="text-xs text-muted-foreground mt-1">默认市场会用于新增股票时的初始选择</div>
-        </div>
+      {renderSection({
+        id: 'basic',
+        icon: <Settings2 className="h-4 w-4" />,
+        title: '基础设置',
+        description: '管理默认市场和各市场手续费规则。',
+        content: (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-1.5 max-w-48">
+                <Label htmlFor="default-market">默认市场</Label>
+                <Select
+                  id="default-market"
+                  value={defaultMarket}
+                  onChange={(e) => setDefaultMarket(e.target.value as Market)}
+                >
+                  {MARKETS.map((market) => (
+                    <option key={market} value={market}>
+                      {MARKET_LABELS[market]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-1.5 max-w-48">
-            <Label htmlFor="default-market">默认市场</Label>
-            <Select
-              id="default-market"
-              value={defaultMarket}
-              onChange={(e) => setDefaultMarket(e.target.value as Market)}
-            >
-              {MARKETS.map((market) => (
-                <option key={market} value={market}>
-                {MARKET_LABELS[market]}
-              </option>
-            ))}
-          </Select>
+            <div>
+              <div className="text-sm font-medium text-foreground">手续费配置</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                自动计算会优先按市场与代码套用规则。例如普通 A 股卖出会收印花税，ETF 默认免印花税；费率字段使用小数形式，例如万一填写 `0.0001`
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {MARKETS.map((market) => {
+                const fee = feeConfigs[market]
+                return (
+                  <div key={market} className="rounded-lg border border-border p-4 space-y-3">
+                    <div className="text-sm font-medium text-foreground">{MARKET_LABELS[market]}</div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>佣金率</Label>
+                        <Input
+                          type="number"
+                          step="0.00001"
+                          min="0"
+                          value={fee.commissionRate}
+                          onChange={(e) => updateFeeField(market, 'commissionRate', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>最低佣金</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={fee.minCommission}
+                          onChange={(e) => updateFeeField(market, 'minCommission', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>印花税率</Label>
+                        <Input
+                          type="number"
+                          step="0.00001"
+                          min="0"
+                          value={fee.stampDutyRate}
+                          onChange={(e) => updateFeeField(market, 'stampDutyRate', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>过户费率</Label>
+                        <Input
+                          type="number"
+                          step="0.00001"
+                          min="0"
+                          value={fee.transferFeeRate}
+                          onChange={(e) => updateFeeField(market, 'transferFeeRate', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>结算费率</Label>
+                        <Input
+                          type="number"
+                          step="0.00001"
+                          min="0"
+                          value={fee.settlementFeeRate ?? 0}
+                          onChange={(e) => updateFeeField(market, 'settlementFeeRate', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      </section>
+        ),
+      })}
 
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <MonitorCog className="h-4 w-4 text-primary" />
-          <div>
-            <div className="text-sm font-medium text-foreground">显示偏好</div>
-            <div className="text-xs text-muted-foreground mt-1">显示货币在这里管理；主题模式已迁回侧边栏底部，方便随时切换。</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div className="space-y-1.5 max-w-48">
-            <Label htmlFor="display-currency">显示货币</Label>
-            <Select
-              id="display-currency"
-              value={displayCurrency}
-              onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as 'CNY' | 'HKD' | 'USD' | 'USDT')}
-            >
-              <option value="CNY">CNY</option>
-              <option value="HKD">HKD</option>
-              <option value="USD">USD</option>
-              <option value="USDT">USDT</option>
-            </Select>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <div>
-            <div className="text-sm font-medium text-foreground">AI 设置</div>
-            <div className="text-xs text-muted-foreground mt-1">本地保存 provider、model 和 token，用于组合与个股 AI 分析</div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-border p-4 space-y-4">
+      {renderSection({
+        id: 'ai',
+        icon: <Sparkles className="h-4 w-4" />,
+        title: 'AI 设置',
+        description: '管理 provider、模型、密钥和默认分析强度。',
+        content: (
+          <div className="rounded-lg border border-border p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ai-enabled">启用 AI</Label>
@@ -341,105 +457,66 @@ export default function SettingsContent({
               {testMessage}
             </div>
           )}
-        </div>
+          </div>
+        ),
+      })}
 
-        <div className="rounded-lg border border-border p-4 space-y-4">
-          <div>
-            <div className="text-sm font-medium text-foreground">提示词配置</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              最终调用时会按“基础提示词 + 分析类型提示词 + 分析强度提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
+      {renderSection({
+        id: 'preferences',
+        icon: <SlidersHorizontal className="h-4 w-4" />,
+        title: '偏好设置',
+        description: '管理显示货币等页面展示偏好。',
+        content: (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-1.5 max-w-48">
+              <Label htmlFor="display-currency">显示货币</Label>
+              <Select
+                id="display-currency"
+                value={draftDisplayCurrency}
+                onChange={(e) => setDraftDisplayCurrency(e.target.value as 'CNY' | 'HKD' | 'USD' | 'USDT')}
+              >
+                <option value="CNY">CNY</option>
+                <option value="HKD">HKD</option>
+                <option value="USD">USD</option>
+                <option value="USDT">USDT</option>
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                主题模式已迁回侧边栏底部，方便随时切换。
+              </div>
             </div>
           </div>
+        ),
+      })}
 
+      {renderSection({
+        id: 'prompts',
+        icon: <FilePenLine className="h-4 w-4" />,
+        title: '提示词设置',
+        description: '按模块编辑基础提示词、分析类型提示词和强度策略提示词。',
+        content: (
           <div className="space-y-4">
-            {PROMPT_FIELD_META.map((item) => (
-              <div key={item.key} className="space-y-1.5">
-                <Label htmlFor={`prompt-${item.key}`}>{item.label}</Label>
-                <div className="text-[11px] text-muted-foreground">{item.hint}</div>
-                <Textarea
-                  id={`prompt-${item.key}`}
-                  value={aiConfig.promptTemplates[item.key]}
-                  onChange={(e) => updatePromptField(item.key, e.target.value)}
-                  rows={item.key === 'baseSystem' ? 6 : 5}
-                  className="min-h-[120px] font-mono text-xs"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            <div className="text-xs text-muted-foreground">
+              最终调用时会按“基础提示词 + 分析类型提示词 + 分析强度提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
+            </div>
 
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">手续费配置</div>
-          <div className="text-xs text-muted-foreground mt-1">
-            自动计算会优先按市场与代码套用规则。例如普通 A 股卖出会收印花税，ETF 默认免印花税；费率字段使用小数形式，例如万一填写 `0.0001`
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {MARKETS.map((market) => {
-            const fee = feeConfigs[market]
-            return (
-              <div key={market} className="rounded-lg border border-border p-4 space-y-3">
-                <div className="text-sm font-medium text-foreground">{MARKET_LABELS[market]}</div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>佣金率</Label>
-                    <Input
-                      type="number"
-                      step="0.00001"
-                      min="0"
-                      value={fee.commissionRate}
-                      onChange={(e) => updateFeeField(market, 'commissionRate', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>最低佣金</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={fee.minCommission}
-                      onChange={(e) => updateFeeField(market, 'minCommission', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>印花税率</Label>
-                    <Input
-                      type="number"
-                      step="0.00001"
-                      min="0"
-                      value={fee.stampDutyRate}
-                      onChange={(e) => updateFeeField(market, 'stampDutyRate', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>过户费率</Label>
-                    <Input
-                      type="number"
-                      step="0.00001"
-                      min="0"
-                      value={fee.transferFeeRate}
-                      onChange={(e) => updateFeeField(market, 'transferFeeRate', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>结算费率</Label>
-                    <Input
-                      type="number"
-                      step="0.00001"
-                      min="0"
-                      value={fee.settlementFeeRate ?? 0}
-                      onChange={(e) => updateFeeField(market, 'settlementFeeRate', e.target.value)}
-                    />
-                  </div>
+            <div className="space-y-4">
+              {PROMPT_FIELD_META.map((item) => (
+                <div key={item.key} className="space-y-1.5">
+                  <Label htmlFor={`prompt-${item.key}`}>{item.label}</Label>
+                  <div className="text-[11px] text-muted-foreground">{item.hint}</div>
+                  <Textarea
+                    id={`prompt-${item.key}`}
+                    value={aiConfig.promptTemplates[item.key]}
+                    onChange={(e) => updatePromptField(item.key, e.target.value)}
+                    rows={item.key === 'baseSystem' ? 6 : 5}
+                    className="min-h-[120px] font-mono text-xs"
+                  />
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
+              ))}
+            </div>
+          </div>
+        ),
+      })}
 
       <section className="space-y-3">
         <div>
@@ -477,7 +554,7 @@ export default function SettingsContent({
           <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
         )}
         <div className="relative">
-          <Button type="button" onClick={handleSave} disabled={saving}>
+          <Button type="button" onClick={handleSave} disabled={saving || !isDirty}>
             {saving ? '保存中...' : '保存设置'}
           </Button>
           {successMessage && (

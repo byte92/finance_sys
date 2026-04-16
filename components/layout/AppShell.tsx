@@ -12,7 +12,6 @@ import { useStockStore } from '@/store/useStockStore'
 const NAV_ITEMS = [
   { href: '/', label: '总览', icon: LayoutDashboard, match: (pathname: string) => pathname === '/' },
   { href: '/portfolio', label: '持仓', icon: BriefcaseBusiness, match: (pathname: string) => pathname === '/portfolio' || pathname.startsWith('/stock/') },
-  { href: '/settings', label: '设置', icon: Settings, match: (pathname: string) => pathname.startsWith('/settings') },
 ] as const
 
 const AI_SUB_ITEMS = [
@@ -263,6 +262,21 @@ function SidebarContent({
             本地优先模式，数据保存在当前设备的 SQLite 中。
           </div>
         )}
+
+        <Link
+          href="/settings"
+          className={`flex items-center rounded-lg py-2.5 text-sm transition-colors ${
+            collapsed ? 'justify-center px-2' : 'gap-3 px-3'
+          } ${
+            pathname.startsWith('/settings')
+              ? 'bg-primary/12 text-primary border border-primary/20'
+              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+          }`}
+          title={collapsed ? '设置' : undefined}
+        >
+          <Settings className="h-4 w-4" />
+          {!collapsed && <span>设置</span>}
+        </Link>
 
         {onToggleCollapsed && (
           <Button

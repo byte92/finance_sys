@@ -31,6 +31,7 @@ export default function AiHistoryView() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock'>('ALL')
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | AiConfidence>('ALL')
   const [tagFilter, setTagFilter] = useState('ALL')
+  const [stockQuery, setStockQuery] = useState('')
   const [heatmapGranularity, setHeatmapGranularity] = useState<HeatmapGranularity>('day')
   const [heatmapWindow, setHeatmapWindow] = useState<HeatmapWindow>('90d')
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null)
@@ -70,18 +71,29 @@ export default function AiHistoryView() {
     return Array.from(tags).sort((a, b) => a.localeCompare(b, 'zh-CN'))
   }, [records])
 
-  const recordsAfterTag = useMemo(
-    () => records.filter((record) => tagFilter === 'ALL' || record.tags.includes(tagFilter)),
-    [records, tagFilter],
-  )
+  const recordsAfterFilters = useMemo(() => {
+    const normalizedQuery = stockQuery.trim().toLowerCase()
+    return records.filter((record) => {
+      if (tagFilter !== 'ALL' && !record.tags.includes(tagFilter)) {
+        return false
+      }
+
+      if (typeFilter === 'stock' && normalizedQuery) {
+        const haystack = `${record.stockName ?? ''} ${record.stockCode ?? ''}`.toLowerCase()
+        return haystack.includes(normalizedQuery)
+      }
+
+      return true
+    })
+  }, [records, stockQuery, tagFilter, typeFilter])
 
   const heatmapRecords = useMemo(() => {
-    if (heatmapWindow === 'year') return recordsAfterTag
+    if (heatmapWindow === 'year') return recordsAfterFilters
     const threshold = new Date()
     threshold.setDate(threshold.getDate() - 89)
     const thresholdTime = threshold.getTime()
-    return recordsAfterTag.filter((record) => new Date(record.generatedAt).getTime() >= thresholdTime)
-  }, [heatmapWindow, recordsAfterTag])
+    return recordsAfterFilters.filter((record) => new Date(record.generatedAt).getTime() >= thresholdTime)
+  }, [heatmapWindow, recordsAfterFilters])
 
   const heatmapBuckets = useMemo(() => {
     const grouped = new Map<string, BucketSummary>()
@@ -120,50 +132,90 @@ export default function AiHistoryView() {
   )
 
   const visibleRecords = useMemo(() => {
-    if (!selectedBucket) return recordsAfterTag
+    if (!selectedBucket) return recordsAfterFilters
     const ids = new Set(selectedBucket.records.map((record) => record.id))
-    return recordsAfterTag.filter((record) => ids.has(record.id))
-  }, [recordsAfterTag, selectedBucket])
+    return recordsAfterFilters.filter((record) => ids.has(record.id))
+  }, [recordsAfterFilters, selectedBucket])
 
   const overviewStats = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
-    const todayCount = recordsAfterTag.filter((record) => record.generatedAt.slice(0, 10) === today).length
-    const highCount = recordsAfterTag.filter((record) => record.confidence === 'high').length
-    const portfolioCount = recordsAfterTag.filter((record) => record.type === 'portfolio').length
-    const stockCount = recordsAfterTag.filter((record) => record.type === 'stock').length
+    const todayCount = recordsAfterFilters.filter((record) => record.generatedAt.slice(0, 10) === today).length
+    const highCount = recordsAfterFilters.filter((record) => record.confidence === 'high').length
+    const portfolioCount = recordsAfterFilters.filter((record) => record.type === 'portfolio').length
+    const stockCount = recordsAfterFilters.filter((record) => record.type === 'stock').length
 
     return {
-      total: recordsAfterTag.length,
+      total: recordsAfterFilters.length,
       todayCount,
       highCount,
-      highShare: recordsAfterTag.length > 0 ? Math.round((highCount / recordsAfterTag.length) * 100) : 0,
+      highShare: recordsAfterFilters.length > 0 ? Math.round((highCount / recordsAfterFilters.length) * 100) : 0,
       portfolioCount,
       stockCount,
     }
-  }, [recordsAfterTag])
+  }, [recordsAfterFilters])
+
+  const pageCopy = useMemo(() => {
+    if (typeFilter === 'portfolio') {
+      return {
+        title: '组合分析记录',
+        description: '这里聚合的是面向整仓视角的历史分析，适合回看当时的仓位结构、风险暴露和组合判断。',
+      }
+    }
+    if (typeFilter === 'stock') {
+      return {
+        title: '个股分析记录',
+        description: '这里聚合的是单只股票的历史分析，更适合按股票代码、名称和时间回看当时的判断变化。',
+      }
+    }
+    return {
+      title: '全部分析记录',
+      description: '先按频道切换记录类型，再通过信心、标签和时间导航进一步缩小范围。',
+    }
+  }, [typeFilter])
 
   return (
     <div className="space-y-6">
       <Card className="border-border bg-card">
         <div className="p-5 space-y-4">
+          <div>
+            <div className="text-sm font-medium text-foreground">记录频道</div>
+            <div className="mt-1 text-xs text-muted-foreground">先区分你要看的是组合分析，还是个股分析，再进入后续筛选。</div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <ChannelCard
+              title="全部"
+              description="混合查看组合与个股历史，用来纵览整体 AI 使用节奏。"
+              active={typeFilter === 'ALL'}
+              onClick={() => setTypeFilter('ALL')}
+            />
+            <ChannelCard
+              title="组合分析"
+              description="聚焦整仓视角的判断、仓位风险与组合观察。"
+              active={typeFilter === 'portfolio'}
+              onClick={() => setTypeFilter('portfolio')}
+            />
+            <ChannelCard
+              title="个股分析"
+              description="聚焦单只股票的历史结论、信心变化和重点观察。"
+              active={typeFilter === 'stock'}
+              onClick={() => setTypeFilter('stock')}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <div className="p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-primary" />
             <div>
-              <div className="text-sm font-medium text-foreground">筛选条件</div>
-              <div className="mt-1 text-xs text-muted-foreground">先缩小分析范围，再用时间导航定位重点时段。</div>
+              <div className="text-sm font-medium text-foreground">{pageCopy.title}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{pageCopy.description}</div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="ALL">全部分析类型</option>
-              <option value="portfolio">组合分析</option>
-              <option value="stock">个股分析</option>
-            </select>
+          <div className={`grid grid-cols-1 gap-3 ${typeFilter === 'stock' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
             <select
               value={confidenceFilter}
               onChange={(e) => setConfidenceFilter(e.target.value as typeof confidenceFilter)}
@@ -186,6 +238,15 @@ export default function AiHistoryView() {
               onChange={(e) => setDateTo(e.target.value)}
               className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            {typeFilter === 'stock' && (
+              <input
+                type="text"
+                value={stockQuery}
+                onChange={(e) => setStockQuery(e.target.value)}
+                placeholder="搜索股票名称或代码"
+                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -286,7 +347,7 @@ export default function AiHistoryView() {
               <div className="mt-3 text-sm text-muted-foreground">
                 {selectedBucket
                   ? `当前选中时间段共 ${selectedBucket.count} 次分析，下面的记录列表已自动同步筛选。`
-                  : '你还没有选中具体时间段，下面列表展示的是当前筛选条件下的全部记录。'}
+                  : `你还没有选中具体时间段，下面列表展示的是${pageCopy.title}范围内的全部记录。`}
               </div>
             </div>
 
@@ -316,7 +377,7 @@ export default function AiHistoryView() {
             <div>
               <div className="text-sm font-medium text-foreground">分析记录</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                这里是主工作区。先用上面的筛选器和时间导航锁定范围，再往下看具体分析。
+                这里是主工作区。先用频道、筛选器和时间导航锁定范围，再往下看具体分析。
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
@@ -334,42 +395,43 @@ export default function AiHistoryView() {
 
           <div className="space-y-3">
             {visibleRecords.map((record) => (
-              <div key={record.id} className="rounded-xl border border-border/70 bg-muted/20 p-4">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">
-                        {record.type === 'portfolio' ? '组合分析' : `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`}
-                      </span>
-                      {record.tags.slice(0, 5).map((tag) => (
-                        <StaticTag key={tag}>{tag}</StaticTag>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">观察重点</div>
-                    <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-                      <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                      {record.result.probabilityAssessment.length} 个场景
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
-                  <SmallBlock title="关键动作" items={record.result.actionableObservations.slice(0, 3)} />
-                </div>
-              </div>
+              record.type === 'portfolio' ? (
+                <PortfolioRecordCard key={record.id} record={record} />
+              ) : (
+                <StockRecordCard key={record.id} record={record} />
+              )
             ))}
           </div>
         </div>
       </Card>
     </div>
+  )
+}
+
+function ChannelCard({
+  title,
+  description,
+  active,
+  onClick,
+}: {
+  title: string
+  description: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-2xl border p-4 text-left transition-colors ${
+        active
+          ? 'border-primary/30 bg-primary/10'
+          : 'border-border/70 bg-muted/20 hover:border-primary/20 hover:bg-card'
+      }`}
+    >
+      <div className="text-sm font-medium text-foreground">{title}</div>
+      <div className="mt-2 text-xs leading-5 text-muted-foreground">{description}</div>
+    </button>
   )
 }
 
@@ -412,6 +474,76 @@ function StaticTag({ children }: { children: React.ReactNode }) {
     <span className="inline-flex items-center rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
       {children}
     </span>
+  )
+}
+
+function PortfolioRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">组合分析</span>
+            {record.tags.slice(0, 4).map((tag) => (
+              <StaticTag key={tag}>{tag}</StaticTag>
+            ))}
+          </div>
+          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+          </div>
+        </div>
+
+        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
+          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <SmallBlock title="风险观察" items={record.result.portfolioRiskNotes?.slice(0, 3) ?? []} />
+        <SmallBlock title="建议动作" items={record.result.actionableObservations.slice(0, 3)} />
+      </div>
+    </div>
+  )
+}
+
+function StockRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">
+              {record.stockName ?? '个股'} · {record.stockCode ?? ''}
+            </span>
+            {record.tags.slice(0, 5).map((tag) => (
+              <StaticTag key={tag}>{tag}</StaticTag>
+            ))}
+          </div>
+          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+          </div>
+        </div>
+
+        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
+          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            {record.result.probabilityAssessment.length} 个场景
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
+        <SmallBlock title="关键动作" items={record.result.actionableObservations.slice(0, 3)} />
+      </div>
+    </div>
   )
 }
 

@@ -5,6 +5,7 @@ import { Check, Loader2, MonitorCog, Moon, Sun, Upload, Download, Trash2, Sparkl
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { useTheme } from '@/hooks/useTheme'
@@ -145,18 +146,17 @@ export default function SettingsContent({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-1.5 max-w-48">
             <Label htmlFor="default-market">默认市场</Label>
-            <select
+            <Select
               id="default-market"
               value={defaultMarket}
               onChange={(e) => setDefaultMarket(e.target.value as Market)}
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
               {MARKETS.map((market) => (
                 <option key={market} value={market}>
                 {MARKET_LABELS[market]}
               </option>
             ))}
-          </select>
+          </Select>
           </div>
         </div>
       </section>
@@ -173,17 +173,16 @@ export default function SettingsContent({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-1.5 max-w-48">
             <Label htmlFor="display-currency">显示货币</Label>
-            <select
+            <Select
               id="display-currency"
               value={displayCurrency}
               onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as 'CNY' | 'HKD' | 'USD' | 'USDT')}
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="CNY">CNY</option>
               <option value="HKD">HKD</option>
               <option value="USD">USD</option>
               <option value="USDT">USDT</option>
-            </select>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
@@ -215,27 +214,25 @@ export default function SettingsContent({
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ai-enabled">启用 AI</Label>
-              <select
+              <Select
                 id="ai-enabled"
                 value={aiConfig.enabled ? 'true' : 'false'}
                 onChange={(e) => setAiConfig((current) => ({ ...current, enabled: e.target.value === 'true' }))}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="true">启用</option>
                 <option value="false">关闭</option>
-              </select>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-provider">Provider</Label>
-              <select
+              <Select
                 id="ai-provider"
                 value={aiConfig.provider}
                 onChange={(e) => setAiConfig((current) => ({ ...current, provider: e.target.value as AiProvider }))}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="openai-compatible">OpenAI Compatible</option>
                 <option value="anthropic-compatible">Anthropic Compatible</option>
-              </select>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-model">模型</Label>
@@ -295,27 +292,25 @@ export default function SettingsContent({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-news-enabled">新闻增强</Label>
-              <select
+              <Select
                 id="ai-news-enabled"
                 value={aiConfig.newsEnabled ? 'true' : 'false'}
                 onChange={(e) => setAiConfig((current) => ({ ...current, newsEnabled: e.target.value === 'true' }))}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="true">开启</option>
                 <option value="false">关闭</option>
-              </select>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-language">分析语言</Label>
-              <select
+              <Select
                 id="ai-language"
                 value={aiConfig.analysisLanguage}
                 onChange={(e) => setAiConfig((current) => ({ ...current, analysisLanguage: e.target.value as AiAnalysisLanguage }))}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="zh-CN">中文</option>
                 <option value="en-US">English</option>
-              </select>
+              </Select>
             </div>
           </div>
 

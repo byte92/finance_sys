@@ -5,6 +5,7 @@ import { CalendarDays, Filter, Tag, Trash2, TrendingUp } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
 
@@ -238,16 +239,16 @@ export default function AiHistoryView() {
           </div>
 
           <div className={`grid grid-cols-1 gap-3 ${typeFilter === 'stock' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
-            <select
+            <Select
               value={confidenceFilter}
               onChange={(e) => setConfidenceFilter(e.target.value as typeof confidenceFilter)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="h-10 bg-background"
             >
               <option value="ALL">全部信心标签</option>
               <option value="high">高信心</option>
               <option value="medium">中等信心</option>
               <option value="low">低信心</option>
-            </select>
+            </Select>
             <input
               type="date"
               value={dateFrom}

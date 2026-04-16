@@ -5,6 +5,7 @@ import { X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { Market } from '@/types'
@@ -137,16 +138,16 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="market">市场</Label>
-            <select
+            <Select
               id="market"
               value={market}
               onChange={(e) => setMarket(e.target.value as Market)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-10 bg-background"
             >
               {MARKETS.map((m) => (
                 <option key={m} value={m}>{MARKET_LABELS[m]}</option>
               ))}
-            </select>
+            </Select>
             {isEdit && (
               <p className="text-[11px] text-muted-foreground">编辑模式下暂不支持直接修改市场，如需变更建议新建后迁移交易。</p>
             )}

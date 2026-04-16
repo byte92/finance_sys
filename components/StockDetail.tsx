@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
@@ -426,46 +427,46 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   placeholder="搜索备注 / 操作 / 状态"
                   className="xl:col-span-2"
                 />
-                <select
+                <Select
                   value={tradeTypeFilter}
                   onChange={(e) => setTradeTypeFilter(e.target.value as typeof tradeTypeFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部类型</option>
                   <option value="BUY">买入</option>
                   <option value="SELL">卖出</option>
                   <option value="DIVIDEND">分红</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={specialFilter}
                   onChange={(e) => setSpecialFilter(e.target.value as typeof specialFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部状态</option>
                   <option value="CLOSING">只看清仓</option>
                   <option value="OPEN_BUY">只看仍持有批次</option>
                   <option value="CLOSED_BUY">只看已卖完批次</option>
                   <option value="REALIZED">只看已实现记录</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={resultFilter}
                   onChange={(e) => setResultFilter(e.target.value as typeof resultFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部结果</option>
                   <option value="PROFIT">只看盈利</option>
                   <option value="LOSS">只看亏损</option>
                   <option value="BREAKEVEN">只看持平</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={noteFilter}
                   onChange={(e) => setNoteFilter(e.target.value as typeof noteFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部备注</option>
                   <option value="WITH_NOTE">只看有备注</option>
                   <option value="WITHOUT_NOTE">只看无备注</option>
-                </select>
+                </Select>
                 <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                 <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               </div>

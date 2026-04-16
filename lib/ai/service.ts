@@ -290,7 +290,7 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
     actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把 AI 结论作为复盘辅助，而不是独立交易依据。'],
     risks: parsed?.risks?.length ? parsed.risks : ['外部新闻、行情与估值数据可能延迟或缺失。'],
     confidence: parsed?.confidence ?? 'medium',
-    disclaimer: parsed?.disclaimer?.trim() || '以下内容仅基于当前数据进行条件式分析，不构成投资建议或收益承诺。',
+    disclaimer: parsed?.disclaimer?.trim() || '以上内容仅基于当前数据进行条件式分析，不构成投资建议或收益承诺。',
     evidence: parsed?.evidence?.length ? parsed.evidence : fallback.evidence,
   }
 }

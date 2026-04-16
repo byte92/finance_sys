@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, TrendingUp, TrendingDown, Gift } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -218,7 +219,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
           {/* 日期（通用） */}
           <div className="space-y-1.5">
             <Label htmlFor="date">交易日期</Label>
-            <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <DatePicker id="date" value={date} onChange={setDate} placeholder="选择交易日期" />
           </div>
 
           {/* 买入/卖出表单 */}

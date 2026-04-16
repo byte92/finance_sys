@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
@@ -467,8 +468,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   <option value="WITH_NOTE">只看有备注</option>
                   <option value="WITHOUT_NOTE">只看无备注</option>
                 </Select>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
+                <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button

@@ -13,11 +13,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@radix-ui/react-popover": "^1.1.15",
     "better-sqlite3": "^12.9.0",
+    "date-fns": "^4.1.0",
     "iconv-lite": "^0.7.2",
     "lightweight-charts": "^4.2.3",
     "next": "^16.1.6",
     "react": "^19.2.4",
+    "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0",
     "zustand": "^5.0.11"

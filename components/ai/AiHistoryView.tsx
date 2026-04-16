@@ -5,6 +5,7 @@ import { CalendarDays, Filter, Tag, Trash2, TrendingUp } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
@@ -249,18 +250,8 @@ export default function AiHistoryView() {
               <option value="medium">中等信心</option>
               <option value="low">低信心</option>
             </Select>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
+            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
+            <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
             {typeFilter === 'stock' && (
               <input
                 type="text"

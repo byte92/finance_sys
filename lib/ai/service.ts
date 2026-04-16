@@ -559,7 +559,7 @@ export function buildAnalysisTags(
   stock?: Pick<Stock, 'market' | 'code' | 'name'>,
 ) {
   const tags = [
-    type === 'portfolio' ? '组合分析' : '个股分析',
+    type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析',
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
   ]
   if (stock) {

@@ -62,8 +62,9 @@ export interface FeeConfig {
 
 export type AiAnalysisLanguage = 'zh-CN' | 'en-US'
 export type AiProvider = 'openai-compatible' | 'anthropic-compatible'
-export type AiAnalysisType = 'portfolio' | 'stock'
+export type AiAnalysisType = 'portfolio' | 'stock' | 'market'
 export type AiConfidence = 'low' | 'medium' | 'high'
+export type MarketRegion = 'A' | 'HK' | 'US'
 
 export interface AiConfig {
   enabled: boolean
@@ -160,6 +161,26 @@ export interface TechnicalIndicatorSnapshot {
   resistanceLevel: number | null
   volumeRatio20: number | null
   trendBias: 'bullish' | 'neutral' | 'bearish'
+}
+
+export interface MarketIndexSnapshot {
+  id: string
+  code: string
+  name: string
+  region: MarketRegion
+  market: Market
+  price: number
+  change: number
+  changePercent: number
+  previousClose: number | null
+  open: number | null
+  high: number | null
+  low: number | null
+  volume: number | null
+  timestamp: string
+  currency: string
+  source: string
+  indicators?: TechnicalIndicatorSnapshot | null
 }
 
 export interface AiProbabilityScenario {

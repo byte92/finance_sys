@@ -32,7 +32,7 @@ export default function AiHistoryView() {
   const [records, setRecords] = useState<AiAnalysisHistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock'>('ALL')
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock' | 'market'>('ALL')
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | AiConfidence>('ALL')
   const [tagFilter, setTagFilter] = useState('ALL')
   const [stockQuery, setStockQuery] = useState('')
@@ -167,6 +167,7 @@ export default function AiHistoryView() {
     const highCount = recordsAfterFilters.filter((record) => record.confidence === 'high').length
     const portfolioCount = recordsAfterFilters.filter((record) => record.type === 'portfolio').length
     const stockCount = recordsAfterFilters.filter((record) => record.type === 'stock').length
+    const marketCount = recordsAfterFilters.filter((record) => record.type === 'market').length
 
     return {
       total: recordsAfterFilters.length,
@@ -175,6 +176,7 @@ export default function AiHistoryView() {
       highShare: recordsAfterFilters.length > 0 ? Math.round((highCount / recordsAfterFilters.length) * 100) : 0,
       portfolioCount,
       stockCount,
+      marketCount,
     }
   }, [recordsAfterFilters])
 
@@ -189,6 +191,12 @@ export default function AiHistoryView() {
       return {
         title: '个股分析记录',
         description: '这里聚合的是单只股票的历史分析，更适合按股票代码、名称和时间回看当时的判断变化。',
+      }
+    }
+    if (typeFilter === 'market') {
+      return {
+        title: '大盘分析记录',
+        description: '这里聚合的是 A 股、港股和美股代表指数的历史分析，适合回看当时的大盘强弱与节奏判断。',
       }
     }
     return {
@@ -224,6 +232,12 @@ export default function AiHistoryView() {
               description="聚焦单只股票的历史结论、信心变化和重点观察。"
               active={typeFilter === 'stock'}
               onClick={() => setTypeFilter('stock')}
+            />
+            <ChannelCard
+              title="大盘分析"
+              description="聚焦三地代表指数的强弱结构、风险偏好和市场节奏。"
+              active={typeFilter === 'market'}
+              onClick={() => setTypeFilter('market')}
             />
           </div>
         </div>
@@ -278,7 +292,7 @@ export default function AiHistoryView() {
         <StatCard label="总分析次数" value={`${overviewStats.total}`} detail={loading ? '正在更新...' : '当前筛选结果'} />
         <StatCard label="今天新增" value={`${overviewStats.todayCount}`} detail="当天生成的分析数" />
         <StatCard label="高信心占比" value={`${overviewStats.highShare}%`} detail={`共 ${overviewStats.highCount} 条高信心记录`} />
-        <StatCard label="分析构成" value={`${overviewStats.portfolioCount} / ${overviewStats.stockCount}`} detail="组合 / 个股" />
+        <StatCard label="分析构成" value={`${overviewStats.portfolioCount} / ${overviewStats.stockCount} / ${overviewStats.marketCount}`} detail="组合 / 个股 / 大盘" />
       </section>
 
       <Card className="border-border bg-card">
@@ -411,6 +425,8 @@ export default function AiHistoryView() {
             {visibleRecords.map((record) => (
               record.type === 'portfolio' ? (
                 <PortfolioRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
+              ) : record.type === 'market' ? (
+                <MarketRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
               ) : (
                 <StockRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
               )
@@ -422,7 +438,13 @@ export default function AiHistoryView() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="确认删除分析记录"
-        description={deleteTarget ? `确定删除 ${deleteTarget.type === 'portfolio' ? '这条组合分析' : `${deleteTarget.stockName ?? '该个股'}分析`} 吗？删除后无法恢复。` : undefined}
+        description={deleteTarget ? `确定删除 ${
+          deleteTarget.type === 'portfolio'
+            ? '这条组合分析'
+            : deleteTarget.type === 'market'
+              ? '这条大盘分析'
+              : `${deleteTarget.stockName ?? '该个股'}分析`
+        } 吗？删除后无法恢复。` : undefined}
         confirmText="删除"
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
@@ -599,6 +621,56 @@ function StockRecordCard({
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
         <SmallBlock title="关键动作" items={record.result.actionableObservations.slice(0, 3)} />
+      </div>
+    </div>
+  )
+}
+
+function MarketRecordCard({
+  record,
+  onDelete,
+}: {
+  record: AiAnalysisHistoryRecord
+  onDelete: () => void
+}) {
+  return (
+    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 xl:pr-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">大盘分析</span>
+            {record.tags.slice(0, 5).map((tag) => (
+              <StaticTag key={tag}>{tag}</StaticTag>
+            ))}
+          </div>
+          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+          </div>
+        </div>
+
+        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">大盘视角</div>
+          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            {record.result.technicalSignals.length} 个信号
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
+        <SmallBlock title="观察动作" items={record.result.actionableObservations.slice(0, 3)} />
       </div>
     </div>
   )

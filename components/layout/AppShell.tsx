@@ -3,10 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, Sun, Moon, X } from 'lucide-react'
+import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useTheme } from '@/hooks/useTheme'
-import { useCurrency } from '@/hooks/useCurrency'
 import { useStockStore } from '@/store/useStockStore'
 
 const NAV_ITEMS = [
@@ -24,8 +22,6 @@ const AI_NAV_EXPANDED_KEY = 'stock-tracker-ai-nav-expanded'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { theme, toggleTheme, mounted } = useTheme()
-  const { displayCurrency, setDisplayCurrency } = useCurrency()
   const { init } = useStockStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -78,11 +74,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         >
           <SidebarContent
             pathname={pathname}
-            displayCurrency={displayCurrency}
-            setDisplayCurrency={setDisplayCurrency}
-            mounted={mounted}
-            theme={theme}
-            toggleTheme={toggleTheme}
             collapsed={sidebarCollapsed}
             aiNavExpanded={aiNavExpanded}
             onToggleAiNavExpanded={toggleAiNavExpanded}
@@ -115,11 +106,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarContent
               pathname={pathname}
-              displayCurrency={displayCurrency}
-              setDisplayCurrency={setDisplayCurrency}
-              mounted={mounted}
-              theme={theme}
-              toggleTheme={toggleTheme}
               collapsed={false}
               aiNavExpanded={aiNavExpanded}
               onToggleAiNavExpanded={toggleAiNavExpanded}
@@ -133,22 +119,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
 function SidebarContent({
   pathname,
-  displayCurrency,
-  setDisplayCurrency,
-  mounted,
-  theme,
-  toggleTheme,
   collapsed,
   aiNavExpanded,
   onToggleAiNavExpanded,
   onToggleCollapsed,
 }: {
   pathname: string
-  displayCurrency: string
-  setDisplayCurrency: (currency: 'CNY' | 'HKD' | 'USD' | 'USDT') => void
-  mounted: boolean
-  theme: 'dark' | 'light'
-  toggleTheme: () => void
   collapsed: boolean
   aiNavExpanded: boolean
   onToggleAiNavExpanded?: () => void
@@ -227,35 +203,6 @@ function SidebarContent({
       </nav>
 
       <div className={`border-t border-border py-4 space-y-3 ${collapsed ? 'px-2' : 'px-4'}`}>
-        <div className="space-y-1.5">
-          {!collapsed && <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">显示货币</div>}
-          <select
-            value={displayCurrency}
-            onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as 'CNY' | 'HKD' | 'USD' | 'USDT')}
-            className={`h-9 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary ${
-              collapsed ? 'w-full px-1 text-xs' : 'w-full px-3'
-            }`}
-          >
-            <option value="CNY">CNY</option>
-            <option value="HKD">HKD</option>
-            <option value="USD">USD</option>
-            <option value="USDT">USDT</option>
-          </select>
-        </div>
-
-        {mounted && (
-          <Button variant="outline" className={`w-full ${collapsed ? 'justify-center px-2' : 'justify-start'}`} onClick={toggleTheme} title={theme === 'dark' ? '切换亮色' : '切换暗色'}>
-            {theme === 'dark' ? <Sun className={`h-4 w-4 ${collapsed ? '' : 'mr-2'}`} /> : <Moon className={`h-4 w-4 ${collapsed ? '' : 'mr-2'}`} />}
-            {!collapsed && (theme === 'dark' ? '切换亮色' : '切换暗色')}
-          </Button>
-        )}
-
-        {!collapsed && (
-          <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            本地优先模式，数据保存在当前设备的 SQLite 中。
-          </div>
-        )}
-
         <Link
           href="/settings"
           className={`flex items-center rounded-lg py-2.5 text-sm transition-colors ${

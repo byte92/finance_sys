@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Check, Loader2, Upload, Download, Trash2, Sparkles } from 'lucide-react'
+import { Check, Loader2, MonitorCog, Moon, Sun, Upload, Download, Trash2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useStockStore } from '@/store/useStockStore'
+import { useCurrency } from '@/hooks/useCurrency'
+import { useTheme } from '@/hooks/useTheme'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
 
@@ -22,6 +24,8 @@ export default function SettingsContent({
   compact?: boolean
 }) {
   const { config, updateConfig, exportData, importData, clearAll } = useStockStore()
+  const { displayCurrency, setDisplayCurrency } = useCurrency()
+  const { theme, toggleTheme, mounted } = useTheme()
   const [defaultMarket, setDefaultMarket] = useState<Market>(config.defaultMarket)
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
   const [aiConfig, setAiConfig] = useState(config.aiConfig)
@@ -138,20 +142,63 @@ export default function SettingsContent({
           <div className="text-xs text-muted-foreground mt-1">默认市场会用于新增股票时的初始选择</div>
         </div>
 
-        <div className="space-y-1.5 max-w-48">
-          <Label htmlFor="default-market">默认市场</Label>
-          <select
-            id="default-market"
-            value={defaultMarket}
-            onChange={(e) => setDefaultMarket(e.target.value as Market)}
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            {MARKETS.map((market) => (
-              <option key={market} value={market}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-1.5 max-w-48">
+            <Label htmlFor="default-market">默认市场</Label>
+            <select
+              id="default-market"
+              value={defaultMarket}
+              onChange={(e) => setDefaultMarket(e.target.value as Market)}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {MARKETS.map((market) => (
+                <option key={market} value={market}>
                 {MARKET_LABELS[market]}
               </option>
             ))}
           </select>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <MonitorCog className="h-4 w-4 text-primary" />
+          <div>
+            <div className="text-sm font-medium text-foreground">显示偏好</div>
+            <div className="text-xs text-muted-foreground mt-1">主题模式和显示货币现在统一在设置页管理，不再放在侧边栏底部。</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-1.5 max-w-48">
+            <Label htmlFor="display-currency">显示货币</Label>
+            <select
+              id="display-currency"
+              value={displayCurrency}
+              onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as 'CNY' | 'HKD' | 'USD' | 'USDT')}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="CNY">CNY</option>
+              <option value="HKD">HKD</option>
+              <option value="USD">USD</option>
+              <option value="USDT">USDT</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>主题模式</Label>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={toggleTheme}
+              disabled={!mounted}
+            >
+              {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+              {mounted ? (theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式') : '加载主题中...'}
+            </Button>
+          </div>
         </div>
       </section>
 

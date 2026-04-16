@@ -1,14 +1,32 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
+import { MARKET_CURRENCY } from '@/lib/ExchangeRateService'
+import type { StockQuote } from '@/types/stockApi'
+
+type TodayPnlSnapshot = {
+  amount: number
+  gainers: number
+  losers: number
+  flat: number
+  quoted: number
+}
 
 export default function PortfolioSummarySection() {
   const { stocks } = useStockStore()
-  const { displayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
+  const { displayCurrency, convertAmountSync, formatWithCurrency, rates } = useCurrency()
+  const [todayPnl, setTodayPnl] = useState<TodayPnlSnapshot>({
+    amount: 0,
+    gainers: 0,
+    losers: 0,
+    flat: 0,
+    quoted: 0,
+  })
+  const [todayPnlLoading, setTodayPnlLoading] = useState(false)
 
   const portfolio = useMemo(() => {
     let totalRealizedPnl = 0
@@ -39,17 +57,117 @@ export default function PortfolioSummarySection() {
     }
   }, [stocks, convertAmountSync])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const convertWithRates = (amount: number, market: string) => {
+      const fromCurrency = MARKET_CURRENCY[market] || 'CNY'
+      if (fromCurrency === displayCurrency) {
+        return amount
+      }
+      const fromRate = rates[fromCurrency] || 1
+      const toRate = rates[displayCurrency] || 1
+      return (amount * fromRate) / toRate
+    }
+
+    async function loadTodayPnl() {
+      const activeHoldings = stocks
+        .map((stock) => ({ stock, summary: calcStockSummary(stock) }))
+        .filter(({ summary }) => summary.currentHolding > 0)
+
+      if (activeHoldings.length === 0) {
+        setTodayPnl({ amount: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 })
+        return
+      }
+
+      setTodayPnlLoading(true)
+
+      try {
+        const responses = await Promise.all(
+          activeHoldings.map(async ({ stock, summary }) => {
+            const res = await fetch(
+              `/api/stock/quote?symbol=${encodeURIComponent(stock.code)}&market=${encodeURIComponent(stock.market)}`,
+              { cache: 'no-store' },
+            )
+            const data = await res.json()
+            const quote = (data?.quote ?? null) as StockQuote | null
+            if (!quote) {
+              return null
+            }
+
+            const rawTodayPnl = summary.currentHolding * quote.change
+            return {
+              todayPnl: convertWithRates(rawTodayPnl, stock.market),
+            }
+          }),
+        )
+
+        if (cancelled) {
+          return
+        }
+
+        const next = responses.filter((item): item is { todayPnl: number } => item !== null)
+        const snapshot = next.reduce(
+          (acc, item) => {
+            acc.amount += item.todayPnl
+            acc.quoted += 1
+            if (item.todayPnl > 0) {
+              acc.gainers += 1
+            } else if (item.todayPnl < 0) {
+              acc.losers += 1
+            } else {
+              acc.flat += 1
+            }
+            return acc
+          },
+          { amount: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 },
+        )
+
+        setTodayPnl(snapshot)
+      } catch (error) {
+        console.error('Failed to load portfolio daily pnl:', error)
+        if (!cancelled) {
+          setTodayPnl({ amount: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 })
+        }
+      } finally {
+        if (!cancelled) {
+          setTodayPnlLoading(false)
+        }
+      }
+    }
+
+    void loadTodayPnl()
+
+    return () => {
+      cancelled = true
+    }
+  }, [stocks, displayCurrency, rates])
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">资产概览</h2>
-          <div className="mt-1 text-xs text-muted-foreground">组合概览默认按已实现收益统计，不混入实时浮盈</div>
+          <div className="mt-1 text-xs text-muted-foreground">组合概览默认按已实现收益统计，并额外展示当日持仓涨跌</div>
         </div>
         <div className="text-xs text-muted-foreground">共 {portfolio.stockCount} 只资产</div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+        <Card className="stat-card border-border">
+          <div className="text-xs text-muted-foreground mb-1">今日盈亏</div>
+          <div className={`text-xl font-bold font-mono ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
+            {formatPnl(todayPnl.amount, displayCurrency)}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            {todayPnlLoading
+              ? '正在刷新当日行情'
+              : todayPnl.quoted > 0
+                ? `${todayPnl.gainers} 只上涨 · ${todayPnl.losers} 只下跌`
+                : '暂无可用行情'}
+          </div>
+        </Card>
+
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">累计已实现收益</div>
           <div className={`text-xl font-bold font-mono ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>

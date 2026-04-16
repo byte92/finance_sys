@@ -137,6 +137,7 @@ function StockListRow({
   const realizedPnl = convertAmountSync(summary.realizedPnl, stock.market)
   const unrealizedPnl = quote ? convertAmountSync(summary.unrealizedPnl, stock.market) : null
   const totalPnl = quote ? convertAmountSync(summary.totalPnl, stock.market) : null
+  const todayPnl = quote ? convertAmountSync(summary.currentHolding * quote.change, stock.market) : null
   const currentPrice = quote ? convertAmountSync(quote.price, stock.market) : null
 
   return (
@@ -181,7 +182,10 @@ function StockListRow({
               已实现 {formatPnl(realizedPnl, displayCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
             </div>
             <div className="text-xs text-muted-foreground">
-              现价 {formatWithCurrency(currentPrice ?? 0)}
+              现价 {formatWithCurrency(currentPrice ?? 0)} · 今日{' '}
+              <span className={(todayPnl ?? 0) >= 0 ? 'profit-text' : 'loss-text'}>
+                {formatPnl(todayPnl ?? 0, displayCurrency)}
+              </span>
             </div>
           </>
         )}

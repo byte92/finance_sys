@@ -518,7 +518,17 @@ function PortfolioRecordCard({
   onDelete: () => void
 }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -534,17 +544,10 @@ function PortfolioRecordCard({
         </div>
 
         <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-right">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
-              <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
-              </div>
-            </div>
-            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
+          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
           </div>
         </div>
       </div>
@@ -565,7 +568,17 @@ function StockRecordCard({
   onDelete: () => void
 }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -583,17 +596,10 @@ function StockRecordCard({
         </div>
 
         <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-right">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
-              <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
-                {record.result.probabilityAssessment.length} 个场景
-              </div>
-            </div>
-            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
+          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            {record.result.probabilityAssessment.length} 个场景
           </div>
         </div>
       </div>

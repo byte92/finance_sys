@@ -36,13 +36,21 @@ type PortfolioAnalysisContext = {
     holdingWeight: number
     currentPrice: number | null
     changePercent: number | null
+    dailyPnl: number | null
+    lastTradeDate: string | null
+    lastTradeType: 'BUY' | 'SELL' | 'DIVIDEND' | null
   }>
   totalInvested: number
   totalRealizedPnl: number
   totalUnrealizedPnl: number
+  totalDailyPnl: number
   largestPositionWeight: number
   profitableCount: number
   losingCount: number
+  topHoldings: Array<{ code: string; name: string; weight: number; totalPnl: number }>
+  strongestHoldings: Array<{ code: string; name: string; totalPnl: number; changePercent: number | null }>
+  weakestHoldings: Array<{ code: string; name: string; totalPnl: number; changePercent: number | null }>
+  recentlyActiveHoldings: Array<{ code: string; name: string; lastTradeDate: string }>
 }
 
 type StockAnalysisContext = {
@@ -290,6 +298,8 @@ function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<Retu
   const summaries = stocks.map((stock) => {
     const quote = quotes.get(stock.id) ?? null
     const summary = calcStockSummary(stock, quote?.price)
+    const lastTrade = [...stock.trades].sort((left, right) => right.date.localeCompare(left.date))[0] ?? null
+    const dailyPnl = quote && summary.currentHolding > 0 ? summary.currentHolding * quote.change : null
     return {
       id: stock.id,
       code: stock.code,
@@ -305,6 +315,9 @@ function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<Retu
       totalDividend: summary.totalDividend,
       currentPrice: quote?.price ?? null,
       changePercent: quote?.changePercent ?? null,
+      dailyPnl,
+      lastTradeDate: lastTrade?.date ?? null,
+      lastTradeType: lastTrade?.type ?? null,
       holdingWeight: 0,
     }
   })
@@ -313,14 +326,55 @@ function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<Retu
     ...item,
     holdingWeight: totalInvested > 0 ? item.totalBuyAmount / totalInvested : 0,
   }))
+  const topHoldings = [...enriched]
+    .sort((left, right) => right.holdingWeight - left.holdingWeight)
+    .slice(0, 3)
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      weight: item.holdingWeight,
+      totalPnl: item.totalPnl,
+    }))
+  const strongestHoldings = [...enriched]
+    .sort((left, right) => right.totalPnl - left.totalPnl)
+    .slice(0, 2)
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      totalPnl: item.totalPnl,
+      changePercent: item.changePercent,
+    }))
+  const weakestHoldings = [...enriched]
+    .sort((left, right) => left.totalPnl - right.totalPnl)
+    .slice(0, 2)
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      totalPnl: item.totalPnl,
+      changePercent: item.changePercent,
+    }))
+  const recentlyActiveHoldings = [...enriched]
+    .filter((item) => item.lastTradeDate)
+    .sort((left, right) => (right.lastTradeDate ?? '').localeCompare(left.lastTradeDate ?? ''))
+    .slice(0, 3)
+    .map((item) => ({
+      code: item.code,
+      name: item.name,
+      lastTradeDate: item.lastTradeDate!,
+    }))
   return {
     summaries: enriched,
     totalInvested,
     totalRealizedPnl: enriched.reduce((sum, item) => sum + item.realizedPnl, 0),
     totalUnrealizedPnl: enriched.reduce((sum, item) => sum + item.unrealizedPnl, 0),
+    totalDailyPnl: enriched.reduce((sum, item) => sum + (item.dailyPnl ?? 0), 0),
     largestPositionWeight: enriched.reduce((max, item) => Math.max(max, item.holdingWeight), 0),
     profitableCount: enriched.filter((item) => item.totalPnl >= 0).length,
     losingCount: enriched.filter((item) => item.totalPnl < 0).length,
+    topHoldings,
+    strongestHoldings,
+    weakestHoldings,
+    recentlyActiveHoldings,
   } satisfies PortfolioAnalysisContext
 }
 
@@ -380,6 +434,93 @@ function inferPortfolioFallback(context: PortfolioAnalysisContext) {
     ? `${topHolding.name} 的仓位权重与浮盈回撤是否继续稳定`
     : '组合中核心仓位是否继续稳定'
   return { bias, confidence, note }
+}
+
+function buildPortfolioFallbackPayload(context: PortfolioAnalysisContext): Partial<AiAnalysisResult> {
+  const topHolding = context.topHoldings[0] ?? null
+  const weakest = context.weakestHoldings[0] ?? null
+  const strongest = context.strongestHoldings[0] ?? null
+  const concentrationHigh = context.largestPositionWeight >= 0.5
+  const profitableMore = context.profitableCount >= context.losingCount
+  const stance = concentrationHigh
+    ? '偏防守，先处理集中度'
+    : context.totalUnrealizedPnl < 0
+      ? '偏谨慎，先看回撤控制'
+      : profitableMore
+        ? '可继续持有，但不宜激进扩张'
+        : '中性偏谨慎'
+
+  const summary = concentrationHigh
+    ? `当前组合明显偏集中，首要任务不是继续加风险，而是先处理 ${topHolding?.name ?? '核心仓位'} 的集中度与回撤承受能力。`
+    : context.totalUnrealizedPnl < 0
+      ? `当前组合整体承压，短期更偏向先稳住回撤，再判断是否需要进一步调整弱势仓位。`
+      : `当前组合仍有正向缓冲，但更适合继续持有并观察结构变化，不适合在现阶段盲目放大风险。`
+
+  const facts = [
+    `当前组合共有 ${context.summaries.length} 只持仓，最大仓位占比 ${(context.largestPositionWeight * 100).toFixed(1)}%。`,
+    `组合总投入约 ${context.totalInvested.toFixed(2)}，已实现收益约 ${context.totalRealizedPnl.toFixed(2)}，未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)}。`,
+    `今日组合盈亏约 ${context.totalDailyPnl.toFixed(2)}，当前盈利持仓 ${context.profitableCount} 只，亏损持仓 ${context.losingCount} 只。`,
+  ]
+
+  const inferences = [
+    concentrationHigh
+      ? `${topHolding?.name ?? '第一大仓位'} 权重过高，当前组合风险主要来自单一持仓回撤，而不是整体机会不足。`
+      : '当前组合的主要问题不是极端集中，而是结构是否继续分化与盈利能否延续。',
+    weakest
+      ? `${weakest.name} 是当前最弱持仓之一，如果弱势继续拖累，更应优先处理它而不是追逐已经盈利的仓位。`
+      : '当前弱势仓位数量有限，重点仍在组合结构的稳定性。',
+  ]
+
+  const actionPlan = [
+    concentrationHigh
+      ? `现在更应该优先评估 ${topHolding?.name ?? '第一大仓位'} 是否需要分批降权或至少停止继续加仓。`
+      : '现在更应该先维持现有结构，观察强弱分化是否继续扩散，再决定是否做分批调整。',
+    strongest
+      ? `当前更适合把 ${strongest.name} 视为组合稳定器继续跟踪，而不是急着用弱势仓位去对冲掉已有优势。`
+      : '当前不适合因为单日波动就频繁切换仓位节奏。',
+    '现在不适合在没有新增确认信号之前盲目追高，也不适合仅因为一两天回撤就情绪化清仓。',
+  ]
+
+  const invalidationSignals = [
+    topHolding
+      ? `${topHolding.name} 若出现明显回撤且权重仍维持高位，当前“继续持有观察”的结论应重新评估。`
+      : '若核心仓位明显转弱，当前结论需要重新评估。',
+    strongest
+      ? `${strongest.name} 若失去趋势优势，而弱势仓位同步扩大亏损，组合应从持有转向更偏防守。`
+      : '若强势仓位失去支撑，组合需要转向更谨慎的处理方式。',
+  ]
+
+  const portfolioRiskNotes = [
+    concentrationHigh
+      ? '当前最主要的组合风险是仓位过度集中带来的回撤放大。'
+      : '当前组合的主要风险来自结构分化，而不是单一仓位失控。',
+    weakest ? `${weakest.name} 是当前更值得优先关注的拖累源。` : '暂未识别出特别突出的拖累源。',
+  ]
+
+  const actionableObservations = [
+    topHolding ? `优先看 ${topHolding.name} 的仓位变化与浮盈保护，而不是先看次要仓位。` : '优先观察核心仓位而不是边缘仓位。',
+    context.recentlyActiveHoldings[0]
+      ? `最近有交易动作的 ${context.recentlyActiveHoldings[0].name} 更值得优先复盘，确认你当前节奏是否与组合现状一致。`
+      : '优先复盘最近有交易动作的仓位，确认当前节奏是否合理。',
+  ]
+
+  const keyLevels = [
+    topHolding ? `重点观察 ${topHolding.name} 对组合净值波动的放大效应。` : '关注核心仓位对组合波动的影响。',
+    '若组合未实现盈利持续回撤，优先考虑收缩风险暴露而不是继续加仓。',
+  ]
+
+  return {
+    summary,
+    stance,
+    facts,
+    inferences,
+    actionPlan,
+    invalidationSignals,
+    portfolioRiskNotes,
+    actionableObservations,
+    keyLevels,
+    evidence: facts,
+  }
 }
 
 function inferStockFallback(context: StockAnalysisContext) {
@@ -635,6 +776,17 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
     ],
     mode: 'portfolio',
   })
+  const portfolioFallback = buildPortfolioFallbackPayload(context)
+  result.summary = parsed?.summary?.trim() || portfolioFallback.summary || result.summary
+  result.stance = parsed?.stance?.trim() || portfolioFallback.stance || result.stance
+  result.facts = parsed?.facts?.length ? parsed.facts : (portfolioFallback.facts || result.facts)
+  result.inferences = parsed?.inferences?.length ? parsed.inferences : (portfolioFallback.inferences || result.inferences)
+  result.actionPlan = parsed?.actionPlan?.length ? parsed.actionPlan : (portfolioFallback.actionPlan || result.actionPlan)
+  result.invalidationSignals = parsed?.invalidationSignals?.length ? parsed.invalidationSignals : (portfolioFallback.invalidationSignals || result.invalidationSignals)
+  result.portfolioRiskNotes = parsed?.portfolioRiskNotes?.length ? parsed.portfolioRiskNotes : (portfolioFallback.portfolioRiskNotes || result.portfolioRiskNotes)
+  result.actionableObservations = parsed?.actionableObservations?.length ? parsed.actionableObservations : (portfolioFallback.actionableObservations || result.actionableObservations)
+  result.keyLevels = parsed?.keyLevels?.length ? parsed.keyLevels : (portfolioFallback.keyLevels || result.keyLevels)
+  result.evidence = parsed?.evidence?.length ? parsed.evidence : (portfolioFallback.evidence || result.evidence)
   if (!parsed?.probabilityAssessment?.length) {
     const inferred = inferPortfolioFallback(context)
     result.probabilityAssessment = buildFallbackProbability(inferred)

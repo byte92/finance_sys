@@ -61,10 +61,13 @@ export interface FeeConfig {
 }
 
 export type AiAnalysisLanguage = 'zh-CN' | 'en-US'
+export type AiProvider = 'openai-compatible' | 'anthropic-compatible'
+export type AiAnalysisType = 'portfolio' | 'stock'
+export type AiConfidence = 'low' | 'medium' | 'high'
 
 export interface AiConfig {
   enabled: boolean
-  provider: string
+  provider: AiProvider
   baseUrl: string
   model: string
   apiKey: string
@@ -200,7 +203,22 @@ export interface AiAnalysisResult {
   portfolioRiskNotes?: string[]
   actionableObservations: string[]
   risks: string[]
-  confidence: 'low' | 'medium' | 'high'
+  confidence: AiConfidence
   disclaimer: string
   evidence: string[]
+}
+
+export interface AiAnalysisHistoryRecord {
+  id: string
+  userId: string
+  type: AiAnalysisType
+  stockId?: string | null
+  stockCode?: string | null
+  stockName?: string | null
+  market?: Market | null
+  tags: string[]
+  confidence: AiConfidence
+  generatedAt: string
+  createdAt: string
+  result: AiAnalysisResult
 }

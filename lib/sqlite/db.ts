@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
-import type { AppConfig, Stock } from "@/types";
+import type { AiAnalysisHistoryRecord, AiAnalysisResult, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
   stocks: Stock[];
@@ -12,7 +12,22 @@ export type StoredPayload = {
 function normalizePayload(payload: Partial<StoredPayload> | null | undefined): StoredPayload {
   return {
     stocks: payload?.stocks ?? [],
-    config: { ...DEFAULT_APP_CONFIG, ...(payload?.config ?? {}) },
+    config: {
+      ...DEFAULT_APP_CONFIG,
+      ...(payload?.config ?? {}),
+      feeConfigs: {
+        ...DEFAULT_APP_CONFIG.feeConfigs,
+        ...(payload?.config?.feeConfigs ?? {}),
+      },
+      aiConfig: {
+        ...DEFAULT_APP_CONFIG.aiConfig,
+        ...(payload?.config?.aiConfig ?? {}),
+      },
+      currency: {
+        ...DEFAULT_APP_CONFIG.currency,
+        ...(payload?.config?.currency ?? {}),
+      },
+    },
   };
 }
 
@@ -30,7 +45,48 @@ function initSchema(db: Database.Database) {
     payload TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS ai_analysis_history (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    analysis_type TEXT NOT NULL,
+    stock_id TEXT,
+    stock_code TEXT,
+    stock_name TEXT,
+    market TEXT,
+    confidence TEXT NOT NULL,
+    tags_json TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
   `);
+}
+
+type SaveAiAnalysisInput = Omit<AiAnalysisHistoryRecord, "createdAt">;
+
+type ListAiAnalysisFilters = {
+  type?: string;
+  confidence?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    type: String(row.analysis_type) as AiAnalysisHistoryRecord["type"],
+    stockId: row.stock_id ? String(row.stock_id) : null,
+    stockCode: row.stock_code ? String(row.stock_code) : null,
+    stockName: row.stock_name ? String(row.stock_name) : null,
+    market: row.market ? (String(row.market) as Market) : null,
+    confidence: String(row.confidence) as AiAnalysisHistoryRecord["confidence"],
+    tags: JSON.parse(String(row.tags_json)) as string[],
+    result: JSON.parse(String(row.result_json)) as AiAnalysisResult,
+    generatedAt: String(row.generated_at),
+    createdAt: String(row.created_at),
+  };
 }
 
 export function resolveFinanceDbPath() {
@@ -91,10 +147,70 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     db.close();
   }
 
+  function saveAiAnalysis(record: SaveAiAnalysisInput) {
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      `
+      INSERT INTO ai_analysis_history (
+        id, user_id, analysis_type, stock_id, stock_code, stock_name, market,
+        confidence, tags_json, result_json, generated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      record.id,
+      record.userId,
+      record.type,
+      record.stockId ?? null,
+      record.stockCode ?? null,
+      record.stockName ?? null,
+      record.market ?? null,
+      record.confidence,
+      JSON.stringify(record.tags),
+      JSON.stringify(record.result),
+      record.generatedAt,
+      createdAt,
+    );
+  }
+
+  function listAiAnalysisByUserId(userId: string, filters: ListAiAnalysisFilters = {}) {
+    const clauses = ["user_id = ?"];
+    const params: Array<string> = [userId];
+
+    if (filters.type) {
+      clauses.push("analysis_type = ?");
+      params.push(filters.type);
+    }
+    if (filters.confidence) {
+      clauses.push("confidence = ?");
+      params.push(filters.confidence);
+    }
+    if (filters.dateFrom) {
+      clauses.push("date(generated_at) >= date(?)");
+      params.push(filters.dateFrom);
+    }
+    if (filters.dateTo) {
+      clauses.push("date(generated_at) <= date(?)");
+      params.push(filters.dateTo);
+    }
+
+    const rows = db.prepare(
+      `
+      SELECT *
+      FROM ai_analysis_history
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY generated_at DESC
+      `,
+    ).all(...params) as Array<Record<string, unknown>>;
+
+    return rows.map(parseAnalysisRow);
+  }
+
   return {
     dbPath,
     getPortfolioByUserId,
     savePortfolioByUserId,
+    saveAiAnalysis,
+    listAiAnalysisByUserId,
     rawInsert,
     close,
   };
@@ -108,4 +224,12 @@ export function getPortfolioByUserId(userId: string): StoredPayload {
 
 export function savePortfolioByUserId(userId: string, payload: StoredPayload) {
   portfolioStore.savePortfolioByUserId(userId, payload);
+}
+
+export function saveAiAnalysis(record: SaveAiAnalysisInput) {
+  portfolioStore.saveAiAnalysis(record);
+}
+
+export function listAiAnalysisByUserId(userId: string, filters: ListAiAnalysisFilters = {}) {
+  return portfolioStore.listAiAnalysisByUserId(userId, filters);
 }

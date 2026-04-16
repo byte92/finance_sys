@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Upload, Download, Trash2, Sparkles } from 'lucide-react'
+import { Check, Loader2, Upload, Download, Trash2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useStockStore } from '@/store/useStockStore'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { AiAnalysisLanguage, ExportData, Market } from '@/types'
+import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
@@ -26,7 +26,10 @@ export default function SettingsContent({
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
   const [aiConfig, setAiConfig] = useState(config.aiConfig)
   const [error, setError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [testingModel, setTestingModel] = useState(false)
+  const [testMessage, setTestMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -34,6 +37,8 @@ export default function SettingsContent({
     setFeeConfigs(config.feeConfigs)
     setAiConfig(config.aiConfig)
     setError('')
+    setSuccessMessage('')
+    setTestMessage('')
   }, [config])
 
   const updateFeeField = (market: Market, field: FeeField, value: string) => {
@@ -56,6 +61,8 @@ export default function SettingsContent({
         feeConfigs,
         aiConfig,
       })
+      setSuccessMessage('设置已成功保存到本地 SQLite')
+      setTimeout(() => setSuccessMessage(''), 2500)
       onSaved?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存配置失败')
@@ -101,6 +108,26 @@ export default function SettingsContent({
     }
     clearAll()
     onSaved?.()
+  }
+
+  const handleTestModel = async () => {
+    setTestingModel(true)
+    setError('')
+    setTestMessage('')
+    try {
+      const res = await fetch('/api/ai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiConfig }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? '模型连通测试失败')
+      setTestMessage(`连接成功：${data?.result?.provider ?? aiConfig.provider} / ${data?.result?.model ?? aiConfig.model}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '模型连通测试失败')
+    } finally {
+      setTestingModel(false)
+    }
   }
 
   return (
@@ -153,21 +180,29 @@ export default function SettingsContent({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-provider">Provider</Label>
-              <Input
+              <select
                 id="ai-provider"
-                placeholder="openai-compatible"
                 value={aiConfig.provider}
-                onChange={(e) => setAiConfig((current) => ({ ...current, provider: e.target.value }))}
-              />
+                onChange={(e) => setAiConfig((current) => ({ ...current, provider: e.target.value as AiProvider }))}
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="openai-compatible">OpenAI Compatible</option>
+                <option value="anthropic-compatible">Anthropic Compatible</option>
+              </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ai-model">模型</Label>
-              <Input
-                id="ai-model"
-                placeholder="gpt-4.1-mini / deepseek-chat ..."
-                value={aiConfig.model}
-                onChange={(e) => setAiConfig((current) => ({ ...current, model: e.target.value }))}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="ai-model"
+                  placeholder="gpt-4.1-mini / claude / gemini ..."
+                  value={aiConfig.model}
+                  onChange={(e) => setAiConfig((current) => ({ ...current, model: e.target.value }))}
+                />
+                <Button type="button" variant="outline" onClick={handleTestModel} disabled={testingModel}>
+                  {testingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test'}
+                </Button>
+              </div>
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="ai-base-url">Base URL</Label>
@@ -240,6 +275,12 @@ export default function SettingsContent({
           <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
             API Key 当前按本地模式保存在你的 SQLite 配置中，仅本机使用。开源后请不要把含有真实密钥的备份文件提交到 Git。
           </div>
+
+          {testMessage && (
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+              {testMessage}
+            </div>
+          )}
         </div>
       </section>
 
@@ -350,9 +391,17 @@ export default function SettingsContent({
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
         )}
-        <Button type="button" onClick={handleSave} disabled={saving}>
-          {saving ? '保存中...' : '保存设置'}
-        </Button>
+        <div className="relative">
+          <Button type="button" onClick={handleSave} disabled={saving}>
+            {saving ? '保存中...' : '保存设置'}
+          </Button>
+          {successMessage && (
+            <div className="absolute right-0 top-full mt-2 w-max max-w-xs rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 shadow-lg">
+              <Check className="mr-1 inline h-3.5 w-3.5" />
+              {successMessage}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

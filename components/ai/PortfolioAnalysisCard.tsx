@@ -8,7 +8,7 @@ import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisResult } from '@/types'
 
 export default function PortfolioAnalysisCard({ compact = false }: { compact?: boolean }) {
-  const { stocks, config } = useStockStore()
+  const { stocks, config, userId } = useStockStore()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,6 +23,7 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId,
           stocks,
           aiConfig: config.aiConfig,
           forceRefresh,

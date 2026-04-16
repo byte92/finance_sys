@@ -3,8 +3,10 @@ import { calcStockSummary } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
 import type {
+  AiAnalysisHistoryRecord,
   AiAnalysisResult,
   AiConfig,
+  AiConfidence,
   AiNewsDriver,
   AiProbabilityScenario,
   AiTechnicalSignal,
@@ -76,6 +78,14 @@ function validateAiConfig(config: AiConfig) {
   if (!config.baseUrl.trim()) throw new Error('请先配置 AI Base URL')
   if (!config.model.trim()) throw new Error('请先配置 AI 模型')
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
+}
+
+function ensureApiBase(baseUrl: string, mode: 'openai' | 'anthropic') {
+  const normalized = baseUrl.replace(/\/$/, '')
+  if (mode === 'openai') {
+    return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
+  }
+  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
 async function fetchDailyCandles(symbol: string, market: Market): Promise<CandlePoint[]> {
@@ -293,7 +303,7 @@ function extractJsonBlock(content: string) {
 }
 
 async function callOpenAiCompatible(config: AiConfig, systemPrompt: string, userPrompt: string) {
-  const baseUrl = config.baseUrl.replace(/\/$/, '')
+  const baseUrl = ensureApiBase(config.baseUrl, 'openai')
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -323,6 +333,55 @@ async function callOpenAiCompatible(config: AiConfig, systemPrompt: string, user
     throw new Error('LLM 未返回有效内容')
   }
   return content
+}
+
+async function callAnthropicCompatible(config: AiConfig, systemPrompt: string, userPrompt: string) {
+  const baseUrl = ensureApiBase(config.baseUrl, 'anthropic')
+  const res = await fetch(`${baseUrl}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.model,
+      system: systemPrompt,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      messages: [
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
+  }
+
+  const payload = await res.json()
+  const contentBlocks = payload?.content
+  if (!Array.isArray(contentBlocks)) {
+    throw new Error('Anthropic 响应格式无效')
+  }
+  const text = contentBlocks
+    .map((block) => (block?.type === 'text' ? block.text : ''))
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+
+  if (!text) {
+    throw new Error('LLM 未返回有效内容')
+  }
+  return text
+}
+
+async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: string) {
+  if (config.provider === 'anthropic-compatible') {
+    return callAnthropicCompatible(config, systemPrompt, userPrompt)
+  }
+  return callOpenAiCompatible(config, systemPrompt, userPrompt)
 }
 
 function portfolioPrompt(context: PortfolioAnalysisContext, language: string) {
@@ -410,7 +469,7 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
 
   const context = buildPortfolioContext(stocks, quotes)
   const { system, user } = portfolioPrompt(context, aiConfig.analysisLanguage)
-  const raw = await callOpenAiCompatible(aiConfig, system, user)
+  const raw = await callProvider(aiConfig, system, user)
   let parsed: Partial<AiAnalysisResult> | null = null
   try {
     parsed = JSON.parse(extractJsonBlock(raw)) as Partial<AiAnalysisResult>
@@ -450,7 +509,7 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
   const context: StockAnalysisContext = { stock, summary, quote, indicators, news }
 
   const { system, user } = stockPrompt(context, aiConfig.analysisLanguage)
-  const raw = await callOpenAiCompatible(aiConfig, system, user)
+  const raw = await callProvider(aiConfig, system, user)
   let parsed: Partial<AiAnalysisResult> | null = null
   try {
     parsed = JSON.parse(extractJsonBlock(raw)) as Partial<AiAnalysisResult>
@@ -472,4 +531,39 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
   })
   setCachedAnalysis(cacheKey, result, 600)
   return result
+}
+
+export async function testAiConnection(config: AiConfig) {
+  validateAiConfig(config)
+  const raw = await callProvider(
+    config,
+    '你是一个只会返回 JSON 的连接测试助手。',
+    JSON.stringify({
+      task: '请返回一个 JSON 对象，包含 ok=true、provider、model、message。',
+      provider: config.provider,
+      model: config.model,
+    }),
+  )
+  const parsed = JSON.parse(extractJsonBlock(raw)) as { ok?: boolean; provider?: string; model?: string; message?: string }
+  return {
+    ok: parsed.ok === true || parsed.message?.length !== 0,
+    provider: parsed.provider ?? config.provider,
+    model: parsed.model ?? config.model,
+    message: parsed.message ?? '连接成功',
+  }
+}
+
+export function buildAnalysisTags(
+  type: AiAnalysisHistoryRecord['type'],
+  confidence: AiConfidence,
+  stock?: Pick<Stock, 'market' | 'code' | 'name'>,
+) {
+  const tags = [
+    type === 'portfolio' ? '组合分析' : '个股分析',
+    confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
+  ]
+  if (stock) {
+    tags.push(stock.code, stock.market, stock.name)
+  }
+  return tags
 }

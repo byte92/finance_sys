@@ -8,7 +8,7 @@ import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisResult, Stock } from '@/types'
 
 export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
-  const { config } = useStockStore()
+  const { config, userId } = useStockStore()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,6 +21,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          userId,
           stock,
           aiConfig: config.aiConfig,
           forceRefresh,

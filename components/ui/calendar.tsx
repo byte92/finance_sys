@@ -23,30 +23,32 @@ function Calendar({
       classNames={{
         months: 'flex flex-col gap-4',
         month: 'space-y-4',
-        caption: 'relative flex items-center justify-center pt-1',
+        month_caption: 'relative flex items-center justify-center pt-1',
         caption_label: 'text-sm font-medium text-foreground',
         nav: 'flex items-center gap-1',
-        nav_button: cn(
+        button_previous: cn(
           buttonVariants({ variant: 'ghost', size: 'icon' }),
-          'h-8 w-8 rounded-md border border-border/70 bg-background p-0 text-muted-foreground hover:text-foreground'
+          'absolute left-1 h-8 w-8 rounded-md border border-border/70 bg-background p-0 text-muted-foreground hover:text-foreground'
         ),
-        nav_button_previous: 'absolute left-1',
-        nav_button_next: 'absolute right-1',
-        table: 'w-full border-collapse space-y-1',
-        head_row: 'flex',
-        head_cell: 'w-9 rounded-md text-[11px] font-medium text-muted-foreground',
-        row: 'mt-2 flex w-full',
-        cell: 'relative h-9 w-9 p-0 text-center text-sm',
-        day: cn(
+        button_next: cn(
           buttonVariants({ variant: 'ghost', size: 'icon' }),
-          'h-9 w-9 rounded-md p-0 font-normal text-foreground aria-selected:opacity-100'
+          'absolute right-1 h-8 w-8 rounded-md border border-border/70 bg-background p-0 text-muted-foreground hover:text-foreground'
         ),
-        day_selected:
+        month_grid: 'w-full border-collapse',
+        weekdays: 'flex',
+        weekday: 'w-9 rounded-md text-[11px] font-medium text-muted-foreground',
+        week: 'mt-2 flex w-full',
+        day: 'relative h-9 w-9 p-0 text-center text-sm',
+        day_button: cn(
+          buttonVariants({ variant: 'ghost', size: 'icon' }),
+          'h-9 w-9 rounded-md p-0 font-normal text-foreground'
+        ),
+        selected:
           'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground',
-        day_today: 'border border-primary/40 bg-primary/10 text-primary',
-        day_outside: 'text-muted-foreground/40',
-        day_disabled: 'text-muted-foreground/30 opacity-50',
-        day_hidden: 'invisible',
+        today: 'border border-primary/40 bg-primary/10 text-primary',
+        outside: 'text-muted-foreground/40',
+        disabled: 'text-muted-foreground/30 opacity-50',
+        hidden: 'invisible',
         ...classNames,
       }}
       components={{

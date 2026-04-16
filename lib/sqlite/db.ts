@@ -77,6 +77,31 @@ type ListAiAnalysisFilters = {
 };
 
 function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord {
+  const rawResult = JSON.parse(String(row.result_json)) as Partial<AiAnalysisResult>
+  const normalizedResult: AiAnalysisResult = {
+    generatedAt: rawResult.generatedAt ?? String(row.generated_at),
+    cached: rawResult.cached ?? false,
+    analysisStrength: rawResult.analysisStrength ?? 'medium',
+    summary: rawResult.summary ?? '暂无分析总结',
+    stance: rawResult.stance ?? '中性偏观察',
+    facts: rawResult.facts ?? rawResult.evidence ?? [],
+    inferences: rawResult.inferences ?? (rawResult.summary ? [rawResult.summary] : []),
+    actionPlan: rawResult.actionPlan ?? rawResult.actionableObservations ?? [],
+    invalidationSignals: rawResult.invalidationSignals ?? rawResult.risks ?? [],
+    timeHorizons: rawResult.timeHorizons ?? [],
+    probabilityAssessment: rawResult.probabilityAssessment ?? [],
+    technicalSignals: rawResult.technicalSignals ?? [],
+    newsDrivers: rawResult.newsDrivers ?? [],
+    keyLevels: rawResult.keyLevels ?? [],
+    positionAdvice: rawResult.positionAdvice,
+    portfolioRiskNotes: rawResult.portfolioRiskNotes,
+    actionableObservations: rawResult.actionableObservations ?? [],
+    risks: rawResult.risks ?? [],
+    confidence: rawResult.confidence ?? 'medium',
+    disclaimer: rawResult.disclaimer ?? '以上内容仅供参考，不构成投资建议。',
+    evidence: rawResult.evidence ?? [],
+  }
+
   return {
     id: String(row.id),
     userId: String(row.user_id),
@@ -87,7 +112,7 @@ function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord
     market: row.market ? (String(row.market) as Market) : null,
     confidence: String(row.confidence) as AiAnalysisHistoryRecord["confidence"],
     tags: JSON.parse(String(row.tags_json)) as string[],
-    result: JSON.parse(String(row.result_json)) as AiAnalysisResult,
+    result: normalizedResult,
     generatedAt: String(row.generated_at),
     createdAt: String(row.created_at),
   };

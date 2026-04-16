@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Filter, Tag, TrendingUp } from 'lucide-react'
+import { CalendarDays, Filter, Tag, Trash2, TrendingUp } from 'lucide-react'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
 
@@ -37,6 +39,7 @@ export default function AiHistoryView() {
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<AiAnalysisHistoryRecord | null>(null)
 
   useEffect(() => {
     if (!userId) return
@@ -62,6 +65,25 @@ export default function AiHistoryView() {
 
     void load()
   }, [confidenceFilter, dateFrom, dateTo, typeFilter, userId])
+
+  const handleDeleteRecord = async () => {
+    if (!deleteTarget || !userId) return
+    try {
+      const res = await fetch('/api/ai/history', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, id: deleteTarget.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error ?? '删除分析记录失败')
+      }
+      setRecords((current) => current.filter((record) => record.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除分析记录失败')
+    }
+  }
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>()
@@ -396,14 +418,25 @@ export default function AiHistoryView() {
           <div className="space-y-3">
             {visibleRecords.map((record) => (
               record.type === 'portfolio' ? (
-                <PortfolioRecordCard key={record.id} record={record} />
+                <PortfolioRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
               ) : (
-                <StockRecordCard key={record.id} record={record} />
+                <StockRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
               )
             ))}
           </div>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="确认删除分析记录"
+        description={deleteTarget ? `确定删除 ${deleteTarget.type === 'portfolio' ? '这条组合分析' : `${deleteTarget.stockName ?? '该个股'}分析`} 吗？删除后无法恢复。` : undefined}
+        confirmText="删除"
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+        onConfirm={handleDeleteRecord}
+      />
     </div>
   )
 }
@@ -477,7 +510,13 @@ function StaticTag({ children }: { children: React.ReactNode }) {
   )
 }
 
-function PortfolioRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
+function PortfolioRecordCard({
+  record,
+  onDelete,
+}: {
+  record: AiAnalysisHistoryRecord
+  onDelete: () => void
+}) {
   return (
     <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -495,10 +534,17 @@ function PortfolioRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
         </div>
 
         <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
+              <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
+              </div>
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -511,7 +557,13 @@ function PortfolioRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
   )
 }
 
-function StockRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
+function StockRecordCard({
+  record,
+  onDelete,
+}: {
+  record: AiAnalysisHistoryRecord
+  onDelete: () => void
+}) {
   return (
     <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -531,10 +583,17 @@ function StockRecordCard({ record }: { record: AiAnalysisHistoryRecord }) {
         </div>
 
         <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            {record.result.probabilityAssessment.length} 个场景
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
+              <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                {record.result.probabilityAssessment.length} 个场景
+              </div>
+            </div>
+            <Button type="button" variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>

@@ -205,12 +205,24 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return rows.map(parseAnalysisRow);
   }
 
+  function deleteAiAnalysisById(userId: string, id: string) {
+    const result = db.prepare(
+      `
+      DELETE FROM ai_analysis_history
+      WHERE user_id = ? AND id = ?
+      `,
+    ).run(userId, id);
+
+    return result.changes > 0;
+  }
+
   return {
     dbPath,
     getPortfolioByUserId,
     savePortfolioByUserId,
     saveAiAnalysis,
     listAiAnalysisByUserId,
+    deleteAiAnalysisById,
     rawInsert,
     close,
   };
@@ -232,4 +244,8 @@ export function saveAiAnalysis(record: SaveAiAnalysisInput) {
 
 export function listAiAnalysisByUserId(userId: string, filters: ListAiAnalysisFilters = {}) {
   return portfolioStore.listAiAnalysisByUserId(userId, filters);
+}
+
+export function deleteAiAnalysisById(userId: string, id: string) {
+  return portfolioStore.deleteAiAnalysisById(userId, id);
 }

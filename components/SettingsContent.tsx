@@ -17,6 +17,7 @@ const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
 type PromptField = keyof AiPromptTemplates
 type SectionId = 'basic' | 'ai' | 'preferences' | 'prompts'
+const SETTINGS_SECTIONS_STORAGE_KEY = 'stock-tracker-settings-sections'
 
 const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }> = [
   { key: 'baseSystem', label: '基础系统提示词', hint: '定义 AI 的角色、边界、客观性要求与输出纪律。' },
@@ -66,20 +67,69 @@ export default function SettingsContent({
     setTestMessage('')
   }, [config, displayCurrency])
 
-  const isDirty = useMemo(() => {
-    const currentConfigSnapshot = JSON.stringify({
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SETTINGS_SECTIONS_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Record<SectionId, boolean>>
+      setOpenSections((current) => ({
+        ...current,
+        ...parsed,
+      }))
+    } catch {
+      // ignore malformed local preference
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
+  }, [openSections])
+
+  const basicDirty = useMemo(() => {
+    return JSON.stringify({
       defaultMarket,
       feeConfigs,
-      aiConfig,
-    })
-    const savedConfigSnapshot = JSON.stringify({
+    }) !== JSON.stringify({
       defaultMarket: config.defaultMarket,
       feeConfigs: config.feeConfigs,
-      aiConfig: config.aiConfig,
     })
+  }, [config.defaultMarket, config.feeConfigs, defaultMarket, feeConfigs])
 
-    return currentConfigSnapshot !== savedConfigSnapshot || draftDisplayCurrency !== displayCurrency
-  }, [aiConfig, config.aiConfig, config.defaultMarket, config.feeConfigs, defaultMarket, displayCurrency, draftDisplayCurrency, feeConfigs])
+  const promptDirty = useMemo(() => {
+    return JSON.stringify(aiConfig.promptTemplates) !== JSON.stringify(config.aiConfig.promptTemplates)
+  }, [aiConfig.promptTemplates, config.aiConfig.promptTemplates])
+
+  const aiDirty = useMemo(() => {
+    return JSON.stringify({
+      enabled: aiConfig.enabled,
+      provider: aiConfig.provider,
+      baseUrl: aiConfig.baseUrl,
+      model: aiConfig.model,
+      apiKey: aiConfig.apiKey,
+      temperature: aiConfig.temperature,
+      maxTokens: aiConfig.maxTokens,
+      newsEnabled: aiConfig.newsEnabled,
+      analysisLanguage: aiConfig.analysisLanguage,
+      defaultStrength: aiConfig.defaultStrength,
+    }) !== JSON.stringify({
+      enabled: config.aiConfig.enabled,
+      provider: config.aiConfig.provider,
+      baseUrl: config.aiConfig.baseUrl,
+      model: config.aiConfig.model,
+      apiKey: config.aiConfig.apiKey,
+      temperature: config.aiConfig.temperature,
+      maxTokens: config.aiConfig.maxTokens,
+      newsEnabled: config.aiConfig.newsEnabled,
+      analysisLanguage: config.aiConfig.analysisLanguage,
+      defaultStrength: config.aiConfig.defaultStrength,
+    })
+  }, [aiConfig, config.aiConfig])
+
+  const preferencesDirty = draftDisplayCurrency !== displayCurrency
+
+  const isDirty = useMemo(() => {
+    return basicDirty || aiDirty || promptDirty || preferencesDirty
+  }, [aiDirty, basicDirty, preferencesDirty, promptDirty])
 
   const updateFeeField = (market: Market, field: FeeField, value: string) => {
     const numericValue = Number(value)
@@ -197,12 +247,14 @@ export default function SettingsContent({
     title,
     description,
     content,
+    dirty = false,
   }: {
     id: SectionId
     icon: ReactNode
     title: string
     description: string
     content: ReactNode
+    dirty?: boolean
   }) => (
     <Card className="border-border">
       <button
@@ -212,7 +264,14 @@ export default function SettingsContent({
       >
         <div className="mt-0.5 text-primary">{icon}</div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground">{title}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium text-foreground">{title}</div>
+            {dirty && (
+              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                未保存
+              </span>
+            )}
+          </div>
           <div className="mt-1 text-xs text-muted-foreground">{description}</div>
         </div>
         <div className="pt-0.5 text-muted-foreground">
@@ -234,6 +293,7 @@ export default function SettingsContent({
         icon: <Settings2 className="h-4 w-4" />,
         title: '基础设置',
         description: '管理默认市场和各市场手续费规则。',
+        dirty: basicDirty,
         content: (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -331,6 +391,7 @@ export default function SettingsContent({
         icon: <Sparkles className="h-4 w-4" />,
         title: 'AI 设置',
         description: '管理 provider、模型、密钥和默认分析强度。',
+        dirty: aiDirty,
         content: (
           <div className="rounded-lg border border-border p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -466,6 +527,7 @@ export default function SettingsContent({
         icon: <SlidersHorizontal className="h-4 w-4" />,
         title: '偏好设置',
         description: '管理显示货币等页面展示偏好。',
+        dirty: preferencesDirty,
         content: (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-1.5 max-w-48">
@@ -493,6 +555,7 @@ export default function SettingsContent({
         icon: <FilePenLine className="h-4 w-4" />,
         title: '提示词设置',
         description: '按模块编辑基础提示词、分析类型提示词和强度策略提示词。',
+        dirty: promptDirty,
         content: (
           <div className="space-y-4">
             <div className="text-xs text-muted-foreground">

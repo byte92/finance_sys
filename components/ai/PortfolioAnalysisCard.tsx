@@ -118,12 +118,7 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                      <span>AI 总结</span>
-                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] tracking-normal text-primary">
-                        {formatStrength(result.analysisStrength)}
-                      </span>
-                    </div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 总结</div>
                     <div className="mt-2 text-base font-medium text-foreground">{result.summary}</div>
                   </div>
                   <div className="text-right shrink-0">
@@ -181,10 +176,4 @@ function formatConfidence(confidence: AiAnalysisResult['confidence']) {
   if (confidence === 'high') return '较高'
   if (confidence === 'low') return '偏低'
   return '中等'
-}
-
-function formatStrength(strength: AiAnalysisResult['analysisStrength']) {
-  if (strength === 'high') return '高强度'
-  if (strength === 'weak') return '弱强度'
-  return '中等强度'
 }

@@ -542,7 +542,7 @@ export default function SettingsContent({
         content: (
           <div className="space-y-4">
             <div className="text-xs text-muted-foreground">
-              最终调用时会按“基础提示词 + 分析类型提示词”拼装，并默认以最高强度模式生成分析。这里改动后，后续 AI 分析会直接使用你的版本。
+              最终调用时会按“基础提示词 + 分析类型提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
             </div>
 
             <div className="space-y-4">

@@ -72,12 +72,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         {result && (
           <>
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                <span>AI 结论</span>
-                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] tracking-normal text-primary">
-                  {formatStrength(result.analysisStrength)}
-                </span>
-              </div>
+              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 结论</div>
               <div className="mt-2 text-base font-medium text-foreground">{result.summary}</div>
               <div className="mt-3 text-xs text-muted-foreground">
                 生成于 {new Date(result.generatedAt).toLocaleString('zh-CN')} {result.cached ? '· 命中缓存' : ''}
@@ -106,12 +101,6 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       </CardContent>
     </Card>
   )
-}
-
-function formatStrength(strength: AiAnalysisResult['analysisStrength']) {
-  if (strength === 'high') return '高强度'
-  if (strength === 'weak') return '弱强度'
-  return '中等强度'
 }
 
 function Block({ title, items }: { title: string; items: string[] }) {

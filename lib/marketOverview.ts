@@ -555,14 +555,13 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
 export function buildAnalysisTags(
   type: AiAnalysisHistoryRecord['type'],
   confidence: AiConfidence,
-  strength: AiAnalysisResult['analysisStrength'],
+  _strength: AiAnalysisResult['analysisStrength'],
   stock?: { market: Market; code: string; name: string },
 ) {
   const typeLabel = type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析'
   const tags = [
     typeLabel,
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
-    strength === 'high' ? '高强度' : strength === 'weak' ? '弱强度' : '中强度',
   ]
   if (stock) {
     tags.push(stock.code, stock.market, stock.name)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Sparkles, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,9 +11,42 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
   const { stocks, config, userId } = useStockStore()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const topRisks = useMemo(() => result?.portfolioRiskNotes?.slice(0, compact ? 2 : 4) ?? [], [compact, result])
+
+  useEffect(() => {
+    if (!userId) return
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    const loadLatestTodayResult = async () => {
+      setBootstrapping(true)
+      try {
+        const params = new URLSearchParams({
+          userId,
+          type: 'portfolio',
+          dateFrom: today,
+          dateTo: today,
+        })
+        const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data?.error ?? '加载今日组合分析失败')
+        }
+        const records = Array.isArray(data?.records) ? data.records : []
+        const latest = records[0] as { result?: AiAnalysisResult } | undefined
+        setResult(latest?.result ?? null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '加载今日组合分析失败')
+      } finally {
+        setBootstrapping(false)
+      }
+    }
+
+    void loadLatestTodayResult()
+  }, [userId])
 
   const runAnalysis = async (forceRefresh = false) => {
     setLoading(true)
@@ -74,7 +107,9 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
 
           {!result && !error && stocks.length > 0 && (
             <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-              点击“开始分析”后，系统会结合你的持仓结构、实时行情、新闻和技术指标生成结构化投研摘要。
+              {bootstrapping
+                ? '正在加载今天的组合分析结果...'
+                : '点击“开始分析”后，系统会结合你的持仓结构、实时行情、新闻和技术指标生成结构化投研摘要。'}
             </div>
           )}
 

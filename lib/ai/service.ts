@@ -345,8 +345,19 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
+    analysisStrength: parsed?.analysisStrength ?? 'medium',
     summary,
     stance: parsed?.stance?.trim() || '中性偏观察',
+    facts: parsed?.facts?.length ? parsed.facts : fallback.evidence,
+    inferences: parsed?.inferences?.length ? parsed.inferences : [summary],
+    actionPlan: parsed?.actionPlan?.length
+      ? parsed.actionPlan
+      : fallback.mode === 'stock'
+        ? ['优先结合你的成本区与仓位节奏，不要仅凭单一信号贸然加仓。']
+        : ['优先从仓位集中度和回撤控制角度处理组合风险，而不是只看单票盈亏。'],
+    invalidationSignals: parsed?.invalidationSignals?.length
+      ? parsed.invalidationSignals
+      : ['若关键支撑/阻力被有效突破，或新闻与量价结构明显反向，应重新评估当前结论。'],
     timeHorizons: parsed?.timeHorizons?.length ? parsed.timeHorizons : [
       { horizon: 'short', summary: '未来 1-5 个交易日以观察关键价位与量能变化为主。', scenarios: probabilityAssessment },
       { horizon: 'medium', summary: '未来 1-4 周重点观察趋势延续与新闻兑现情况。', scenarios: probabilityAssessment },
@@ -459,8 +470,13 @@ function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
     config,
     config.promptTemplates.portfolioAnalysis,
     {
+      analysisStrength: 'high|medium|weak',
       summary: 'string',
       stance: 'string',
+      facts: ['string'],
+      inferences: ['string'],
+      actionPlan: ['string'],
+      invalidationSignals: ['string'],
       timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
       probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
       portfolioRiskNotes: ['string'],
@@ -480,8 +496,13 @@ function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
     config,
     config.promptTemplates.stockAnalysis,
     {
+      analysisStrength: 'high|medium|weak',
       summary: 'string',
       stance: 'string',
+      facts: ['string'],
+      inferences: ['string'],
+      actionPlan: ['string'],
+      invalidationSignals: ['string'],
       timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
       probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
       technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
@@ -616,11 +637,13 @@ export async function testAiConnection(config: AiConfig) {
 export function buildAnalysisTags(
   type: AiAnalysisHistoryRecord['type'],
   confidence: AiConfidence,
+  strength: AiAnalysisResult['analysisStrength'],
   stock?: Pick<Stock, 'market' | 'code' | 'name'>,
 ) {
   const tags = [
     type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析',
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
+    strength === 'high' ? '高强度' : strength === 'weak' ? '弱强度' : '中强度',
   ]
   if (stock) {
     tags.push(stock.code, stock.market, stock.name)

@@ -226,8 +226,13 @@ export interface AiNewsDriver {
 export interface AiAnalysisResult {
   generatedAt: string
   cached: boolean
+  analysisStrength: AiAnalysisStrength
   summary: string
   stance: string
+  facts: string[]
+  inferences: string[]
+  actionPlan: string[]
+  invalidationSignals: string[]
   timeHorizons: AiTimeHorizonAssessment[]
   probabilityAssessment: AiProbabilityScenario[]
   technicalSignals: AiTechnicalSignal[]

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       stockName: null,
       market: null,
       confidence: result.confidence,
-      tags: buildAnalysisTags('portfolio', result.confidence),
+      tags: buildAnalysisTags('portfolio', result.confidence, result.analysisStrength),
       generatedAt: result.generatedAt,
       result,
     })

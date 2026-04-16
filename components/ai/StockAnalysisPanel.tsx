@@ -72,7 +72,12 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         {result && (
           <>
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 结论</div>
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                <span>AI 结论</span>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] tracking-normal text-primary">
+                  {formatStrength(result.analysisStrength)}
+                </span>
+              </div>
               <div className="mt-2 text-base font-medium text-foreground">{result.summary}</div>
               <div className="mt-3 text-xs text-muted-foreground">
                 生成于 {new Date(result.generatedAt).toLocaleString('zh-CN')} {result.cached ? '· 命中缓存' : ''}
@@ -80,6 +85,10 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
             </div>
 
             <div className="grid gap-3 lg:grid-cols-2">
+              <Block title="事实依据" items={result.facts} />
+              <Block title="核心判断" items={result.inferences} />
+              <Block title="行动建议" items={result.actionPlan} />
+              <Block title="失效信号" items={result.invalidationSignals} />
               <Block title="概率分析" items={result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%：${item.rationale}`)} />
               <Block title="技术信号" items={result.technicalSignals.map((item) => `${item.name}：${item.value}，${item.interpretation}`)} />
               <Block title="关键价位" items={result.keyLevels} />
@@ -97,6 +106,12 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       </CardContent>
     </Card>
   )
+}
+
+function formatStrength(strength: AiAnalysisResult['analysisStrength']) {
+  if (strength === 'high') return '高强度'
+  if (strength === 'weak') return '弱强度'
+  return '中等强度'
 }
 
 function Block({ title, items }: { title: string; items: string[] }) {

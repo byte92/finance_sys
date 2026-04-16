@@ -234,8 +234,15 @@ function normalizeMarketAnalysisResult(
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
+    analysisStrength: parsed?.analysisStrength ?? 'medium',
     summary,
     stance: parsed?.stance?.trim() || '中性偏观察',
+    facts: parsed?.facts?.length ? parsed.facts : fallback.evidence,
+    inferences: parsed?.inferences?.length ? parsed.inferences : [summary],
+    actionPlan: parsed?.actionPlan?.length ? parsed.actionPlan : ['优先把大盘分析作为节奏参考，再结合个股和仓位做决策。'],
+    invalidationSignals: parsed?.invalidationSignals?.length
+      ? parsed.invalidationSignals
+      : ['若三地指数强弱排序明显反转，或宏观新闻快速转向，应重新评估当前大盘判断。'],
     timeHorizons: parsed?.timeHorizons?.length ? parsed.timeHorizons : [
       { horizon: 'short', summary: '未来 1-5 个交易日重点观察指数强弱分化与量价配合。', scenarios: probabilityAssessment },
       { horizon: 'medium', summary: '未来 1-4 周重点观察趋势延续、政策预期和新闻兑现。', scenarios: probabilityAssessment },
@@ -296,8 +303,13 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
       ],
       context,
       outputContract: {
+        analysisStrength: 'high|medium|weak',
         summary: 'string',
         stance: 'string',
+        facts: ['string'],
+        inferences: ['string'],
+        actionPlan: ['string'],
+        invalidationSignals: ['string'],
         timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
         probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
         technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
@@ -548,12 +560,14 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
 export function buildAnalysisTags(
   type: AiAnalysisHistoryRecord['type'],
   confidence: AiConfidence,
+  strength: AiAnalysisResult['analysisStrength'],
   stock?: { market: Market; code: string; name: string },
 ) {
   const typeLabel = type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析'
   const tags = [
     typeLabel,
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
+    strength === 'high' ? '高强度' : strength === 'weak' ? '弱强度' : '中强度',
   ]
   if (stock) {
     tags.push(stock.code, stock.market, stock.name)

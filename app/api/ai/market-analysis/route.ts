@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       userId: body.userId,
       type: 'market',
       confidence: result.confidence,
-      tags: buildAnalysisTags('market', result.confidence),
+      tags: buildAnalysisTags('market', result.confidence, result.analysisStrength),
       result,
       generatedAt: result.generatedAt,
       stockId: null,

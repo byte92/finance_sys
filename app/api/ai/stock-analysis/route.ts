@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       stockName: body.stock.name,
       market: body.stock.market,
       confidence: result.confidence,
-      tags: buildAnalysisTags('stock', result.confidence, body.stock),
+      tags: buildAnalysisTags('stock', result.confidence, result.analysisStrength, body.stock),
       generatedAt: result.generatedAt,
       result,
     })

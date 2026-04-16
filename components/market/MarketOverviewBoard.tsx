@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,6 +13,8 @@ type MarketGroup = {
   upCount: number
   downCount: number
   flatCount: number
+  strongestIndex: MarketIndexSnapshot | null
+  weakestIndex: MarketIndexSnapshot | null
 }
 
 type MarketOverviewResponse = {
@@ -57,11 +59,6 @@ export default function MarketOverviewBoard() {
     void loadOverview()
   }, [])
 
-  const totalIndices = useMemo(
-    () => overview?.groups.reduce((sum, group) => sum + group.indices.length, 0) ?? 0,
-    [overview],
-  )
-
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -83,15 +80,15 @@ export default function MarketOverviewBoard() {
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="覆盖指数" value={`${totalIndices}`} detail={loading ? '正在刷新...' : '当前面板内全部指数'} />
-        <StatCard label="上涨指数" value={`${overview?.totalUpCount ?? 0}`} detail="今日收涨数量" />
-        <StatCard label="下跌指数" value={`${overview?.totalDownCount ?? 0}`} detail="今日收跌数量" />
-        <StatCard
-          label="最强 / 最弱"
-          value={overview ? `${overview.strongestIndex?.name ?? '--'} / ${overview.weakestIndex?.name ?? '--'}` : '--'}
-          detail={overview ? `${overview.strongestIndex?.changePercent.toFixed(2) ?? '--'}% / ${overview.weakestIndex?.changePercent.toFixed(2) ?? '--'}%` : '等待数据'}
-        />
+      <div className="grid gap-3 xl:grid-cols-3">
+        {overview?.groups.map((group) => (
+          <StatCard
+            key={group.region}
+            label={group.label}
+            value={`${group.upCount} / ${group.downCount} / ${group.flatCount}`}
+            detail={`上涨 / 下跌 / 平盘 · 最强 ${group.strongestIndex?.name ?? '--'} · 最弱 ${group.weakestIndex?.name ?? '--'}`}
+          />
+        ))}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -103,6 +100,12 @@ export default function MarketOverviewBoard() {
                   <div className="text-sm font-medium text-foreground">{group.label}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     上涨 {group.upCount} · 下跌 {group.downCount} · 平盘 {group.flatCount}
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    最强 {group.strongestIndex?.name ?? '--'} {group.strongestIndex ? formatSignedPercent(group.strongestIndex.changePercent) : ''}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    最弱 {group.weakestIndex?.name ?? '--'} {group.weakestIndex ? formatSignedPercent(group.weakestIndex.changePercent) : ''}
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground">

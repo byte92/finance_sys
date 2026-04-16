@@ -34,6 +34,8 @@ type MarketGroup = {
   upCount: number
   downCount: number
   flatCount: number
+  strongestIndex: MarketIndexSnapshot | null
+  weakestIndex: MarketIndexSnapshot | null
 }
 
 type MarketOverview = {
@@ -403,6 +405,12 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
       upCount: indices.filter((item) => item.change > 0).length,
       downCount: indices.filter((item) => item.change < 0).length,
       flatCount: indices.filter((item) => item.change === 0).length,
+      strongestIndex: indices.length > 0
+        ? [...indices].sort((left, right) => right.changePercent - left.changePercent)[0] ?? null
+        : null,
+      weakestIndex: indices.length > 0
+        ? [...indices].sort((left, right) => left.changePercent - right.changePercent)[0] ?? null
+        : null,
     }
   })
 

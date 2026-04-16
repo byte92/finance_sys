@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
 import type { AiAnalysisHistoryRecord, AiAnalysisResult, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
@@ -22,6 +22,10 @@ function normalizePayload(payload: Partial<StoredPayload> | null | undefined): S
       aiConfig: {
         ...DEFAULT_APP_CONFIG.aiConfig,
         ...(payload?.config?.aiConfig ?? {}),
+        promptTemplates: {
+          ...DEFAULT_AI_PROMPT_TEMPLATES,
+          ...(payload?.config?.aiConfig?.promptTemplates ?? {}),
+        },
       },
       currency: {
         ...DEFAULT_APP_CONFIG.currency,

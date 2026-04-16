@@ -121,6 +121,12 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
+function getStrengthPrompt(config: AiConfig) {
+  if (config.defaultStrength === 'high') return config.promptTemplates.highStrength
+  if (config.defaultStrength === 'weak') return config.promptTemplates.weakStrength
+  return config.promptTemplates.mediumStrength
+}
+
 function ensureApiBase(baseUrl: string) {
   const normalized = baseUrl.replace(/\/$/, '')
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
@@ -267,15 +273,27 @@ function toAiNewsDrivers(news: NewsItem[]): AiNewsDriver[] {
   }))
 }
 
-function marketPrompt(context: MarketAnalysisContext, language: string) {
+function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
   return {
-    system: `你是一名谨慎的全球市场观察助手。请基于提供的数据输出严格 JSON，不要输出 Markdown，不要编造未提供的事实。必须区分事实和推断，要给出概率分析，但不能承诺收益。输出语言使用 ${language}。`,
+    system: [
+      config.promptTemplates.baseSystem,
+      config.promptTemplates.marketAnalysis,
+      getStrengthPrompt(config),
+      `当前输出语言：${config.analysisLanguage}`,
+    ].join('\n\n'),
     user: JSON.stringify({
-      task: '请对当前 A 股、港股和美股大盘做短中期分析，结合指数涨跌结构、技术指标和近期新闻，输出结构化观察建议。',
+      task: '请对当前 A 股、港股和美股大盘做短中期分析，结合指数涨跌结构、技术指标和近期新闻，输出更有指导性的结构化观察建议。',
+      intensity: config.defaultStrength,
       horizons: {
         short: '1-5 个交易日',
         medium: '1-4 周',
       },
+      outputRules: [
+        '必须先判断市场强弱，再解释依据。',
+        '必须区分事实与推断。',
+        '必须给出概率分析，且概率总和为 100。',
+        '高强度模式下可以给更直接的节奏倾向，但不能承诺收益。',
+      ],
       context,
       outputContract: {
         summary: 'string',
@@ -501,7 +519,7 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
     : []
 
   const context = buildMarketAnalysisContext(indices, news)
-  const { system, user } = marketPrompt(context, aiConfig.analysisLanguage)
+  const { system, user } = marketPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
 
   let parsed: Partial<AiAnalysisResult> | null = null

@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
 import { getDeviceId } from "@/lib/device-id";
 import { generateId } from "@/lib/finance";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
@@ -49,6 +49,10 @@ function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
     aiConfig: {
       ...DEFAULT_APP_CONFIG.aiConfig,
       ...(config?.aiConfig ?? {}),
+      promptTemplates: {
+        ...DEFAULT_AI_PROMPT_TEMPLATES,
+        ...(config?.aiConfig?.promptTemplates ?? {}),
+      },
     },
     currency: {
       ...DEFAULT_APP_CONFIG.currency,
@@ -316,6 +320,10 @@ export const useStockStore = create<StockStore>()((set, get) => ({
       aiConfig: {
         ...get().config.aiConfig,
         ...(configPatch.aiConfig ?? {}),
+        promptTemplates: {
+          ...get().config.aiConfig.promptTemplates,
+          ...(configPatch.aiConfig?.promptTemplates ?? {}),
+        },
       },
       currency: {
         ...get().config.currency,

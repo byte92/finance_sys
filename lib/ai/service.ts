@@ -80,6 +80,40 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
+function getStrengthPrompt(config: AiConfig) {
+  if (config.defaultStrength === 'high') return config.promptTemplates.highStrength
+  if (config.defaultStrength === 'weak') return config.promptTemplates.weakStrength
+  return config.promptTemplates.mediumStrength
+}
+
+function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputContract: Record<string, unknown>, task: string, context: unknown) {
+  return {
+    system: [
+      config.promptTemplates.baseSystem,
+      analysisPrompt,
+      getStrengthPrompt(config),
+      `当前输出语言：${config.analysisLanguage}`,
+    ].join('\n\n'),
+    user: JSON.stringify({
+      task,
+      intensity: config.defaultStrength,
+      horizons: {
+        short: '1-5 个交易日',
+        medium: '1-4 周',
+      },
+      outputRules: [
+        '必须先得出结论，再给出证据依据。',
+        '必须把事实与推断分开表达。',
+        '必须给出概率分析，且概率总和为 100。',
+        '高强度模式下必须给明确倾向；弱强度模式下减少指令感。',
+        '如果证据不足，请明确写出信息不足和需要继续观察的信号。',
+      ],
+      context,
+      outputContract,
+    }),
+  }
+}
+
 function ensureApiBase(baseUrl: string, mode: 'openai' | 'anthropic') {
   const normalized = baseUrl.replace(/\/$/, '')
   if (mode === 'openai') {
@@ -90,35 +124,45 @@ function ensureApiBase(baseUrl: string, mode: 'openai' | 'anthropic') {
 
 async function fetchDailyCandles(symbol: string, market: Market): Promise<CandlePoint[]> {
   if (market === 'US') {
-    const std = `${symbol.trim().toLowerCase()}.us`
-    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(std)}&i=d`
-    const res = await fetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' })
+    const fromDate = getUsFromDate()
+    const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol.toUpperCase())}/historical?assetclass=stocks&limit=240&fromdate=${fromDate}`
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Origin': 'https://www.nasdaq.com',
+        'Referer': 'https://www.nasdaq.com/',
+        'User-Agent': 'Mozilla/5.0',
+      },
+      signal: AbortSignal.timeout(7000),
+      cache: 'no-store',
+    })
     if (!res.ok) return []
-    const text = await res.text()
-    const lines = text.trim().split('\n').slice(1)
-    return lines
-      .map((line) => {
-        const [date, openS, highS, lowS, closeS, volS] = line.split(',')
-        const open = Number(openS)
-        const high = Number(highS)
-        const low = Number(lowS)
-        const close = Number(closeS)
-        const volume = Number(volS)
+    const payload = await res.json()
+    const rows = payload?.data?.tradesTable?.rows
+    if (!Array.isArray(rows)) return []
+
+    return rows
+      .map((row: Record<string, string>) => {
+        const date = parseNasdaqHistoricalDate(row.date)
+        const open = parseCurrencyNumber(row.open)
+        const high = parseCurrencyNumber(row.high)
+        const low = parseCurrencyNumber(row.low)
+        const close = parseCurrencyNumber(row.close)
+        const volume = parseLooseInteger(row.volume)
         if (!date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
           return null
         }
         return {
-          date: date.slice(0, 10),
+          date,
           time: Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000),
           open,
           high,
           low,
           close,
-          volume: Number.isFinite(volume) ? volume : 0,
+          volume,
         }
       })
       .filter((item): item is CandlePoint => item !== null)
-      .slice(-240)
   }
 
   const code = toTencentCode(symbol, market)
@@ -149,6 +193,32 @@ async function fetchDailyCandles(symbol: string, market: Market): Promise<Candle
       }
     })
     .filter((item): item is CandlePoint => item !== null)
+}
+
+function getUsFromDate() {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() - 1)
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function parseNasdaqHistoricalDate(value: string | undefined): string | null {
+  if (!value) return null
+  const [month, day, year] = value.split('/')
+  if (!month || !day || !year) return null
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
+function parseCurrencyNumber(value: string | undefined) {
+  if (!value) return Number.NaN
+  return Number(value.replace(/[$,]/g, '').trim())
+}
+
+function parseLooseInteger(value: string | undefined) {
+  if (!value) return 0
+  const parsed = Number(value.replace(/,/g, '').trim())
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function toTencentCode(code: string, market: Market) {
@@ -384,59 +454,49 @@ async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: 
   return callOpenAiCompatible(config, systemPrompt, userPrompt)
 }
 
-function portfolioPrompt(context: PortfolioAnalysisContext, language: string) {
-  return {
-    system: `你是一名谨慎的股票投研助手。请基于提供的数据输出严格 JSON，不要输出 Markdown，不要编造未提供的事实。必须区分“事实”和“推断”，不能承诺收益，不能使用绝对语气。输出语言使用 ${language}。`,
-    user: JSON.stringify({
-      task: '请对当前组合做短中期分析，重点关注仓位集中度、已实现/未实现盈亏结构、可能的风险暴露，并给出观察建议。',
-      horizons: {
-        short: '1-5 个交易日',
-        medium: '1-4 周',
-      },
-      context,
-      outputContract: {
-        summary: 'string',
-        stance: 'string',
-        timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
-        probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
-        portfolioRiskNotes: ['string'],
-        actionableObservations: ['string'],
-        risks: ['string'],
-        confidence: 'low|medium|high',
-        evidence: ['string'],
-        disclaimer: 'string',
-      },
-    }),
-  }
+function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
+  return buildPromptEnvelope(
+    config,
+    config.promptTemplates.portfolioAnalysis,
+    {
+      summary: 'string',
+      stance: 'string',
+      timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
+      probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
+      portfolioRiskNotes: ['string'],
+      actionableObservations: ['string'],
+      risks: ['string'],
+      confidence: 'low|medium|high',
+      evidence: ['string'],
+      disclaimer: 'string',
+    },
+    '请对当前组合做短中期分析，重点关注仓位集中度、已实现/未实现盈亏结构、主要风险暴露，并给出具有指导意义的组合结论。',
+    context,
+  )
 }
 
-function stockPrompt(context: StockAnalysisContext, language: string) {
-  return {
-    system: `你是一名谨慎的股票投研助手。请基于提供的数据输出严格 JSON，不要输出 Markdown，不要编造未提供的事实。请明确区分事实、信号与推断，必须给出概率分析，但不能承诺收益。输出语言使用 ${language}。`,
-    user: JSON.stringify({
-      task: '请对这只股票从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动给出观察建议。',
-      horizons: {
-        short: '1-5 个交易日',
-        medium: '1-4 周',
-      },
-      context,
-      outputContract: {
-        summary: 'string',
-        stance: 'string',
-        timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
-        probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
-        technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
-        newsDrivers: [{ headline: 'string', source: 'string', publishedAt: 'string', sentiment: 'positive|neutral|negative', impact: 'string', url: 'string' }],
-        keyLevels: ['string'],
-        positionAdvice: ['string'],
-        actionableObservations: ['string'],
-        risks: ['string'],
-        confidence: 'low|medium|high',
-        evidence: ['string'],
-        disclaimer: 'string',
-      },
-    }),
-  }
+function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
+  return buildPromptEnvelope(
+    config,
+    config.promptTemplates.stockAnalysis,
+    {
+      summary: 'string',
+      stance: 'string',
+      timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
+      probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
+      technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
+      newsDrivers: [{ headline: 'string', source: 'string', publishedAt: 'string', sentiment: 'positive|neutral|negative', impact: 'string', url: 'string' }],
+      keyLevels: ['string'],
+      positionAdvice: ['string'],
+      actionableObservations: ['string'],
+      risks: ['string'],
+      confidence: 'low|medium|high',
+      evidence: ['string'],
+      disclaimer: 'string',
+    },
+    '请对这只股票从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出尽量真实直接的判断和建议。',
+    context,
+  )
 }
 
 function toAiNewsDrivers(news: NewsItem[]): AiNewsDriver[] {
@@ -468,7 +528,7 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
   }))
 
   const context = buildPortfolioContext(stocks, quotes)
-  const { system, user } = portfolioPrompt(context, aiConfig.analysisLanguage)
+  const { system, user } = portfolioPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
   let parsed: Partial<AiAnalysisResult> | null = null
   try {
@@ -508,7 +568,7 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
   const news = aiConfig.newsEnabled ? await fetchStockNews(stock.code, stock.name, stock.market) : []
   const context: StockAnalysisContext = { stock, summary, quote, indicators, news }
 
-  const { system, user } = stockPrompt(context, aiConfig.analysisLanguage)
+  const { system, user } = stockPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
   let parsed: Partial<AiAnalysisResult> | null = null
   try {

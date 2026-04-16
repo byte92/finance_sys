@@ -64,7 +64,18 @@ export type AiAnalysisLanguage = 'zh-CN' | 'en-US'
 export type AiProvider = 'openai-compatible' | 'anthropic-compatible'
 export type AiAnalysisType = 'portfolio' | 'stock' | 'market'
 export type AiConfidence = 'low' | 'medium' | 'high'
+export type AiAnalysisStrength = 'high' | 'medium' | 'weak'
 export type MarketRegion = 'A' | 'HK' | 'US'
+
+export interface AiPromptTemplates {
+  baseSystem: string
+  portfolioAnalysis: string
+  stockAnalysis: string
+  marketAnalysis: string
+  highStrength: string
+  mediumStrength: string
+  weakStrength: string
+}
 
 export interface AiConfig {
   enabled: boolean
@@ -76,6 +87,8 @@ export interface AiConfig {
   maxTokens: number
   newsEnabled: boolean
   analysisLanguage: AiAnalysisLanguage
+  defaultStrength: AiAnalysisStrength
+  promptTemplates: AiPromptTemplates
 }
 
 // 应用配置

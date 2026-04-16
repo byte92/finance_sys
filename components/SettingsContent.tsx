@@ -6,13 +6,25 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
+import type { AiAnalysisLanguage, AiAnalysisStrength, AiPromptTemplates, AiProvider, ExportData, Market } from '@/types'
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
+type PromptField = keyof AiPromptTemplates
+
+const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }> = [
+  { key: 'baseSystem', label: '基础系统提示词', hint: '定义 AI 的角色、边界、客观性要求与输出纪律。' },
+  { key: 'portfolioAnalysis', label: '组合分析提示词', hint: '控制组合分析如何聚焦仓位结构、风险暴露和组合建议。' },
+  { key: 'stockAnalysis', label: '个股分析提示词', hint: '控制个股分析如何结合成本、技术指标和新闻输出判断。' },
+  { key: 'marketAnalysis', label: '大盘分析提示词', hint: '控制 A 股、港股、美股整体节奏和风险偏好分析。' },
+  { key: 'highStrength', label: '高强度策略提示词', hint: '更直接给出明确倾向和操作取向。' },
+  { key: 'mediumStrength', label: '中等强度策略提示词', hint: '给出方向和观察点，但不过度激进。' },
+  { key: 'weakStrength', label: '弱强度策略提示词', hint: '偏事实整理和参考信息，降低动作指令感。' },
+]
 
 export default function SettingsContent({
   onSaved,
@@ -51,6 +63,16 @@ export default function SettingsContent({
       [market]: {
         ...current[market],
         [field]: Number.isFinite(numericValue) ? numericValue : 0,
+      },
+    }))
+  }
+
+  const updatePromptField = (field: PromptField, value: string) => {
+    setAiConfig((current) => ({
+      ...current,
+      promptTemplates: {
+        ...current.promptTemplates,
+        [field]: value,
       },
     }))
   }
@@ -286,6 +308,18 @@ export default function SettingsContent({
               </Select>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="ai-strength">默认分析强度</Label>
+              <Select
+                id="ai-strength"
+                value={aiConfig.defaultStrength}
+                onChange={(e) => setAiConfig((current) => ({ ...current, defaultStrength: e.target.value as AiAnalysisStrength }))}
+              >
+                <option value="high">高强度</option>
+                <option value="medium">中等强度</option>
+                <option value="weak">弱强度</option>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="ai-language">分析语言</Label>
               <Select
                 id="ai-language"
@@ -307,6 +341,31 @@ export default function SettingsContent({
               {testMessage}
             </div>
           )}
+        </div>
+
+        <div className="rounded-lg border border-border p-4 space-y-4">
+          <div>
+            <div className="text-sm font-medium text-foreground">提示词配置</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              最终调用时会按“基础提示词 + 分析类型提示词 + 分析强度提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {PROMPT_FIELD_META.map((item) => (
+              <div key={item.key} className="space-y-1.5">
+                <Label htmlFor={`prompt-${item.key}`}>{item.label}</Label>
+                <div className="text-[11px] text-muted-foreground">{item.hint}</div>
+                <Textarea
+                  id={`prompt-${item.key}`}
+                  value={aiConfig.promptTemplates[item.key]}
+                  onChange={(e) => updatePromptField(item.key, e.target.value)}
+                  rows={item.key === 'baseSystem' ? 6 : 5}
+                  className="min-h-[120px] font-mono text-xs"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 

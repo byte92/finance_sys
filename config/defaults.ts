@@ -71,26 +71,15 @@ export const DEFAULT_AI_PROMPT_TEMPLATES: AiPromptTemplates = {
     '2. 指出哪个市场更强、哪个市场更弱，以及这种分化对交易节奏意味着什么。',
     '3. 建议必须偏节奏判断，例如风险偏好抬升、适合防守、等待确认，而不是泛泛而谈。',
   ].join('\n'),
-  highStrength: [
-    '这是高强度模式。',
-    '你必须给出明确、直接、有取向的指导意见。',
-    '请清晰回答“现在更应该做什么、不该做什么”。',
-    '如果证据不足以支持积极动作，也要明确写“当前不建议操作”或“当前不适合追高/抄底”。',
-    '可以使用更直接的表述，例如“更偏向继续持有”“更偏向减仓控制风险”，但仍不能使用绝对判断。',
-  ].join('\n'),
-  mediumStrength: [
-    '这是中等强度模式。',
-    '你需要给出相对明确的方向，但不需要把建议写得过于激进。',
-    '优先输出“当前倾向 + 观察重点 + 条件式动作”。',
-    '如果结论分化，请把最重要的观察点写清楚。',
-  ].join('\n'),
-  weakStrength: [
-    '这是弱强度模式。',
-    '请优先做事实整理和信号归纳，减少强操作倾向。',
-    '可以给参考方向，但不要使用强指令式建议。',
-    '重点是帮助用户快速理解数据、技术面和新闻面正在发生什么。',
-  ].join('\n'),
 }
+
+export const AI_MAX_STRENGTH_PROMPT = [
+  '默认按最高强度模式输出。',
+  '你必须给出明确、直接、有取向的指导意见。',
+  '请清晰回答“现在更应该做什么、不该做什么”。',
+  '如果证据不足以支持积极动作，也要明确写“当前不建议操作”或“当前不适合追高/抄底”。',
+  '可以使用更直接的表述，例如“更偏向继续持有”“更偏向减仓控制风险”，但仍不能使用绝对判断。',
+].join('\n')
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
   enabled: false,
@@ -102,7 +91,6 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   maxTokens: 1400,
   newsEnabled: true,
   analysisLanguage: 'zh-CN',
-  defaultStrength: 'medium',
   promptTemplates: DEFAULT_AI_PROMPT_TEMPLATES,
 }
 

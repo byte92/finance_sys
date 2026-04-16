@@ -81,7 +81,7 @@ function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord
   const normalizedResult: AiAnalysisResult = {
     generatedAt: rawResult.generatedAt ?? String(row.generated_at),
     cached: rawResult.cached ?? false,
-    analysisStrength: rawResult.analysisStrength ?? 'medium',
+    analysisStrength: rawResult.analysisStrength ?? 'high',
     summary: rawResult.summary ?? '暂无分析总结',
     stance: rawResult.stance ?? '中性偏观察',
     facts: rawResult.facts ?? rawResult.evidence ?? [],

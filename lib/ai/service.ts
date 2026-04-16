@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { AI_MAX_STRENGTH_PROMPT } from '@/config/defaults'
 import { calcStockSummary } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
@@ -80,23 +81,17 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
-function getStrengthPrompt(config: AiConfig) {
-  if (config.defaultStrength === 'high') return config.promptTemplates.highStrength
-  if (config.defaultStrength === 'weak') return config.promptTemplates.weakStrength
-  return config.promptTemplates.mediumStrength
-}
-
 function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputContract: Record<string, unknown>, task: string, context: unknown) {
   return {
     system: [
       config.promptTemplates.baseSystem,
       analysisPrompt,
-      getStrengthPrompt(config),
+      AI_MAX_STRENGTH_PROMPT,
       `当前输出语言：${config.analysisLanguage}`,
     ].join('\n\n'),
     user: JSON.stringify({
       task,
-      intensity: config.defaultStrength,
+      intensity: 'high',
       horizons: {
         short: '1-5 个交易日',
         medium: '1-4 周',
@@ -345,7 +340,7 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
-    analysisStrength: parsed?.analysisStrength ?? 'medium',
+    analysisStrength: 'high',
     summary,
     stance: parsed?.stance?.trim() || '中性偏观察',
     facts: parsed?.facts?.length ? parsed.facts : fallback.evidence,

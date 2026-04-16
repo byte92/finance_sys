@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { AiAnalysisLanguage, AiAnalysisStrength, AiPromptTemplates, AiProvider, ExportData, Market } from '@/types'
+import type { AiAnalysisLanguage, AiPromptTemplates, AiProvider, ExportData, Market } from '@/types'
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
@@ -24,9 +24,6 @@ const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }
   { key: 'portfolioAnalysis', label: '组合分析提示词', hint: '控制组合分析如何聚焦仓位结构、风险暴露和组合建议。' },
   { key: 'stockAnalysis', label: '个股分析提示词', hint: '控制个股分析如何结合成本、技术指标和新闻输出判断。' },
   { key: 'marketAnalysis', label: '大盘分析提示词', hint: '控制 A 股、港股、美股整体节奏和风险偏好分析。' },
-  { key: 'highStrength', label: '高强度策略提示词', hint: '更直接给出明确倾向和操作取向。' },
-  { key: 'mediumStrength', label: '中等强度策略提示词', hint: '给出方向和观察点，但不过度激进。' },
-  { key: 'weakStrength', label: '弱强度策略提示词', hint: '偏事实整理和参考信息，降低动作指令感。' },
 ]
 
 export default function SettingsContent({
@@ -110,7 +107,6 @@ export default function SettingsContent({
       maxTokens: aiConfig.maxTokens,
       newsEnabled: aiConfig.newsEnabled,
       analysisLanguage: aiConfig.analysisLanguage,
-      defaultStrength: aiConfig.defaultStrength,
     }) !== JSON.stringify({
       enabled: config.aiConfig.enabled,
       provider: config.aiConfig.provider,
@@ -121,7 +117,6 @@ export default function SettingsContent({
       maxTokens: config.aiConfig.maxTokens,
       newsEnabled: config.aiConfig.newsEnabled,
       analysisLanguage: config.aiConfig.analysisLanguage,
-      defaultStrength: config.aiConfig.defaultStrength,
     })
   }, [aiConfig, config.aiConfig])
 
@@ -485,18 +480,6 @@ export default function SettingsContent({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-strength">默认分析强度</Label>
-              <Select
-                id="ai-strength"
-                value={aiConfig.defaultStrength}
-                onChange={(e) => setAiConfig((current) => ({ ...current, defaultStrength: e.target.value as AiAnalysisStrength }))}
-              >
-                <option value="high">高强度</option>
-                <option value="medium">中等强度</option>
-                <option value="weak">弱强度</option>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="ai-language">分析语言</Label>
               <Select
                 id="ai-language"
@@ -559,7 +542,7 @@ export default function SettingsContent({
         content: (
           <div className="space-y-4">
             <div className="text-xs text-muted-foreground">
-              最终调用时会按“基础提示词 + 分析类型提示词 + 分析强度提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
+              最终调用时会按“基础提示词 + 分析类型提示词”拼装，并默认以最高强度模式生成分析。这里改动后，后续 AI 分析会直接使用你的版本。
             </div>
 
             <div className="space-y-4">

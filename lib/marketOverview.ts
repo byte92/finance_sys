@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { AI_MAX_STRENGTH_PROMPT } from '@/config/defaults'
 import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
 import { fetchStockNews } from '@/lib/ai/service'
 import type {
@@ -121,12 +122,6 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
-function getStrengthPrompt(config: AiConfig) {
-  if (config.defaultStrength === 'high') return config.promptTemplates.highStrength
-  if (config.defaultStrength === 'weak') return config.promptTemplates.weakStrength
-  return config.promptTemplates.mediumStrength
-}
-
 function ensureApiBase(baseUrl: string) {
   const normalized = baseUrl.replace(/\/$/, '')
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
@@ -234,7 +229,7 @@ function normalizeMarketAnalysisResult(
   return {
     generatedAt: new Date().toISOString(),
     cached: false,
-    analysisStrength: parsed?.analysisStrength ?? 'medium',
+    analysisStrength: 'high',
     summary,
     stance: parsed?.stance?.trim() || '中性偏观察',
     facts: parsed?.facts?.length ? parsed.facts : fallback.evidence,
@@ -285,12 +280,12 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
     system: [
       config.promptTemplates.baseSystem,
       config.promptTemplates.marketAnalysis,
-      getStrengthPrompt(config),
+      AI_MAX_STRENGTH_PROMPT,
       `当前输出语言：${config.analysisLanguage}`,
     ].join('\n\n'),
     user: JSON.stringify({
       task: '请对当前 A 股、港股和美股大盘做短中期分析，结合指数涨跌结构、技术指标和近期新闻，输出更有指导性的结构化观察建议。',
-      intensity: config.defaultStrength,
+      intensity: 'high',
       horizons: {
         short: '1-5 个交易日',
         medium: '1-4 周',

@@ -72,9 +72,6 @@ export interface AiPromptTemplates {
   portfolioAnalysis: string
   stockAnalysis: string
   marketAnalysis: string
-  highStrength: string
-  mediumStrength: string
-  weakStrength: string
 }
 
 export interface AiConfig {
@@ -87,7 +84,6 @@ export interface AiConfig {
   maxTokens: number
   newsEnabled: boolean
   analysisLanguage: AiAnalysisLanguage
-  defaultStrength: AiAnalysisStrength
   promptTemplates: AiPromptTemplates
 }
 

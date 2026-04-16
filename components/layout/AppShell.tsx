@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BriefcaseBusiness, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, Sun, Moon, X } from 'lucide-react'
+import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, Sun, Moon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/hooks/useTheme'
 import { useCurrency } from '@/hooks/useCurrency'
@@ -12,11 +12,16 @@ import { useStockStore } from '@/store/useStockStore'
 const NAV_ITEMS = [
   { href: '/', label: '总览', icon: LayoutDashboard, match: (pathname: string) => pathname === '/' },
   { href: '/portfolio', label: '持仓', icon: BriefcaseBusiness, match: (pathname: string) => pathname === '/portfolio' || pathname.startsWith('/stock/') },
-  { href: '/ai', label: 'AI', icon: Sparkles, match: (pathname: string) => pathname.startsWith('/ai') },
   { href: '/settings', label: '设置', icon: Settings, match: (pathname: string) => pathname.startsWith('/settings') },
 ] as const
 
+const AI_SUB_ITEMS = [
+  { href: '/ai', label: '分析中心', match: (pathname: string) => pathname === '/ai' },
+  { href: '/ai/history', label: '分析历史', match: (pathname: string) => pathname.startsWith('/ai/history') },
+] as const
+
 const SIDEBAR_COLLAPSED_KEY = 'stock-tracker-sidebar-collapsed'
+const AI_NAV_EXPANDED_KEY = 'stock-tracker-ai-nav-expanded'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -25,6 +30,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { init } = useStockStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [aiNavExpanded, setAiNavExpanded] = useState(true)
 
   useEffect(() => {
     void init()
@@ -33,16 +39,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
     setSidebarCollapsed(stored === 'true')
+    const aiStored = localStorage.getItem(AI_NAV_EXPANDED_KEY)
+    setAiNavExpanded(aiStored === null ? true : aiStored === 'true')
   }, [])
 
   useEffect(() => {
     setSidebarOpen(false)
   }, [pathname])
 
+  useEffect(() => {
+    if (pathname.startsWith('/ai')) {
+      setAiNavExpanded(true)
+    }
+  }, [pathname])
+
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((current) => {
       const next = !current
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }
+
+  const toggleAiNavExpanded = () => {
+    setAiNavExpanded((current) => {
+      const next = !current
+      localStorage.setItem(AI_NAV_EXPANDED_KEY, String(next))
       return next
     })
   }
@@ -63,6 +85,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             theme={theme}
             toggleTheme={toggleTheme}
             collapsed={sidebarCollapsed}
+            aiNavExpanded={aiNavExpanded}
+            onToggleAiNavExpanded={toggleAiNavExpanded}
             onToggleCollapsed={toggleSidebarCollapsed}
           />
         </aside>
@@ -98,6 +122,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               theme={theme}
               toggleTheme={toggleTheme}
               collapsed={false}
+              aiNavExpanded={aiNavExpanded}
+              onToggleAiNavExpanded={toggleAiNavExpanded}
             />
           </div>
         </div>
@@ -114,6 +140,8 @@ function SidebarContent({
   theme,
   toggleTheme,
   collapsed,
+  aiNavExpanded,
+  onToggleAiNavExpanded,
   onToggleCollapsed,
 }: {
   pathname: string
@@ -123,8 +151,12 @@ function SidebarContent({
   theme: 'dark' | 'light'
   toggleTheme: () => void
   collapsed: boolean
+  aiNavExpanded: boolean
+  onToggleAiNavExpanded?: () => void
   onToggleCollapsed?: () => void
 }) {
+  const aiSectionActive = pathname.startsWith('/ai')
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className={`border-b border-border py-5 ${collapsed ? 'px-3' : 'px-4'}`}>
@@ -156,6 +188,50 @@ function SidebarContent({
             </Link>
           )
         })}
+
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={onToggleAiNavExpanded}
+            title={collapsed ? 'AI' : undefined}
+            className={`flex w-full items-center rounded-lg py-2.5 text-sm transition-colors ${
+              collapsed ? 'justify-center px-2' : 'gap-3 px-3'
+            } ${
+              aiSectionActive
+                ? 'bg-primary/12 text-primary border border-primary/20'
+                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+            }`}
+          >
+            <Sparkles className="h-4 w-4" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">AI</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${aiNavExpanded ? 'rotate-0' : '-rotate-90'}`} />
+              </>
+            )}
+          </button>
+
+          {!collapsed && aiNavExpanded && (
+            <div className="ml-3 space-y-1 border-l border-border/70 pl-3">
+              {AI_SUB_ITEMS.map((item) => {
+                const active = item.match(pathname)
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                      active
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className={`border-t border-border py-4 space-y-3 ${collapsed ? 'px-2' : 'px-4'}`}>

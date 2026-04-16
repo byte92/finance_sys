@@ -57,6 +57,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const convertMoney = (amount: number) => convertAmountSync(amount, stock.market)
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
   const showNativeAmount = displayCurrency === 'CNY' && nativeCurrency !== 'CNY'
+  const quoteTimeLabel = quote?.timestamp ? formatQuoteTimestamp(quote.timestamp) : null
   const formatAmountWithNative = (amount: number) => {
     const primary = formatWithCurrency(convertMoney(amount))
     if (!showNativeAmount) return primary
@@ -264,6 +265,9 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                       {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}%
                     </span>
                     <span className="text-xs text-muted-foreground">· {quote.source}</span>
+                    {quoteTimeLabel && (
+                      <span className="text-xs text-muted-foreground">· {quoteTimeLabel}</span>
+                    )}
                   </div>
                 ) : (
                   <Input
@@ -618,6 +622,22 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
       />
     </div>
   )
+}
+
+function formatQuoteTimestamp(raw: string) {
+  const etMatch = raw.match(/^([A-Za-z]{3} \d{1,2}, \d{4} \d{1,2}:\d{2} (?:AM|PM) ET)$/i)
+  if (etMatch) return `更新于 ${etMatch[1]}`
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return `更新于 ${raw}`
+
+  return `更新于 ${parsed.toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
 }
 
 function isEtfLikeCode(code: string, market: Stock['market']) {

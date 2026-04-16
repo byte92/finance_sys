@@ -20,7 +20,7 @@ export interface StockQuote {
 }
 
 // 数据源提供商枚举
-export type DataSourceProvider = 'tencent' | 'yahoo-finance' | 'alpha-vantage' | 'stooq' | 'manual'
+export type DataSourceProvider = 'tencent' | 'nasdaq' | 'yahoo-finance' | 'alpha-vantage' | 'stooq' | 'manual'
 
 // 数据源配置
 export interface DataSourceConfig {

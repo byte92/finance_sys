@@ -2,6 +2,7 @@
 import type { StockQuote, StockServiceConfig, DataSourceProvider, QuoteCacheItem, StockDataSource } from '@/types/stockApi'
 import type { Market } from '@/types'
 import { TencentFinanceSource } from '@/lib/dataSources/TencentFinanceSource'
+import { NasdaqSource } from '@/lib/dataSources/NasdaqSource'
 import { AlphaVantageDataSource } from '@/lib/dataSources/AlphaVantageSource'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import { StooqSource } from '@/lib/dataSources/StooqSource'
@@ -11,6 +12,7 @@ const DEFAULT_CONFIG: StockServiceConfig = {
   defaultProvider: 'tencent',
   sources: {
     tencent: { provider: 'tencent', rateLimit: 60, cacheTtl: 60 },
+    nasdaq: { provider: 'nasdaq', rateLimit: 60, cacheTtl: 30 },
     'yahoo-finance': { provider: 'yahoo-finance', rateLimit: 30, cacheTtl: 60 },
     'alpha-vantage': {
       provider: 'alpha-vantage',
@@ -23,7 +25,7 @@ const DEFAULT_CONFIG: StockServiceConfig = {
   },
   cacheEnabled: true,
   cacheTtl: 60,
-  fallbackChain: ['tencent', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'],
+  fallbackChain: ['tencent', 'nasdaq', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'],
 }
 
 export class StockPriceService {
@@ -39,6 +41,7 @@ export class StockPriceService {
   private initSources() {
     const s = this.config.sources
     if (s.tencent) this.sources.set('tencent', new TencentFinanceSource(s.tencent))
+    if (s.nasdaq) this.sources.set('nasdaq', new NasdaqSource(s.nasdaq))
     if (s['yahoo-finance']) this.sources.set('yahoo-finance', new YahooFinanceSource(s['yahoo-finance']))
     if (s.stooq) this.sources.set('stooq', new StooqSource(s.stooq))
     if (s['alpha-vantage']) this.sources.set('alpha-vantage', new AlphaVantageDataSource(s['alpha-vantage']))
@@ -52,8 +55,7 @@ export class StockPriceService {
       const cached = this.cache.get(key)
       if (cached && Date.now() < cached.expiresAt) return cached.quote
     }
-    // 按优先级尝试数据源
-    for (const provider of this.config.fallbackChain) {
+    for (const provider of this.getFallbackChain(market)) {
       const source = this.sources.get(provider)
       if (!source) continue
       try {
@@ -84,6 +86,13 @@ export class StockPriceService {
   }
 
   getConfig() { return this.config }
+
+  private getFallbackChain(market: Market) {
+    if (market === 'US') {
+      return ['nasdaq', 'tencent', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'] as DataSourceProvider[]
+    }
+    return this.config.fallbackChain
+  }
 
   private setCache(key: string, quote: StockQuote, provider: DataSourceProvider) {
     const ttl = this.config.sources[provider]?.cacheTtl ?? this.config.cacheTtl

@@ -12,7 +12,7 @@ type KlineItem = {
   volume: number
 }
 
-type DataSourceSource = 'tencent' | 'stooq' | 'alpha-vantage'
+type DataSourceSource = 'tencent' | 'nasdaq' | 'stooq' | 'alpha-vantage'
 
 type KlineResponse = {
   candles: KlineItem[]
@@ -84,7 +84,7 @@ function getSourceChain(market: Market, interval: Interval): DataSourceSource[] 
   const isChina = market === 'A' || market === 'HK' || market === 'FUND'
 
   if (isDaily) {
-    if (market === 'US') return ['stooq', 'alpha-vantage']
+    if (market === 'US') return ['nasdaq', 'alpha-vantage']
     if (isChina) return ['tencent', 'alpha-vantage']
     return ['alpha-vantage']
   }
@@ -120,6 +120,7 @@ async function fetchBySource(
 ): Promise<KlineItem[]> {
   const fetchers = {
     tencent: fetchTencentKline,
+    nasdaq: fetchNasdaqKline,
     stooq: fetchStooqKline,
     'alpha-vantage': fetchAlphaVantageKline,
   }
@@ -206,6 +207,50 @@ async function fetchStooqKline(symbol: string, market: Market): Promise<KlineIte
   return sortByTime(items)
 }
 
+async function fetchNasdaqKline(
+  symbol: string,
+  market: Market,
+  interval: Interval,
+  days: number
+): Promise<KlineItem[]> {
+  if (market !== 'US' || interval !== '1d') return []
+
+  const fromDate = formatUsDateForNasdaq(days)
+  const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol.toUpperCase())}/historical?assetclass=stocks&limit=500&fromdate=${fromDate}`
+  const res = await fetch(url, {
+    headers: {
+      'Accept': 'application/json, text/plain, */*',
+      'Origin': 'https://www.nasdaq.com',
+      'Referer': 'https://www.nasdaq.com/',
+      'User-Agent': 'Mozilla/5.0',
+    },
+    signal: AbortSignal.timeout(CONFIG.TIMEOUT),
+    cache: CONFIG.CACHE,
+  })
+  if (!res.ok) return []
+
+  const payload = await res.json()
+  const rows = payload?.data?.tradesTable?.rows
+  if (!Array.isArray(rows)) return []
+
+  const items = rows
+    .map((row: Record<string, string>) => {
+      const date = parseNasdaqHistoricalDate(row.date)
+      if (!date) return null
+      return formatKlineItem(
+        date,
+        parseCurrencyNumber(row.open),
+        parseCurrencyNumber(row.close),
+        parseCurrencyNumber(row.high),
+        parseCurrencyNumber(row.low),
+        parseInteger(row.volume),
+      )
+    })
+    .filter((item: KlineItem | null): item is KlineItem => item !== null)
+
+  return sortByTime(items)
+}
+
 async function fetchAlphaVantageKline(
   symbol: string,
   market: Market,
@@ -257,6 +302,37 @@ async function fetchAlphaVantageKline(
   }
 
   return sortByTime(items)
+}
+
+function formatUsDateForNasdaq(days: number) {
+  const date = new Date()
+  if (Number.isFinite(days)) {
+    date.setDate(date.getDate() - Math.max(days + 14, 45))
+  } else {
+    date.setFullYear(date.getFullYear() - 10)
+  }
+
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function parseNasdaqHistoricalDate(value: string | undefined): string | null {
+  if (!value) return null
+  const [month, day, year] = value.split('/')
+  if (!month || !day || !year) return null
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
+function parseCurrencyNumber(value: string | undefined): number {
+  if (!value) return Number.NaN
+  return Number(value.replace(/[$,]/g, '').trim())
+}
+
+function parseInteger(value: string | undefined): number {
+  if (!value) return 0
+  const parsed = Number(value.replace(/,/g, '').trim())
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 // ==================== Route Handler ====================

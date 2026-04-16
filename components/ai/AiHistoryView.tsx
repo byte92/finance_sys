@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Filter, Tag } from 'lucide-react'
+import { CalendarDays, Filter, Tag, TrendingUp } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
@@ -12,6 +12,17 @@ const CONFIDENCE_LABELS: Record<AiConfidence, string> = {
   low: '低信心',
 }
 
+type HeatmapGranularity = 'day' | 'week' | 'month'
+type HeatmapWindow = '90d' | 'year'
+
+type BucketSummary = {
+  key: string
+  label: string
+  count: number
+  dominantConfidence: AiConfidence
+  records: AiAnalysisHistoryRecord[]
+}
+
 export default function AiHistoryView() {
   const { userId } = useStockStore()
   const [records, setRecords] = useState<AiAnalysisHistoryRecord[]>([])
@@ -20,7 +31,9 @@ export default function AiHistoryView() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock'>('ALL')
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | AiConfidence>('ALL')
   const [tagFilter, setTagFilter] = useState('ALL')
-  const [heatmapGranularity, setHeatmapGranularity] = useState<'day' | 'week' | 'month'>('day')
+  const [heatmapGranularity, setHeatmapGranularity] = useState<HeatmapGranularity>('day')
+  const [heatmapWindow, setHeatmapWindow] = useState<HeatmapWindow>('90d')
+  const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
@@ -49,29 +62,6 @@ export default function AiHistoryView() {
     void load()
   }, [confidenceFilter, dateFrom, dateTo, typeFilter, userId])
 
-  const heatmapBuckets = useMemo(() => {
-    const source = records.filter((record) => tagFilter === 'ALL' || record.tags.includes(tagFilter))
-    const grouped = new Map<string, { count: number; confidence: AiConfidence; label: string }>()
-    for (const record of source) {
-      const { key, label } = getTimeBucket(record.generatedAt, heatmapGranularity)
-      const prev = grouped.get(key)
-      const nextConfidence = chooseStrongerConfidence(prev?.confidence, record.confidence)
-      grouped.set(key, {
-        count: (prev?.count ?? 0) + 1,
-        confidence: nextConfidence,
-        label,
-      })
-    }
-    return Array.from(grouped.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, value]) => ({ key, ...value }))
-  }, [heatmapGranularity, records, tagFilter])
-
-  const visibleRecords = useMemo(
-    () => records.filter((record) => tagFilter === 'ALL' || record.tags.includes(tagFilter)),
-    [records, tagFilter],
-  )
-
   const availableTags = useMemo(() => {
     const tags = new Set<string>()
     for (const record of records) {
@@ -80,15 +70,91 @@ export default function AiHistoryView() {
     return Array.from(tags).sort((a, b) => a.localeCompare(b, 'zh-CN'))
   }, [records])
 
+  const recordsAfterTag = useMemo(
+    () => records.filter((record) => tagFilter === 'ALL' || record.tags.includes(tagFilter)),
+    [records, tagFilter],
+  )
+
+  const heatmapRecords = useMemo(() => {
+    if (heatmapWindow === 'year') return recordsAfterTag
+    const threshold = new Date()
+    threshold.setDate(threshold.getDate() - 89)
+    const thresholdTime = threshold.getTime()
+    return recordsAfterTag.filter((record) => new Date(record.generatedAt).getTime() >= thresholdTime)
+  }, [heatmapWindow, recordsAfterTag])
+
+  const heatmapBuckets = useMemo(() => {
+    const grouped = new Map<string, BucketSummary>()
+
+    for (const record of heatmapRecords) {
+      const bucket = getTimeBucket(record.generatedAt, heatmapGranularity)
+      const prev = grouped.get(bucket.key)
+      if (!prev) {
+        grouped.set(bucket.key, {
+          key: bucket.key,
+          label: bucket.label,
+          count: 1,
+          dominantConfidence: record.confidence,
+          records: [record],
+        })
+        continue
+      }
+
+      prev.count += 1
+      prev.records.push(record)
+      prev.dominantConfidence = chooseStrongerConfidence(prev.dominantConfidence, record.confidence)
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => a.key.localeCompare(b.key))
+  }, [heatmapGranularity, heatmapRecords])
+
+  useEffect(() => {
+    if (selectedBucketKey && !heatmapBuckets.some((bucket) => bucket.key === selectedBucketKey)) {
+      setSelectedBucketKey(null)
+    }
+  }, [heatmapBuckets, selectedBucketKey])
+
+  const selectedBucket = useMemo(
+    () => heatmapBuckets.find((bucket) => bucket.key === selectedBucketKey) ?? null,
+    [heatmapBuckets, selectedBucketKey],
+  )
+
+  const visibleRecords = useMemo(() => {
+    if (!selectedBucket) return recordsAfterTag
+    const ids = new Set(selectedBucket.records.map((record) => record.id))
+    return recordsAfterTag.filter((record) => ids.has(record.id))
+  }, [recordsAfterTag, selectedBucket])
+
+  const overviewStats = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const todayCount = recordsAfterTag.filter((record) => record.generatedAt.slice(0, 10) === today).length
+    const highCount = recordsAfterTag.filter((record) => record.confidence === 'high').length
+    const portfolioCount = recordsAfterTag.filter((record) => record.type === 'portfolio').length
+    const stockCount = recordsAfterTag.filter((record) => record.type === 'stock').length
+
+    return {
+      total: recordsAfterTag.length,
+      todayCount,
+      highCount,
+      highShare: recordsAfterTag.length > 0 ? Math.round((highCount / recordsAfterTag.length) * 100) : 0,
+      portfolioCount,
+      stockCount,
+    }
+  }, [recordsAfterTag])
+
   return (
     <div className="space-y-6">
       <Card className="border-border bg-card">
         <div className="p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-primary" />
-            <div className="text-sm font-medium text-foreground">筛选条件</div>
+            <div>
+              <div className="text-sm font-medium text-foreground">筛选条件</div>
+              <div className="mt-1 text-xs text-muted-foreground">先缩小分析范围，再用时间导航定位重点时段。</div>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
@@ -121,6 +187,7 @@ export default function AiHistoryView() {
               className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
+
           <div className="flex flex-wrap gap-2">
             <TagBadge active={tagFilter === 'ALL'} onClick={() => setTagFilter('ALL')}>全部标签</TagBadge>
             {availableTags.map((tag) => (
@@ -132,61 +199,143 @@ export default function AiHistoryView() {
         </div>
       </Card>
 
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="总分析次数" value={`${overviewStats.total}`} detail={loading ? '正在更新...' : '当前筛选结果'} />
+        <StatCard label="今天新增" value={`${overviewStats.todayCount}`} detail="当天生成的分析数" />
+        <StatCard label="高信心占比" value={`${overviewStats.highShare}%`} detail={`共 ${overviewStats.highCount} 条高信心记录`} />
+        <StatCard label="分析构成" value={`${overviewStats.portfolioCount} / ${overviewStats.stockCount}`} detail="组合 / 个股" />
+      </section>
+
       <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-primary" />
-            <div>
-              <div className="text-sm font-medium text-foreground">AI 信心热力图</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                支持按天、按周、按月聚合展示 AI 分析次数，并用颜色表示该时间桶内的最高信心标签。
+        <div className="p-5 space-y-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                <div className="text-sm font-medium text-foreground">时间导航</div>
+              </div>
+              <div className="mt-2 text-sm text-foreground">
+                用热力图快速定位哪一天、哪一周或哪一月分析最密集。点击任意格子后，下面的历史记录会自动筛到对应时间段。
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                颜色代表该时间段的主导信心，深浅代表分析次数。
               </div>
             </div>
+
+            <div className="flex flex-wrap gap-2">
+              <TagBadge active={heatmapWindow === '90d'} onClick={() => setHeatmapWindow('90d')}>
+                近 90 天
+              </TagBadge>
+              <TagBadge active={heatmapWindow === 'year'} onClick={() => setHeatmapWindow('year')}>
+                全年
+              </TagBadge>
+              <TagBadge active={heatmapGranularity === 'day'} onClick={() => setHeatmapGranularity('day')}>
+                按天
+              </TagBadge>
+              <TagBadge active={heatmapGranularity === 'week'} onClick={() => setHeatmapGranularity('week')}>
+                按周
+              </TagBadge>
+              <TagBadge active={heatmapGranularity === 'month'} onClick={() => setHeatmapGranularity('month')}>
+                按月
+              </TagBadge>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <TagBadge active={heatmapGranularity === 'day'} onClick={() => setHeatmapGranularity('day')}>
-              按天
-            </TagBadge>
-            <TagBadge active={heatmapGranularity === 'week'} onClick={() => setHeatmapGranularity('week')}>
-              按周
-            </TagBadge>
-            <TagBadge active={heatmapGranularity === 'month'} onClick={() => setHeatmapGranularity('month')}>
-              按月
-            </TagBadge>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {heatmapBuckets.length > 0 ? heatmapBuckets.map((item) => (
-              <div
-                key={item.key}
-                title={`${item.label} · ${item.count} 次 · ${CONFIDENCE_LABELS[item.confidence]}`}
-                className={`flex h-12 min-w-12 items-center justify-center rounded-md px-2 text-[10px] font-medium ${heatColor(item.confidence, item.count)}`}
-              >
-                {item.label}
+
+          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+            {heatmapBuckets.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {heatmapBuckets.map((bucket) => {
+                  const active = bucket.key === selectedBucketKey
+                  return (
+                    <button
+                      key={bucket.key}
+                      type="button"
+                      title={`${bucket.label} · ${bucket.count} 次 · ${CONFIDENCE_LABELS[bucket.dominantConfidence]}`}
+                      onClick={() => setSelectedBucketKey((current) => current === bucket.key ? null : bucket.key)}
+                      className={`flex h-12 min-w-12 items-center justify-center rounded-xl px-3 text-[11px] font-medium transition-all ${
+                        active
+                          ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
+                          : ''
+                      } ${heatColor(bucket.dominantConfidence, bucket.count)}`}
+                    >
+                      {bucket.label}
+                    </button>
+                  )
+                })}
               </div>
-            )) : (
-              <div className="text-sm text-muted-foreground">暂无历史分析记录，先触发几次 AI 分析后这里会形成日历图。</div>
+            ) : (
+              <div className="text-sm text-muted-foreground">暂无历史分析记录，先触发几次 AI 分析后这里会形成时间导航图。</div>
             )}
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-xl border border-border/70 bg-card/70 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">当前时间焦点</div>
+                  <div className="mt-2 text-base font-medium text-foreground">
+                    {selectedBucket ? selectedBucket.label : heatmapWindow === '90d' ? '近 90 天整体节奏' : '全年整体节奏'}
+                  </div>
+                </div>
+                {selectedBucket && (
+                  <TagBadge active onClick={() => setSelectedBucketKey(null)}>
+                    清除时间定位
+                  </TagBadge>
+                )}
+              </div>
+              <div className="mt-3 text-sm text-muted-foreground">
+                {selectedBucket
+                  ? `当前选中时间段共 ${selectedBucket.count} 次分析，下面的记录列表已自动同步筛选。`
+                  : '你还没有选中具体时间段，下面列表展示的是当前筛选条件下的全部记录。'}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-card/70 p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">信心分布</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(['high', 'medium', 'low'] as const).map((confidence) => {
+                  const count = (selectedBucket?.records ?? heatmapRecords).filter((record) => record.confidence === confidence).length
+                  return (
+                    <span
+                      key={confidence}
+                      className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium ${heatColor(confidence, Math.max(count, 1))}`}
+                    >
+                      {CONFIDENCE_LABELS[confidence]} {count}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </Card>
 
       <Card className="border-border bg-card">
         <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium text-foreground">分析记录</div>
-            <div className="text-xs text-muted-foreground">{loading ? '加载中...' : `共 ${visibleRecords.length} 条`}</div>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-medium text-foreground">分析记录</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                这里是主工作区。先用上面的筛选器和时间导航锁定范围，再往下看具体分析。
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {loading ? '加载中...' : `共 ${visibleRecords.length} 条`}
+            </div>
           </div>
 
           {error && <div className="text-sm text-destructive">{error}</div>}
 
           {!error && visibleRecords.length === 0 && (
-            <div className="text-sm text-muted-foreground">暂无符合条件的分析记录。</div>
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+              当前筛选条件下暂无分析记录。
+            </div>
           )}
 
           <div className="space-y-3">
             {visibleRecords.map((record) => (
               <div key={record.id} className="rounded-xl border border-border/70 bg-muted/20 p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">
@@ -198,13 +347,18 @@ export default function AiHistoryView() {
                         </TagBadge>
                       ))}
                     </div>
-                    <div className="mt-2 text-sm text-foreground leading-6">{record.result.summary}</div>
+                    <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
                     <div className="mt-2 text-xs text-muted-foreground">
                       {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
                     </div>
                   </div>
-                  <div className="shrink-0 text-xs text-muted-foreground">
-                    概率数：{record.result.probabilityAssessment.length}
+
+                  <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">观察重点</div>
+                    <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
+                      <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                      {record.result.probabilityAssessment.length} 个场景
+                    </div>
                   </div>
                 </div>
 
@@ -221,7 +375,25 @@ export default function AiHistoryView() {
   )
 }
 
-function TagBadge({ children, active = false, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) {
+function StatCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card px-4 py-4">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className="mt-3 text-2xl font-semibold text-foreground">{value}</div>
+      <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
+    </div>
+  )
+}
+
+function TagBadge({
+  children,
+  active = false,
+  onClick,
+}: {
+  children: React.ReactNode
+  active?: boolean
+  onClick?: () => void
+}) {
   return (
     <button
       type="button"
@@ -242,9 +414,15 @@ function SmallBlock({ title, items }: { title: string; items: string[] }) {
     <div className="rounded-lg border border-border/70 bg-card/60 p-3">
       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
       <div className="mt-2 space-y-1.5">
-        {items.length > 0 ? items.map((item) => (
-          <div key={item} className="text-sm text-foreground">{item}</div>
-        )) : <div className="text-sm text-muted-foreground">暂无内容</div>}
+        {items.length > 0 ? (
+          items.map((item) => (
+            <div key={item} className="text-sm text-foreground">
+              {item}
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-muted-foreground">暂无内容</div>
+        )}
       </div>
     </div>
   )
@@ -256,7 +434,7 @@ function chooseStrongerConfidence(current: AiConfidence | undefined, incoming: A
   return score[incoming] >= score[current] ? incoming : current
 }
 
-function getTimeBucket(isoString: string, granularity: 'day' | 'week' | 'month') {
+function getTimeBucket(isoString: string, granularity: HeatmapGranularity) {
   const date = new Date(isoString)
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -279,7 +457,7 @@ function getTimeBucket(isoString: string, granularity: 'day' | 'week' | 'month')
 
   return {
     key: `${year}-${month}-${day}`,
-    label: day,
+    label: `${month}/${day}`,
   }
 }
 
@@ -292,8 +470,8 @@ function getWeekNumber(date: Date) {
 }
 
 function heatColor(confidence: AiConfidence, count: number) {
-  const intensity = count >= 4 ? 'font-semibold' : 'font-medium'
-  if (confidence === 'high') return `bg-emerald-500/25 text-emerald-300 ${intensity}`
-  if (confidence === 'medium') return `bg-sky-500/20 text-sky-300 ${intensity}`
-  return `bg-amber-500/20 text-amber-300 ${intensity}`
+  const level = count >= 6 ? 'shadow-sm' : count >= 3 ? 'opacity-100' : 'opacity-80'
+  if (confidence === 'high') return `bg-emerald-500/25 text-emerald-200 ${level}`
+  if (confidence === 'medium') return `bg-sky-500/20 text-sky-200 ${level}`
+  return `bg-amber-500/20 text-amber-200 ${level}`
 }

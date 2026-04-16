@@ -342,9 +342,7 @@ export default function AiHistoryView() {
                         {record.type === 'portfolio' ? '组合分析' : `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`}
                       </span>
                       {record.tags.slice(0, 5).map((tag) => (
-                        <TagBadge key={tag} active={tagFilter === tag} onClick={() => setTagFilter(tag)}>
-                          {tag}
-                        </TagBadge>
+                        <StaticTag key={tag}>{tag}</StaticTag>
                       ))}
                     </div>
                     <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
@@ -406,6 +404,14 @@ function TagBadge({
     >
       {children}
     </button>
+  )
+}
+
+function StaticTag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
+      {children}
+    </span>
   )
 }
 

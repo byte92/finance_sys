@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, X } from 'lucide-react'
+import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, Settings, Sparkles, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTheme } from '@/hooks/useTheme'
 import { useStockStore } from '@/store/useStockStore'
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const AI_NAV_EXPANDED_KEY = 'stock-tracker-ai-nav-expanded'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { theme, toggleTheme, mounted } = useTheme()
   const { init } = useStockStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -74,6 +76,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         >
           <SidebarContent
             pathname={pathname}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            mounted={mounted}
             collapsed={sidebarCollapsed}
             aiNavExpanded={aiNavExpanded}
             onToggleAiNavExpanded={toggleAiNavExpanded}
@@ -106,6 +111,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarContent
               pathname={pathname}
+              theme={theme}
+              toggleTheme={toggleTheme}
+              mounted={mounted}
               collapsed={false}
               aiNavExpanded={aiNavExpanded}
               onToggleAiNavExpanded={toggleAiNavExpanded}
@@ -119,12 +127,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
 function SidebarContent({
   pathname,
+  theme,
+  toggleTheme,
+  mounted,
   collapsed,
   aiNavExpanded,
   onToggleAiNavExpanded,
   onToggleCollapsed,
 }: {
   pathname: string
+  theme: 'dark' | 'light'
+  toggleTheme: () => void
+  mounted: boolean
   collapsed: boolean
   aiNavExpanded: boolean
   onToggleAiNavExpanded?: () => void
@@ -203,20 +217,35 @@ function SidebarContent({
       </nav>
 
       <div className={`border-t border-border py-4 space-y-3 ${collapsed ? 'px-2' : 'px-4'}`}>
-        <Link
-          href="/settings"
-          className={`flex items-center rounded-lg py-2.5 text-sm transition-colors ${
-            collapsed ? 'justify-center px-2' : 'gap-3 px-3'
-          } ${
-            pathname.startsWith('/settings')
-              ? 'bg-primary/12 text-primary border border-primary/20'
-              : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-          }`}
-          title={collapsed ? '设置' : undefined}
-        >
-          <Settings className="h-4 w-4" />
-          {!collapsed && <span>设置</span>}
-        </Link>
+        <div className={`flex items-center gap-2 ${collapsed ? 'justify-center' : 'justify-start'}`}>
+          {mounted && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+          )}
+
+          <Link href="/settings" title="设置">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={`h-9 w-9 rounded-lg border border-border/70 ${
+                pathname.startsWith('/settings')
+                  ? 'border-primary/20 bg-primary/12 text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
 
         {onToggleCollapsed && (
           <Button

@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { Check, Loader2, MonitorCog, Moon, Sun, Upload, Download, Trash2, Sparkles } from 'lucide-react'
+import { Check, Loader2, MonitorCog, Upload, Download, Trash2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
-import { useTheme } from '@/hooks/useTheme'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
 
@@ -26,7 +25,6 @@ export default function SettingsContent({
 }) {
   const { config, updateConfig, exportData, importData, clearAll } = useStockStore()
   const { displayCurrency, setDisplayCurrency } = useCurrency()
-  const { theme, toggleTheme, mounted } = useTheme()
   const [defaultMarket, setDefaultMarket] = useState<Market>(config.defaultMarket)
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
   const [aiConfig, setAiConfig] = useState(config.aiConfig)
@@ -166,7 +164,7 @@ export default function SettingsContent({
           <MonitorCog className="h-4 w-4 text-primary" />
           <div>
             <div className="text-sm font-medium text-foreground">显示偏好</div>
-            <div className="text-xs text-muted-foreground mt-1">主题模式和显示货币现在统一在设置页管理，不再放在侧边栏底部。</div>
+            <div className="text-xs text-muted-foreground mt-1">显示货币在这里管理；主题模式已迁回侧边栏底部，方便随时切换。</div>
           </div>
         </div>
 
@@ -183,20 +181,6 @@ export default function SettingsContent({
               <option value="USD">USD</option>
               <option value="USDT">USDT</option>
             </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>主题模式</Label>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-start"
-              onClick={toggleTheme}
-              disabled={!mounted}
-            >
-              {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-              {mounted ? (theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式') : '加载主题中...'}
-            </Button>
           </div>
         </div>
       </section>

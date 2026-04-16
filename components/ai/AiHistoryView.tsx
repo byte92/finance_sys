@@ -530,7 +530,7 @@ function PortfolioRecordCard({
       </Button>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
+        <div className="min-w-0 xl:pr-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">组合分析</span>
             {record.tags.slice(0, 4).map((tag) => (
@@ -543,7 +543,7 @@ function PortfolioRecordCard({
           </div>
         </div>
 
-        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
+        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
           <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
           <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
             <TrendingUp className="h-3.5 w-3.5 text-primary" />
@@ -580,7 +580,7 @@ function StockRecordCard({
       </Button>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
+        <div className="min-w-0 xl:pr-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
               {record.stockName ?? '个股'} · {record.stockCode ?? ''}
@@ -595,7 +595,7 @@ function StockRecordCard({
           </div>
         </div>
 
-        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 text-right">
+        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
           <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
           <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
             <TrendingUp className="h-3.5 w-3.5 text-primary" />

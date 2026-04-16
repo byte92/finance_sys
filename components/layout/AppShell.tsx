@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BriefcaseBusiness, ChevronLeft, ChevronRight, History, LayoutDashboard, Menu, Settings, Sparkles, Sun, Moon, X } from 'lucide-react'
+import { BriefcaseBusiness, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Settings, Sparkles, Sun, Moon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/hooks/useTheme'
 import { useCurrency } from '@/hooks/useCurrency'
@@ -12,8 +12,7 @@ import { useStockStore } from '@/store/useStockStore'
 const NAV_ITEMS = [
   { href: '/', label: '总览', icon: LayoutDashboard, match: (pathname: string) => pathname === '/' },
   { href: '/portfolio', label: '持仓', icon: BriefcaseBusiness, match: (pathname: string) => pathname === '/portfolio' || pathname.startsWith('/stock/') },
-  { href: '/ai/history', label: 'AI 分析历史', icon: History, match: (pathname: string) => pathname.startsWith('/ai/history') },
-  { href: '/ai', label: 'AI', icon: Sparkles, match: (pathname: string) => pathname === '/ai' },
+  { href: '/ai', label: 'AI', icon: Sparkles, match: (pathname: string) => pathname.startsWith('/ai') },
   { href: '/settings', label: '设置', icon: Settings, match: (pathname: string) => pathname.startsWith('/settings') },
 ] as const
 

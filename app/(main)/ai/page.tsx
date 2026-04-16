@@ -1,25 +1,18 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/layout/PageHeader'
 import PortfolioAnalysisCard from '@/components/ai/PortfolioAnalysisCard'
 import AiStockNavigator from '@/components/ai/AiStockNavigator'
+import AiSubnav from '@/components/ai/AiSubnav'
 
 export default function AiPage() {
-  const router = useRouter()
-
   return (
     <div className="min-h-screen">
       <PageHeader
         title="AI 分析中心"
         description="集中查看组合摘要、挑选个股进入深度分析，并管理 AI 投研入口。"
-        actions={
-          <Button size="sm" variant="outline" onClick={() => router.push('/ai/history')}>
-            查看历史
-          </Button>
-        }
       />
+      <AiSubnav />
 
       <div className="px-4 py-6 lg:px-6 space-y-6">
         <PortfolioAnalysisCard />

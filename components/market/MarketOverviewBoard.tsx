@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
+import { Newspaper, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import type { MarketIndexSnapshot, MarketRegion } from '@/types'
+import type { MarketIndexSnapshot, MarketRegion, NewsItem } from '@/types'
 
 type MarketGroup = {
   region: MarketRegion
@@ -24,6 +24,13 @@ type MarketOverviewResponse = {
   totalFlatCount: number
   strongestIndex: MarketIndexSnapshot | null
   weakestIndex: MarketIndexSnapshot | null
+  summary: {
+    marketTone: string
+    riskBias: string
+    focusRegion: string
+    cautionRegion: string
+  }
+  news: NewsItem[]
   updatedAt: string
 }
 
@@ -91,6 +98,22 @@ export default function MarketOverviewBoard() {
         ))}
       </div>
 
+      {overview?.summary && (
+        <Card className="border-border bg-card">
+          <div className="p-5 grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">市场摘要</div>
+              <div className="text-base font-medium text-foreground leading-7">{overview.summary.marketTone}</div>
+              <div className="text-sm text-muted-foreground leading-6">{overview.summary.riskBias}</div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SummaryChip title="优先关注" value={overview.summary.focusRegion} />
+              <SummaryChip title="优先防范" value={overview.summary.cautionRegion} />
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-4 xl:grid-cols-3">
         {overview?.groups.map((group) => (
           <Card key={group.region} className="border-border bg-card">
@@ -148,6 +171,40 @@ export default function MarketOverviewBoard() {
           </Card>
         ))}
       </div>
+
+      <Card className="border-border bg-card">
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Newspaper className="h-4 w-4 text-muted-foreground" />
+            <div className="text-sm font-medium text-foreground">市场重点新闻</div>
+          </div>
+          {overview?.news?.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {overview.news.map((item) => (
+                <a
+                  key={`${item.source}-${item.title}`}
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-border/70 bg-muted/20 p-4 transition-colors hover:bg-muted/35"
+                >
+                  <div className="text-sm font-medium text-foreground leading-6">{item.title}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {item.source} · {formatPublishedAt(item.publishedAt)}
+                  </div>
+                  <div className="mt-3 text-sm text-muted-foreground leading-6">
+                    {item.summary || '暂无摘要'}
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+              暂无可用市场新闻，稍后刷新再试。
+            </div>
+          )}
+        </div>
+      </Card>
     </section>
   )
 }
@@ -158,6 +215,15 @@ function StatCard({ label, value, detail }: { label: string; value: string; deta
       <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
       <div className="mt-3 text-xl font-semibold text-foreground">{value}</div>
       <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
+    </div>
+  )
+}
+
+function SummaryChip({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-4">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
+      <div className="mt-3 text-sm font-medium text-foreground leading-6">{value}</div>
     </div>
   )
 }
@@ -176,4 +242,15 @@ function formatSignedValue(value: number, currency: string) {
 function formatSignedPercent(value: number) {
   const sign = value >= 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
+}
+
+function formatPublishedAt(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }

@@ -46,6 +46,13 @@ type MarketOverview = {
   totalFlatCount: number
   strongestIndex: MarketIndexSnapshot | null
   weakestIndex: MarketIndexSnapshot | null
+  summary: {
+    marketTone: string
+    riskBias: string
+    focusRegion: string
+    cautionRegion: string
+  }
+  news: NewsItem[]
   updatedAt: string
 }
 
@@ -496,14 +503,53 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
   const weakestIndex = snapshots.length > 0
     ? [...snapshots].sort((left, right) => left.changePercent - right.changePercent)[0] ?? null
     : null
+  const totalUpCount = snapshots.filter((item) => item.change > 0).length
+  const totalDownCount = snapshots.filter((item) => item.change < 0).length
+  const totalFlatCount = snapshots.filter((item) => item.change === 0).length
+  const benchmarkDefs = MARKET_INDEX_DEFINITIONS.filter((item) =>
+    ['shanghai-composite', 'hang-seng', 'dow-jones'].includes(item.id),
+  )
+  const news = (await Promise.all(
+    benchmarkDefs.map((definition) => fetchStockNews(definition.code, definition.name, definition.market, 2)),
+  )).flat().slice(0, 6)
+
+  const focusRegion = groups
+    .filter((group) => group.indices.length > 0)
+    .sort((left, right) => {
+      const leftStrength = left.strongestIndex?.changePercent ?? -999
+      const rightStrength = right.strongestIndex?.changePercent ?? -999
+      return rightStrength - leftStrength
+    })[0] ?? null
+  const cautionRegion = groups
+    .filter((group) => group.indices.length > 0)
+    .sort((left, right) => {
+      const leftWeakness = left.weakestIndex?.changePercent ?? 999
+      const rightWeakness = right.weakestIndex?.changePercent ?? 999
+      return leftWeakness - rightWeakness
+    })[0] ?? null
+  const riskBias = totalUpCount > totalDownCount
+    ? '当前风险偏好略偏正面，但仍需提防强弱分化。'
+    : totalUpCount < totalDownCount
+      ? '当前市场更偏防守，适合先看弱势是否继续扩散。'
+      : '当前三地市场分化明显，整体更像等待确认。'
+  const marketTone = strongestIndex && weakestIndex
+    ? `当前最强指数是 ${strongestIndex.name}，最弱指数是 ${weakestIndex.name}，市场节奏以分化为主。`
+    : '当前市场节奏以观察三地强弱轮动为主。'
 
   return {
     groups,
-    totalUpCount: snapshots.filter((item) => item.change > 0).length,
-    totalDownCount: snapshots.filter((item) => item.change < 0).length,
-    totalFlatCount: snapshots.filter((item) => item.change === 0).length,
+    totalUpCount,
+    totalDownCount,
+    totalFlatCount,
     strongestIndex,
     weakestIndex,
+    summary: {
+      marketTone,
+      riskBias,
+      focusRegion: focusRegion ? `${focusRegion.label} 相对更强，更值得优先跟踪。` : '暂无明确的领先市场。',
+      cautionRegion: cautionRegion ? `${cautionRegion.label} 当前更弱，需要优先防范拖累效应。` : '暂无明确的弱势市场。',
+    },
+    news,
     updatedAt: new Date().toISOString(),
   }
 }

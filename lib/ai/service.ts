@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { AI_MAX_STRENGTH_PROMPT } from '@/config/defaults'
+import { exchangeRateService, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
 import { calcStockSummary } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
@@ -20,6 +21,7 @@ import type { Market } from '@/types'
 const ANALYSIS_CACHE = new Map<string, { expiresAt: number; result: AiAnalysisResult }>()
 
 type PortfolioAnalysisContext = {
+  baseCurrency: Currency
   summaries: Array<{
     id: string
     code: string
@@ -31,6 +33,7 @@ type PortfolioAnalysisContext = {
     unrealizedPnl: number
     totalPnl: number
     totalBuyAmount: number
+    currentCost: number
     totalCommission: number
     totalDividend: number
     holdingWeight: number
@@ -40,7 +43,8 @@ type PortfolioAnalysisContext = {
     lastTradeDate: string | null
     lastTradeType: 'BUY' | 'SELL' | 'DIVIDEND' | null
   }>
-  totalInvested: number
+  totalCurrentCost: number
+  totalHistoricalBuyAmount: number
   totalRealizedPnl: number
   totalUnrealizedPnl: number
   totalDailyPnl: number
@@ -294,25 +298,42 @@ function stripHtml(value: string) {
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<ReturnType<typeof stockPriceService.getQuote>>>) {
+function convertPortfolioMoney(amount: number, market: Market, rates: Record<string, number>, baseCurrency: Currency) {
+  const fromCurrency = MARKET_CURRENCY[market] || 'CNY'
+  if (fromCurrency === baseCurrency) return amount
+  const fromRate = rates[fromCurrency] || 1
+  const toRate = rates[baseCurrency] || 1
+  return (amount * fromRate) / toRate
+}
+
+function buildPortfolioContext(
+  stocks: Stock[],
+  quotes: Map<string, Awaited<ReturnType<typeof stockPriceService.getQuote>>>,
+  rates: Record<string, number>,
+  baseCurrency: Currency = 'CNY',
+) {
   const summaries = stocks.map((stock) => {
     const quote = quotes.get(stock.id) ?? null
     const summary = calcStockSummary(stock, quote?.price)
     const lastTrade = [...stock.trades].sort((left, right) => right.date.localeCompare(left.date))[0] ?? null
-    const dailyPnl = quote && summary.currentHolding > 0 ? summary.currentHolding * quote.change : null
+    const currentCost = convertPortfolioMoney(summary.avgCostPrice * summary.currentHolding, stock.market, rates, baseCurrency)
+    const dailyPnl = quote && summary.currentHolding > 0
+      ? convertPortfolioMoney(summary.currentHolding * quote.change, stock.market, rates, baseCurrency)
+      : null
     return {
       id: stock.id,
       code: stock.code,
       name: stock.name,
       market: stock.market,
       currentHolding: summary.currentHolding,
-      avgCostPrice: summary.avgCostPrice,
-      realizedPnl: summary.realizedPnl,
-      unrealizedPnl: summary.unrealizedPnl,
-      totalPnl: summary.totalPnl,
-      totalBuyAmount: summary.totalBuyAmount,
-      totalCommission: summary.totalCommission,
-      totalDividend: summary.totalDividend,
+      avgCostPrice: convertPortfolioMoney(summary.avgCostPrice, stock.market, rates, baseCurrency),
+      realizedPnl: convertPortfolioMoney(summary.realizedPnl, stock.market, rates, baseCurrency),
+      unrealizedPnl: convertPortfolioMoney(summary.unrealizedPnl, stock.market, rates, baseCurrency),
+      totalPnl: convertPortfolioMoney(summary.totalPnl, stock.market, rates, baseCurrency),
+      totalBuyAmount: convertPortfolioMoney(summary.totalBuyAmount, stock.market, rates, baseCurrency),
+      currentCost,
+      totalCommission: convertPortfolioMoney(summary.totalCommission, stock.market, rates, baseCurrency),
+      totalDividend: convertPortfolioMoney(summary.totalDividend, stock.market, rates, baseCurrency),
       currentPrice: quote?.price ?? null,
       changePercent: quote?.changePercent ?? null,
       dailyPnl,
@@ -321,10 +342,11 @@ function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<Retu
       holdingWeight: 0,
     }
   })
-  const totalInvested = summaries.reduce((sum, item) => sum + item.totalBuyAmount, 0)
+  const totalCurrentCost = summaries.reduce((sum, item) => sum + item.currentCost, 0)
+  const totalHistoricalBuyAmount = summaries.reduce((sum, item) => sum + item.totalBuyAmount, 0)
   const enriched = summaries.map((item) => ({
     ...item,
-    holdingWeight: totalInvested > 0 ? item.totalBuyAmount / totalInvested : 0,
+    holdingWeight: totalCurrentCost > 0 ? item.currentCost / totalCurrentCost : 0,
   }))
   const topHoldings = [...enriched]
     .sort((left, right) => right.holdingWeight - left.holdingWeight)
@@ -363,8 +385,10 @@ function buildPortfolioContext(stocks: Stock[], quotes: Map<string, Awaited<Retu
       lastTradeDate: item.lastTradeDate!,
     }))
   return {
+    baseCurrency,
     summaries: enriched,
-    totalInvested,
+    totalCurrentCost,
+    totalHistoricalBuyAmount,
     totalRealizedPnl: enriched.reduce((sum, item) => sum + item.realizedPnl, 0),
     totalUnrealizedPnl: enriched.reduce((sum, item) => sum + item.unrealizedPnl, 0),
     totalDailyPnl: enriched.reduce((sum, item) => sum + (item.dailyPnl ?? 0), 0),
@@ -451,15 +475,15 @@ function buildPortfolioFallbackPayload(context: PortfolioAnalysisContext): Parti
         : '中性偏谨慎'
 
   const summary = concentrationHigh
-    ? `当前组合明显偏集中，首要任务不是继续加风险，而是先处理 ${topHolding?.name ?? '核心仓位'} 的集中度与回撤承受能力。`
+    ? `当前组合明显偏集中，首要任务不是继续加风险，而是先处理 ${topHolding?.name ?? '核心仓位'} 的集中度与回撤承受能力。当前更偏向先控节奏、再看是否需要分批降权，而不是继续扩大单一仓位。`
     : context.totalUnrealizedPnl < 0
-      ? `当前组合整体承压，短期更偏向先稳住回撤，再判断是否需要进一步调整弱势仓位。`
-      : `当前组合仍有正向缓冲，但更适合继续持有并观察结构变化，不适合在现阶段盲目放大风险。`
+      ? `当前组合整体承压，短期更偏向先稳住回撤，再判断是否需要进一步调整弱势仓位。当前不适合因为个别反弹就贸然加仓，更应该先确认拖累来源有没有改善。`
+      : `当前组合仍有正向缓冲，但更适合继续持有并观察结构变化，不适合在现阶段盲目放大风险。当前更应该保持优势仓位的稳定性，而不是急着做高频切换。`
 
   const facts = [
-    `当前组合共有 ${context.summaries.length} 只持仓，最大仓位占比 ${(context.largestPositionWeight * 100).toFixed(1)}%。`,
-    `组合总投入约 ${context.totalInvested.toFixed(2)}，已实现收益约 ${context.totalRealizedPnl.toFixed(2)}，未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)}。`,
-    `今日组合盈亏约 ${context.totalDailyPnl.toFixed(2)}，当前盈利持仓 ${context.profitableCount} 只，亏损持仓 ${context.losingCount} 只。`,
+    `当前组合共有 ${context.summaries.length} 只持仓，按当前持仓成本口径计算，最大仓位占比 ${(context.largestPositionWeight * 100).toFixed(1)}%。`,
+    `当前在投本金约 ${context.totalCurrentCost.toFixed(2)} ${context.baseCurrency}，已实现收益约 ${context.totalRealizedPnl.toFixed(2)} ${context.baseCurrency}，未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)} ${context.baseCurrency}。`,
+    `历史累计买入额约 ${context.totalHistoricalBuyAmount.toFixed(2)} ${context.baseCurrency}，今日组合盈亏约 ${context.totalDailyPnl.toFixed(2)} ${context.baseCurrency}，当前盈利持仓 ${context.profitableCount} 只，亏损持仓 ${context.losingCount} 只。`,
   ]
 
   const inferences = [
@@ -774,12 +798,13 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
   }
 
   const quotes = new Map<string, Awaited<ReturnType<typeof stockPriceService.getQuote>>>()
+  const rates = await exchangeRateService.getRates()
   await Promise.all(stocks.map(async (stock) => {
     const quote = await stockPriceService.getQuote(stock.code, stock.market)
     quotes.set(stock.id, quote)
   }))
 
-  const context = buildPortfolioContext(stocks, quotes)
+  const context = buildPortfolioContext(stocks, quotes, rates, 'CNY')
   const { system, user } = portfolioPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
   const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
@@ -787,9 +812,9 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
   const result = normalizeAnalysisResult(parsed, {
     summary: `当前组合包含 ${context.summaries.length} 只资产，最大仓位占比约 ${(context.largestPositionWeight * 100).toFixed(1)}%，适合优先关注集中度和浮盈回撤。`,
     evidence: [
-      `总投入约 ${context.totalInvested.toFixed(2)}`,
-      `已实现收益约 ${context.totalRealizedPnl.toFixed(2)}`,
-      `未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)}`,
+      `当前在投本金约 ${context.totalCurrentCost.toFixed(2)} ${context.baseCurrency}`,
+      `已实现收益约 ${context.totalRealizedPnl.toFixed(2)} ${context.baseCurrency}`,
+      `未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)} ${context.baseCurrency}`,
     ],
     mode: 'portfolio',
   })

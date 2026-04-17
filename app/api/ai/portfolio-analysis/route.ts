@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { buildAnalysisTags, generatePortfolioAnalysis } from '@/lib/ai/service'
+import { safeReadJsonBody } from '@/lib/api/request'
 import { saveAiAnalysis } from '@/lib/sqlite/db'
 import type { AiConfig, Stock } from '@/types'
 
@@ -13,7 +14,11 @@ type Body = {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Body
+    const payload = await safeReadJsonBody<Body>(request)
+    if (!payload.ok) {
+      return NextResponse.json({ error: payload.error }, { status: payload.status })
+    }
+    const body = payload.body
     if (!body.userId) {
       return NextResponse.json({ error: '缺少用户 ID' }, { status: 400 })
     }

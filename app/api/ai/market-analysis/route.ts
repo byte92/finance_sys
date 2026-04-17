@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateId } from '@/lib/finance'
 import { generateMarketAnalysis, buildAnalysisTags } from '@/lib/marketOverview'
+import { safeReadJsonBody } from '@/lib/api/request'
 import { saveAiAnalysis } from '@/lib/sqlite/db'
 import type { AiConfig } from '@/types'
 
@@ -12,7 +13,11 @@ type MarketAnalysisBody = {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as MarketAnalysisBody
+    const payload = await safeReadJsonBody<MarketAnalysisBody>(request)
+    if (!payload.ok) {
+      return NextResponse.json({ error: payload.error }, { status: payload.status })
+    }
+    const body = payload.body
     if (!body.userId) {
       return NextResponse.json({ error: '缺少 userId' }, { status: 400 })
     }

@@ -586,10 +586,32 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
 }
 
 function extractJsonBlock(content: string) {
+  if (!content.trim()) return ''
   const fenced = content.match(/```json\s*([\s\S]*?)```/i)
   if (fenced?.[1]) return fenced[1].trim()
   const objectMatch = content.match(/\{[\s\S]*\}/)
   return objectMatch?.[0]?.trim() ?? content.trim()
+}
+
+function safeParseJsonObject<T>(raw: string): T | null {
+  const candidate = extractJsonBlock(raw)
+  if (!candidate) return null
+
+  try {
+    return JSON.parse(candidate) as T
+  } catch {
+    const repaired = candidate
+      .replace(/^[^{]*/, '')
+      .replace(/[^}]*$/, '')
+      .trim()
+    if (!repaired) return null
+    try {
+      return JSON.parse(repaired) as T
+    } catch {
+      console.warn('[ai] failed to parse model JSON response', raw.slice(0, 500))
+      return null
+    }
+  }
 }
 
 async function callOpenAiCompatible(config: AiConfig, systemPrompt: string, userPrompt: string) {
@@ -760,12 +782,7 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
   const context = buildPortfolioContext(stocks, quotes)
   const { system, user } = portfolioPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
-  let parsed: Partial<AiAnalysisResult> | null = null
-  try {
-    parsed = JSON.parse(extractJsonBlock(raw)) as Partial<AiAnalysisResult>
-  } catch {
-    parsed = null
-  }
+  const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
 
   const result = normalizeAnalysisResult(parsed, {
     summary: `当前组合包含 ${context.summaries.length} 只资产，最大仓位占比约 ${(context.largestPositionWeight * 100).toFixed(1)}%，适合优先关注集中度和浮盈回撤。`,
@@ -816,12 +833,7 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
 
   const { system, user } = stockPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
-  let parsed: Partial<AiAnalysisResult> | null = null
-  try {
-    parsed = JSON.parse(extractJsonBlock(raw)) as Partial<AiAnalysisResult>
-  } catch {
-    parsed = null
-  }
+  const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
 
   const result = normalizeAnalysisResult(parsed, {
     summary: `${stock.name} 当前更适合结合持仓成本、关键价位与新闻变化做条件式观察，而不是单一信号决策。`,
@@ -855,7 +867,15 @@ export async function testAiConnection(config: AiConfig) {
       model: config.model,
     }),
   )
-  const parsed = JSON.parse(extractJsonBlock(raw)) as { ok?: boolean; provider?: string; model?: string; message?: string }
+  const parsed = safeParseJsonObject<{ ok?: boolean; provider?: string; model?: string; message?: string }>(raw)
+  if (!parsed) {
+    return {
+      ok: true,
+      provider: config.provider,
+      model: config.model,
+      message: '模型已连通，但返回内容不是严格 JSON，已按兼容模式处理。',
+    }
+  }
   return {
     ok: parsed.ok === true || parsed.message?.length !== 0,
     provider: parsed.provider ?? config.provider,

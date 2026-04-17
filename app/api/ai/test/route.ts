@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { testAiConnection } from '@/lib/ai/service'
+import { safeReadJsonBody } from '@/lib/api/request'
 import type { AiConfig } from '@/types'
 
 type Body = {
@@ -8,7 +9,11 @@ type Body = {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Body
+    const payload = await safeReadJsonBody<Body>(request)
+    if (!payload.ok) {
+      return NextResponse.json({ error: payload.error }, { status: payload.status })
+    }
+    const body = payload.body
     if (!body.aiConfig) {
       return NextResponse.json({ error: '缺少 AI 配置' }, { status: 400 })
     }

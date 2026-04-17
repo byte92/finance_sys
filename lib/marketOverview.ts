@@ -214,10 +214,32 @@ async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: 
 }
 
 function extractJsonBlock(content: string) {
+  if (!content.trim()) return ''
   const fenced = content.match(/```json\s*([\s\S]*?)```/i)
   if (fenced?.[1]) return fenced[1].trim()
   const objectMatch = content.match(/\{[\s\S]*\}/)
   return objectMatch?.[0]?.trim() ?? content.trim()
+}
+
+function safeParseJsonObject<T>(raw: string): T | null {
+  const candidate = extractJsonBlock(raw)
+  if (!candidate) return null
+
+  try {
+    return JSON.parse(candidate) as T
+  } catch {
+    const repaired = candidate
+      .replace(/^[^{]*/, '')
+      .replace(/[^}]*$/, '')
+      .trim()
+    if (!repaired) return null
+    try {
+      return JSON.parse(repaired) as T
+    } catch {
+      console.warn('[market-ai] failed to parse model JSON response', raw.slice(0, 500))
+      return null
+    }
+  }
 }
 
 function buildFallbackProbability({ bias, confidence, note }: MarketFallbackProbabilityInput): AiProbabilityScenario[] {
@@ -625,13 +647,7 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
   const context = buildMarketAnalysisContext(indices, news)
   const { system, user } = marketPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
-
-  let parsed: Partial<AiAnalysisResult> | null = null
-  try {
-    parsed = JSON.parse(extractJsonBlock(raw)) as Partial<AiAnalysisResult>
-  } catch {
-    parsed = null
-  }
+  const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
 
   const result = normalizeMarketAnalysisResult(parsed, {
     summary: `当前三地大盘共 ${indices.length} 个代表指数，短线更适合先观察强弱分化和风格切换，而不是单边预设。`,

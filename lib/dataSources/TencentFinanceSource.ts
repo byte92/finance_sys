@@ -37,7 +37,6 @@ async function decodeGBK(res: Response): Promise<string> {
 // 将股票代码转换为腾讯格式
 // A股: sz000001(深交所) sh600519(上交所) sh510300(ETF-上交所)
 // 港股: hk00700
-// 美股不支持
 function toTencentCode(code: string, market: Market): string {
   if (market === 'HK') {
     // 补齐5位
@@ -49,6 +48,9 @@ function toTencentCode(code: string, market: Market): string {
     if (c.startsWith('6') || c.startsWith('5')) return `sh${c}`
     // 深交所：0/1/2/3开头
     return `sz${c}`
+  }
+  if (market === 'US') {
+    return `us${code.trim().toUpperCase()}`
   }
   return code
 }
@@ -73,7 +75,7 @@ export class TencentFinanceSource implements StockDataSource {
   }
 
   async getQuote(symbol: string, market: Market): Promise<StockQuote | null> {
-    if (market !== 'A' && market !== 'HK' && market !== 'FUND') return null
+    if (market !== 'A' && market !== 'HK' && market !== 'FUND' && market !== 'US') return null
 
     try {
       const code = toTencentCode(symbol, market)
@@ -93,7 +95,7 @@ export class TencentFinanceSource implements StockDataSource {
   }
 
   async getBatchQuotes(symbols: string[], market: Market): Promise<StockQuote[]> {
-    if (market !== 'A' && market !== 'HK' && market !== 'FUND') return []
+    if (market !== 'A' && market !== 'HK' && market !== 'FUND' && market !== 'US') return []
     try {
       const codes = symbols.map((s) => toTencentCode(s, market)).join(',')
       const url = `${API_BASE}/q=${codes}&r=${Date.now()}`
@@ -144,9 +146,9 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
 
     const change = price - prevClose
     const changePercent = prevClose ? (change / prevClose) * 100 : 0
-    const volume = parseInt(parts[6]) || 0        // 成交量（手）
-    const date = parts[30]                   // 日期 YYYYMMDD
-    const time = parts[31] || '000000'       // 时间 HHmmss
+    const volume = parseInt(parts[6]) || 0
+    const date = parts[30]
+    const time = parts[31] || '000000'
     const valuation = parseTencentValuation(parts, price, market)
 
     const dateStr = date && date.length === 8
@@ -166,7 +168,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
       ...(valuation.marketCap !== undefined ? { marketCap: valuation.marketCap } : {}),
       ...(valuation.valuationSource !== undefined ? { valuationSource: valuation.valuationSource } : {}),
       timestamp: dateStr,
-      currency: market === 'HK' ? 'HKD' : 'CNY',
+      currency: market === 'HK' ? 'HKD' : market === 'US' ? 'USD' : 'CNY',
       source: 'tencent',
     }
   } catch (e) {
@@ -176,7 +178,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
 }
 
 function parseTencentValuation(parts: string[], price: number, market: Market): TencentValuation {
-  if (market === 'FUND') {
+  if (market === 'FUND' || market === 'US') {
     return {}
   }
 

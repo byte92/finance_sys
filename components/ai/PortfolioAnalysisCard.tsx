@@ -1,0 +1,179 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { Sparkles, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { useStockStore } from '@/store/useStockStore'
+import type { AiAnalysisResult } from '@/types'
+
+export default function PortfolioAnalysisCard({ compact = false }: { compact?: boolean }) {
+  const { stocks, config, userId } = useStockStore()
+  const [result, setResult] = useState<AiAnalysisResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [bootstrapping, setBootstrapping] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const topRisks = useMemo(() => result?.portfolioRiskNotes?.slice(0, compact ? 2 : 4) ?? [], [compact, result])
+
+  useEffect(() => {
+    if (!userId) return
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    const loadLatestTodayResult = async () => {
+      setBootstrapping(true)
+      try {
+        const params = new URLSearchParams({
+          userId,
+          type: 'portfolio',
+          dateFrom: today,
+          dateTo: today,
+        })
+        const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data?.error ?? '加载今日组合分析失败')
+        }
+        const records = Array.isArray(data?.records) ? data.records : []
+        const latest = records[0] as { result?: AiAnalysisResult } | undefined
+        setResult(latest?.result ?? null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '加载今日组合分析失败')
+      } finally {
+        setBootstrapping(false)
+      }
+    }
+
+    void loadLatestTodayResult()
+  }, [userId])
+
+  const runAnalysis = async (forceRefresh = false) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/ai/portfolio-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          stocks,
+          aiConfig: config.aiConfig,
+          forceRefresh,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? '组合 AI 分析失败')
+      setResult(data.result as AiAnalysisResult)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '组合 AI 分析失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">AI 组合分析</h2>
+          <div className="mt-1 text-xs text-muted-foreground">
+            结合持仓结构、当前盈亏与外部信息，给出短中期观察建议。
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => runAnalysis(true)} disabled={loading || stocks.length === 0}>
+            <RefreshCw className={`mr-1 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            强制刷新
+          </Button>
+          <Button size="sm" onClick={() => runAnalysis(false)} disabled={loading || stocks.length === 0}>
+            <Sparkles className="mr-1 h-3.5 w-3.5" />
+            {result ? '重新分析' : '开始分析'}
+          </Button>
+        </div>
+      </div>
+
+      <Card className="border-border bg-card">
+        <div className="p-5 space-y-4">
+          {stocks.length === 0 && (
+            <div className="text-sm text-muted-foreground">当前没有持仓，先添加股票或交易后再进行组合分析。</div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {!result && !error && stocks.length > 0 && (
+            <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
+              {bootstrapping
+                ? '正在加载今天的组合分析结果...'
+                : '点击“开始分析”后，系统会结合你的持仓结构、实时行情、新闻和技术指标生成结构化投研摘要。'}
+            </div>
+          )}
+
+          {result && (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 总结</div>
+                    <div className="mt-2 text-base font-medium text-foreground">{result.summary}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs text-muted-foreground">信心</div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{formatConfidence(result.confidence)}</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  生成于 {new Date(result.generatedAt).toLocaleString('zh-CN')} {result.cached ? '· 命中缓存' : ''}
+                </div>
+              </div>
+
+              <div className={`grid gap-3 ${compact ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+                <InfoBlock title="事实依据" items={result.facts.slice(0, compact ? 2 : 4)} />
+                <InfoBlock title="核心判断" items={result.inferences.slice(0, compact ? 2 : 4)} />
+                <InfoBlock title="行动建议" items={result.actionPlan.slice(0, compact ? 2 : 4)} />
+                <InfoBlock title="概率分析" items={result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%：${item.rationale}`)} />
+                <InfoBlock title="风险观察" items={topRisks} emptyText="暂无额外风险提示" />
+                {!compact && <InfoBlock title="建议动作" items={result.actionableObservations} emptyText="暂无动作建议" />}
+              </div>
+
+              {!compact && <InfoBlock title="失效信号" items={result.invalidationSignals} emptyText="暂无失效信号" />}
+              {!compact && result.evidence.length > 0 && <InfoBlock title="证据维度" items={result.evidence} emptyText="暂无证据维度" />}
+
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+                <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />
+                {result.disclaimer}
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+    </section>
+  )
+}
+
+function InfoBlock({ title, items, emptyText = '暂无内容' }: { title: string; items: string[]; emptyText?: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
+      <div className="mt-3 space-y-2">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <div key={item} className="text-sm text-foreground leading-6">{item}</div>
+          ))
+        ) : (
+          <div className="text-sm text-muted-foreground">{emptyText}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatConfidence(confidence: AiAnalysisResult['confidence']) {
+  if (confidence === 'high') return '较高'
+  if (confidence === 'low') return '偏低'
+  return '中等'
+}

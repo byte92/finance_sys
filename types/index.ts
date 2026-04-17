@@ -60,11 +60,39 @@ export interface FeeConfig {
   settlementFeeRate?: number  // 结算费率（港股用）
 }
 
+export type AiAnalysisLanguage = 'zh-CN' | 'en-US'
+export type AiProvider = 'openai-compatible' | 'anthropic-compatible'
+export type AiAnalysisType = 'portfolio' | 'stock' | 'market'
+export type AiConfidence = 'low' | 'medium' | 'high'
+export type AiAnalysisStrength = 'high' | 'medium' | 'weak'
+export type MarketRegion = 'A' | 'HK' | 'US'
+
+export interface AiPromptTemplates {
+  baseSystem: string
+  portfolioAnalysis: string
+  stockAnalysis: string
+  marketAnalysis: string
+}
+
+export interface AiConfig {
+  enabled: boolean
+  provider: AiProvider
+  baseUrl: string
+  model: string
+  apiKey: string
+  temperature: number
+  maxTokens: number
+  newsEnabled: boolean
+  analysisLanguage: AiAnalysisLanguage
+  promptTemplates: AiPromptTemplates
+}
+
 // 应用配置
 export interface AppConfig {
   version: string
   defaultMarket: Market
   feeConfigs: Record<Market, FeeConfig>
+  aiConfig: AiConfig
   currency: {
     A: 'CNY'
     HK: 'HKD'
@@ -109,4 +137,123 @@ export interface ExportData {
   }
   config: AppConfig
   stocks: Stock[]
+}
+
+export interface NewsItem {
+  title: string
+  source: string
+  publishedAt: string
+  summary: string
+  url: string
+}
+
+export interface TechnicalIndicatorSnapshot {
+  close: number
+  ma5: number | null
+  ma10: number | null
+  ma20: number | null
+  ema12: number | null
+  ema26: number | null
+  macd: {
+    dif: number | null
+    dea: number | null
+    histogram: number | null
+  }
+  rsi14: number | null
+  boll: {
+    upper: number | null
+    middle: number | null
+    lower: number | null
+  }
+  atr14: number | null
+  supportLevel: number | null
+  resistanceLevel: number | null
+  volumeRatio20: number | null
+  trendBias: 'bullish' | 'neutral' | 'bearish'
+}
+
+export interface MarketIndexSnapshot {
+  id: string
+  code: string
+  name: string
+  region: MarketRegion
+  market: Market
+  price: number
+  change: number
+  changePercent: number
+  previousClose: number | null
+  open: number | null
+  high: number | null
+  low: number | null
+  volume: number | null
+  timestamp: string
+  currency: string
+  source: string
+  indicators?: TechnicalIndicatorSnapshot | null
+}
+
+export interface AiProbabilityScenario {
+  label: string
+  probability: number
+  rationale: string
+}
+
+export interface AiTimeHorizonAssessment {
+  horizon: 'short' | 'medium'
+  summary: string
+  scenarios: AiProbabilityScenario[]
+}
+
+export interface AiTechnicalSignal {
+  name: string
+  value: string
+  interpretation: string
+}
+
+export interface AiNewsDriver {
+  headline: string
+  source: string
+  publishedAt: string
+  sentiment: 'positive' | 'neutral' | 'negative'
+  impact: string
+  url?: string
+}
+
+export interface AiAnalysisResult {
+  generatedAt: string
+  cached: boolean
+  analysisStrength: AiAnalysisStrength
+  summary: string
+  stance: string
+  facts: string[]
+  inferences: string[]
+  actionPlan: string[]
+  invalidationSignals: string[]
+  timeHorizons: AiTimeHorizonAssessment[]
+  probabilityAssessment: AiProbabilityScenario[]
+  technicalSignals: AiTechnicalSignal[]
+  newsDrivers: AiNewsDriver[]
+  keyLevels: string[]
+  positionAdvice?: string[]
+  portfolioRiskNotes?: string[]
+  actionableObservations: string[]
+  risks: string[]
+  confidence: AiConfidence
+  disclaimer: string
+  evidence: string[]
+}
+
+export interface AiAnalysisHistoryRecord {
+  id: string
+  userId: string
+  type: AiAnalysisType
+  stockId?: string | null
+  stockCode?: string | null
+  stockName?: string | null
+  market?: Market | null
+  tags: string[]
+  confidence: AiConfidence
+  generatedAt: string
+  createdAt: string
+  result: AiAnalysisResult
 }

@@ -84,7 +84,7 @@ export default function StockDetailPage() {
             >
               重试
             </Button>
-            <Button onClick={() => router.push('/')}>返回首页</Button>
+            <Button onClick={() => router.push('/portfolio')}>返回持仓</Button>
           </div>
         </div>
       </div>
@@ -95,9 +95,5 @@ export default function StockDetailPage() {
     return null
   }
 
-  const handleBack = () => {
-    router.push('/')
-  }
-
-  return <StockDetail stock={stock} onBack={handleBack} />
+  return <StockDetail stock={stock} onBack={() => router.push('/portfolio')} />
 }

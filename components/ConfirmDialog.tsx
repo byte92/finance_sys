@@ -24,11 +24,11 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogClose onClick={() => onOpenChange(false)} />
-      </DialogHeader>
       <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogClose onClick={() => onOpenChange(false)} />
+        </DialogHeader>
         {description && (
           <p className="text-sm text-muted-foreground">{description}</p>
         )}

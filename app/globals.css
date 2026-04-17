@@ -1,3 +1,5 @@
+@import "react-day-picker/style.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -168,6 +170,22 @@
   .rates-value {
     @apply font-mono text-sm text-foreground;
   }
+}
+
+.rdp-root {
+  --rdp-accent-color: hsl(var(--primary));
+  --rdp-accent-background-color: hsl(var(--primary) / 0.14);
+  --rdp-day_button-border-radius: 0.55rem;
+  --rdp-day_button-height: 2.25rem;
+  --rdp-day_button-width: 2.25rem;
+  --rdp-nav_button-height: 2rem;
+  --rdp-nav_button-width: 2rem;
+  --rdp-today-color: hsl(var(--primary));
+  margin: 0;
+}
+
+.rdp-month_grid {
+  width: 100%;
 }
 
 @keyframes rates-marquee-scroll {

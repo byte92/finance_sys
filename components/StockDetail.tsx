@@ -1,21 +1,26 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Sun, Moon, Edit } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Gift, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
 import { useStockQuote } from '@/hooks/useStockQuote'
-import { useTheme } from '@/hooks/useTheme'
 import { useCurrency } from '@/hooks/useCurrency'
+import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
 import AddTradeModal from '@/components/AddTradeModal'
 import AddStockModal from '@/components/AddStockModal'
 import StockKline from '@/components/StockKline'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import PageHeader from '@/components/layout/PageHeader'
+import StockAnalysisPanel from '@/components/ai/StockAnalysisPanel'
 import type { Stock, Trade, TradePnlDetail } from '@/types'
+import type { Currency } from '@/lib/ExchangeRateService'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -27,8 +32,7 @@ interface StockDetailProps {
 
 export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const { deleteTrade } = useStockStore()
-  const { theme, toggleTheme, mounted } = useTheme()
-  const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
+  const { displayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
   const [showAddTrade, setShowAddTrade] = useState(false)
   const [showEditStock, setShowEditStock] = useState(false)
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
@@ -51,6 +55,19 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const currentPriceNum = quote?.price || parseFloat(manualPrice) || undefined
   const summary = calcStockSummary(stock, currentPriceNum)
   const convertMoney = (amount: number) => convertAmountSync(amount, stock.market)
+  const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
+  const showNativeAmount = displayCurrency === 'CNY' && nativeCurrency !== 'CNY'
+  const quoteTimeLabel = quote?.timestamp ? formatQuoteTimestamp(quote.timestamp) : null
+  const formatAmountWithNative = (amount: number) => {
+    const primary = formatWithCurrency(convertMoney(amount))
+    if (!showNativeAmount) return primary
+    return `${primary}（${formatWithCurrency(amount, nativeCurrency)}）`
+  }
+  const formatPnlWithNative = (amount: number) => {
+    const primary = formatPnl(convertMoney(amount), displayCurrency)
+    if (!showNativeAmount) return primary
+    return `${primary}（${formatPnl(amount, nativeCurrency)}）`
+  }
   const isFundLike = stock.market === 'FUND' || isEtfLikeCode(stock.code, stock.market)
 
   const sortedTrades = [...stock.trades].sort((a, b) => b.date.localeCompare(a.date))
@@ -163,37 +180,16 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection])
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* 顶部导航 */}
-      <header className="sticky top-0 z-10 border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-secondary transition-colors">
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-foreground">{stock.name}</span>
-              <span className="text-xs text-muted-foreground font-mono">{stock.code}</span>
-              <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {mounted && (
-              <Button variant="ghost" size="sm" onClick={toggleTheme} title={theme === 'dark' ? '切换亮色' : '切换暗色'}>
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-            )}
-            <div className="flex items-center gap-1 mr-3">
-              <select
-                value={displayCurrency}
-                onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as any)}
-                className="text-xs bg-transparent border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                <option value="CNY">CNY</option>
-                <option value="HKD">HKD</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
+    <div className="min-h-screen">
+      <PageHeader
+        title={`${stock.name} · ${stock.code}`}
+        description={`市场：${MARKET_LABELS[stock.market]}，可在此查看交易、K 线、估值与 AI 深度分析。`}
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+              返回持仓
+            </Button>
             <Button size="sm" onClick={() => setShowAddTrade(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
               添加交易
@@ -202,17 +198,17 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               <Edit className="h-3.5 w-3.5 mr-1" />
               编辑股票
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 lg:px-6 space-y-6">
         {/* 汇总卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
             <div className="text-xs text-muted-foreground mb-1">总收益</div>
             <div className={`text-xl font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(convertMoney(summary.totalPnl), displayCurrency)}
+              {formatPnlWithNative(summary.totalPnl)}
             </div>
             {summary.currentHolding > 0 && currentPriceNum ? (
               <div className="text-xs text-muted-foreground mt-1">
@@ -228,10 +224,10 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
           <Card className="stat-card border-border">
             <div className="text-xs text-muted-foreground mb-1">已实现收益</div>
             <div className={`text-lg font-bold font-mono ${summary.realizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(convertMoney(summary.realizedPnl), displayCurrency)}
+              {formatPnlWithNative(summary.realizedPnl)}
             </div>
             {summary.totalDividend > 0 && (
-              <div className="text-xs text-primary mt-0.5">含分红 {formatWithCurrency(convertMoney(summary.totalDividend))}</div>
+              <div className="text-xs text-primary mt-0.5">含分红 {formatAmountWithNative(summary.totalDividend)}</div>
             )}
           </Card>
 
@@ -241,14 +237,14 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               {summary.currentHolding.toLocaleString()} 股
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              均成本 {formatWithCurrency(convertMoney(summary.avgCostPrice))}
+              均成本 {formatAmountWithNative(summary.avgCostPrice)}
             </div>
           </Card>
 
           <Card className="stat-card border-border">
             <div className="text-xs text-muted-foreground mb-1">总手续费</div>
             <div className="text-lg font-bold font-mono text-foreground">
-              {formatWithCurrency(convertMoney(summary.totalCommission))}
+              {formatAmountWithNative(summary.totalCommission)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">{summary.tradeCount} 笔买卖</div>
           </Card>
@@ -264,11 +260,14 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
                 {quote ? (
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-foreground">{formatWithCurrency(convertMoney(quote.price))}</span>
+                    <span className="font-mono font-bold text-foreground">{formatAmountWithNative(quote.price)}</span>
                     <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${quote.changePercent >= 0 ? 'bg-profit/15 profit-text' : 'bg-loss/15 loss-text'}`}>
                       {quote.changePercent >= 0 ? '↑' : '↓'} {Math.abs(quote.changePercent).toFixed(2)}%
                     </span>
                     <span className="text-xs text-muted-foreground">· {quote.source}</span>
+                    {quoteTimeLabel && (
+                      <span className="text-xs text-muted-foreground">· {quoteTimeLabel}</span>
+                    )}
                   </div>
                 ) : (
                   <Input
@@ -294,25 +293,25 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   <div>
                     <div className="text-xs text-muted-foreground">浮动盈亏</div>
                     <div className={`text-base font-bold font-mono ${summary.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-                      {formatPnl(convertMoney(summary.unrealizedPnl), displayCurrency)}
+                      {formatPnlWithNative(summary.unrealizedPnl)}
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">市值</div>
                     <div className="text-base font-bold font-mono text-foreground">
-                      {formatWithCurrency(convertMoney(currentPriceNum * summary.currentHolding))}
+                      {formatAmountWithNative(currentPriceNum * summary.currentHolding)}
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">总收益</div>
                     <div className={`text-base font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
-                      {formatPnl(convertMoney(summary.totalPnl), displayCurrency)}
+                      {formatPnlWithNative(summary.totalPnl)}
                     </div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">成本</div>
                     <div className="text-base font-bold font-mono text-foreground">
-                      {formatWithCurrency(convertMoney(summary.avgCostPrice * summary.currentHolding))}
+                      {formatAmountWithNative(summary.avgCostPrice * summary.currentHolding)}
                     </div>
                   </div>
                 </div>
@@ -356,6 +355,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             </CardContent>
           </Card>
         )}
+
+        <StockAnalysisPanel stock={stock} />
 
         {/* 盈亏曲线 */}
         {chartData.length > 1 && (
@@ -445,48 +446,48 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   placeholder="搜索备注 / 操作 / 状态"
                   className="xl:col-span-2"
                 />
-                <select
+                <Select
                   value={tradeTypeFilter}
                   onChange={(e) => setTradeTypeFilter(e.target.value as typeof tradeTypeFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部类型</option>
                   <option value="BUY">买入</option>
                   <option value="SELL">卖出</option>
                   <option value="DIVIDEND">分红</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={specialFilter}
                   onChange={(e) => setSpecialFilter(e.target.value as typeof specialFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部状态</option>
                   <option value="CLOSING">只看清仓</option>
                   <option value="OPEN_BUY">只看仍持有批次</option>
                   <option value="CLOSED_BUY">只看已卖完批次</option>
                   <option value="REALIZED">只看已实现记录</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={resultFilter}
                   onChange={(e) => setResultFilter(e.target.value as typeof resultFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部结果</option>
                   <option value="PROFIT">只看盈利</option>
                   <option value="LOSS">只看亏损</option>
                   <option value="BREAKEVEN">只看持平</option>
-                </select>
-                <select
+                </Select>
+                <Select
                   value={noteFilter}
                   onChange={(e) => setNoteFilter(e.target.value as typeof noteFilter)}
-                  className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-10 bg-background"
                 >
                   <option value="ALL">全部备注</option>
                   <option value="WITH_NOTE">只看有备注</option>
                   <option value="WITHOUT_NOTE">只看无备注</option>
-                </select>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </Select>
+                <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
+                <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -560,6 +561,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                           displayCurrency={displayCurrency}
                           convertAmountSync={convertAmountSync}
                           formatWithCurrency={formatWithCurrency}
+                          showNativeAmount={showNativeAmount}
                           onEdit={() => setEditTrade(row.trade)}
                           onDelete={() => setDeleteTradeTarget(row.trade)}
                         />
@@ -620,6 +622,22 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
       />
     </div>
   )
+}
+
+function formatQuoteTimestamp(raw: string) {
+  const etMatch = raw.match(/^([A-Za-z]{3} \d{1,2}, \d{4} \d{1,2}:\d{2} (?:AM|PM) ET)$/i)
+  if (etMatch) return `更新于 ${etMatch[1]}`
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return `更新于 ${raw}`
+
+  return `更新于 ${parsed.toLocaleString('zh-CN', {
+    hour12: false,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`
 }
 
 function isEtfLikeCode(code: string, market: Stock['market']) {
@@ -683,7 +701,7 @@ function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): strin
 }
 
 function TradeTableRow({
-  row, market, displayCurrency, convertAmountSync, formatWithCurrency, onEdit, onDelete,
+  row, market, displayCurrency, convertAmountSync, formatWithCurrency, showNativeAmount, onEdit, onDelete,
 }: {
   row: {
     trade: Trade
@@ -700,7 +718,8 @@ function TradeTableRow({
   market: Stock['market']
   displayCurrency: string
   convertAmountSync: (amount: number, fromMarket: string) => number
-  formatWithCurrency: (amount: number) => string
+  formatWithCurrency: (amount: number, currency?: Currency) => string
+  showNativeAmount: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -709,6 +728,17 @@ function TradeTableRow({
   const isSell = trade.type === 'SELL'
   const isDividend = trade.type === 'DIVIDEND'
   const convertMoney = (amount: number) => convertAmountSync(amount, market)
+  const nativeCurrency = MARKET_CURRENCY[market] || 'CNY'
+  const formatAmountWithNative = (amount: number) => {
+    const primary = formatWithCurrency(convertMoney(amount))
+    if (!showNativeAmount) return primary
+    return `${primary}（${formatWithCurrency(amount, nativeCurrency)}）`
+  }
+  const formatPnlWithNative = (amount: number) => {
+    const primary = formatPnl(convertMoney(amount), displayCurrency)
+    if (!showNativeAmount) return primary
+    return `${primary}（${formatPnl(amount, nativeCurrency)}）`
+  }
 
   return (
     <tr className="border-b border-border last:border-b-0 align-top hover:bg-muted/20">
@@ -745,15 +775,15 @@ function TradeTableRow({
       </td>
       <td className="px-4 py-3">
         <div className="space-y-1 text-xs">
-          <div className="font-mono text-foreground">{formatWithCurrency(convertMoney(trade.price))}</div>
+          <div className="font-mono text-foreground">{formatAmountWithNative(trade.price)}</div>
           <div className="text-muted-foreground">{trade.quantity.toLocaleString()} 股</div>
         </div>
       </td>
       <td className="px-4 py-3">
         <div className="space-y-1 text-xs">
-          <div className="text-muted-foreground">费用 {formatWithCurrency(convertMoney(feeTotal))}</div>
+          <div className="text-muted-foreground">费用 {formatAmountWithNative(feeTotal)}</div>
           <div className={`font-mono ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
-            {isBuy ? '-' : '+'}{formatWithCurrency(convertMoney(Math.abs(trade.netAmount)))}
+            {isBuy ? '-' : '+'}{formatAmountWithNative(Math.abs(trade.netAmount))}
           </div>
         </div>
       </td>
@@ -762,14 +792,14 @@ function TradeTableRow({
           <div>当时总持仓 {holdingAfterTrade.toLocaleString()} 股</div>
           {isBuy ? (
             <>
-              <div>摊薄成本 {formatWithCurrency(convertMoney(trade.netAmount / trade.quantity))}</div>
+              <div>摊薄成本 {formatAmountWithNative(trade.netAmount / trade.quantity)}</div>
               <div>该笔已卖出 {(buySold ?? 0).toLocaleString()} 股</div>
               <div>该笔剩余 {(buyRemaining ?? 0).toLocaleString()} 股</div>
             </>
           ) : isDividend ? (
-            <div>税前分红 {formatWithCurrency(convertMoney(trade.totalAmount))}</div>
+            <div>税前分红 {formatAmountWithNative(trade.totalAmount)}</div>
           ) : (
-            <div>成本基础 {formatWithCurrency(convertMoney(pnlDetail?.costBasis ?? 0))}</div>
+            <div>成本基础 {formatAmountWithNative(pnlDetail?.costBasis ?? 0)}</div>
           )}
         </div>
       </td>
@@ -779,7 +809,7 @@ function TradeTableRow({
         ) : (
           <div className="space-y-1 text-xs">
             <div className={`font-mono ${realizedAmount >= 0 ? 'profit-text' : 'loss-text'}`}>
-              {formatPnl(convertMoney(realizedAmount), displayCurrency)}
+              {formatPnlWithNative(realizedAmount)}
             </div>
             {pnlDetail && (trade.type === 'SELL') && (
               <div className={`${pnlDetail.pnl >= 0 ? 'profit-text' : 'loss-text'}`}>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Trash2, ChevronRight, Settings, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
@@ -75,15 +76,16 @@ export default function Dashboard() {
               </Button>
             )}
             <div className="flex items-center gap-1 mr-2">
-              <select
+              <Select
                 value={displayCurrency}
                 onChange={(e) => e.target.value && setDisplayCurrency(e.target.value as any)}
-                className="text-xs bg-transparent border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-8 border-border bg-transparent py-1 text-xs"
+                containerClassName="w-[92px]"
               >
                 <option value="CNY">CNY</option>
                 <option value="HKD">HKD</option>
                 <option value="USD">USD</option>
-              </select>
+              </Select>
             </div>
             <Button size="sm" variant="ghost" onClick={() => setShowSettings(true)}>
               <Settings className="h-4 w-4" />

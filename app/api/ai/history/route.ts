@@ -11,8 +11,13 @@ export async function GET(request: NextRequest) {
   const confidence = request.nextUrl.searchParams.get('confidence') || undefined
   const dateFrom = request.nextUrl.searchParams.get('dateFrom') || undefined
   const dateTo = request.nextUrl.searchParams.get('dateTo') || undefined
+  const stockId = request.nextUrl.searchParams.get('stockId') || undefined
+  const stockCode = request.nextUrl.searchParams.get('stockCode') || undefined
+  const market = request.nextUrl.searchParams.get('market') || undefined
+  const limitParam = request.nextUrl.searchParams.get('limit')
+  const limit = limitParam ? Number(limitParam) : undefined
 
-  const records = listAiAnalysisByUserId(userId, { type, confidence, dateFrom, dateTo })
+  const records = listAiAnalysisByUserId(userId, { type, confidence, dateFrom, dateTo, stockId, stockCode, market, limit })
   return NextResponse.json({ records })
 }
 

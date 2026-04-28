@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Clock, Filter, RefreshCw, Tag, Trash2, TrendingUp } from 'lucide-react'
+import { Clock, Filter, RefreshCw, Search, Trash2, TrendingUp } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,20 +16,27 @@ const CONFIDENCE_LABELS: Record<AiConfidence, string> = {
   low: '低信心',
 }
 
+type HistoryView = 'recent' | 'stocks' | 'review'
 type FreshnessFilter = 'ALL' | 'fresh' | 'stale'
+type AnalysisTypeFilter = 'ALL' | 'stock' | 'portfolio' | 'market'
+type ActionFilter = 'ALL' | '买入' | '加仓' | '继续持有' | '减仓' | '卖出' | '观望' | '回避'
+
+const ACTION_OPTIONS: ActionFilter[] = ['ALL', '买入', '加仓', '继续持有', '减仓', '卖出', '观望', '回避']
 
 export default function AiHistoryView() {
   const { userId } = useStockStore()
   const [records, setRecords] = useState<AiAnalysisHistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock' | 'market'>('ALL')
+  const [activeView, setActiveView] = useState<HistoryView>('recent')
+  const [typeFilter, setTypeFilter] = useState<AnalysisTypeFilter>('ALL')
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | AiConfidence>('ALL')
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilter>('ALL')
-  const [tagFilter, setTagFilter] = useState('ALL')
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('ALL')
   const [stockQuery, setStockQuery] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AiAnalysisHistoryRecord | null>(null)
 
   useEffect(() => {
@@ -39,7 +46,6 @@ export default function AiHistoryView() {
       setError(null)
       try {
         const params = new URLSearchParams({ userId })
-        if (typeFilter !== 'ALL') params.set('type', typeFilter)
         if (confidenceFilter !== 'ALL') params.set('confidence', confidenceFilter)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
@@ -55,7 +61,83 @@ export default function AiHistoryView() {
     }
 
     void load()
-  }, [confidenceFilter, dateFrom, dateTo, typeFilter, userId])
+  }, [confidenceFilter, dateFrom, dateTo, userId])
+
+  const filteredRecords = useMemo(() => {
+    const normalizedQuery = stockQuery.trim().toLowerCase()
+    return records.filter((record) => {
+      if (activeView === 'stocks' && record.type !== 'stock') return false
+      if (activeView === 'review' && record.type !== 'portfolio' && record.type !== 'market') return false
+      if (typeFilter !== 'ALL' && record.type !== typeFilter) return false
+
+      if (freshnessFilter !== 'ALL') {
+        const fresh = isFresh(record.generatedAt)
+        if (freshnessFilter === 'fresh' && !fresh) return false
+        if (freshnessFilter === 'stale' && fresh) return false
+      }
+
+      if (actionFilter !== 'ALL' && getPrimaryAction(record) !== actionFilter) return false
+
+      if (normalizedQuery) {
+        const haystack = `${record.stockName ?? ''} ${record.stockCode ?? ''} ${record.result.summary} ${record.result.stance}`.toLowerCase()
+        return haystack.includes(normalizedQuery)
+      }
+
+      return true
+    })
+  }, [activeView, actionFilter, freshnessFilter, records, stockQuery, typeFilter])
+
+  const overviewStats = useMemo(() => {
+    const freshRecords = records.filter((record) => isFresh(record.generatedAt))
+    const stockCodes = new Set(records.filter((record) => record.type === 'stock' && record.stockCode).map((record) => record.stockCode))
+    const latest = records[0] ?? null
+
+    return {
+      latestGeneratedAt: latest?.generatedAt ?? null,
+      fresh: freshRecords.length,
+      stale: Math.max(0, records.length - freshRecords.length),
+      stockCoverage: stockCodes.size,
+    }
+  }, [records])
+
+  const stockDossiers = useMemo(() => {
+    const grouped = new Map<string, AiAnalysisHistoryRecord[]>()
+    for (const record of filteredRecords) {
+      if (record.type !== 'stock') continue
+      const key = record.stockCode || record.stockId || record.id
+      const bucket = grouped.get(key) ?? []
+      bucket.push(record)
+      grouped.set(key, bucket)
+    }
+
+    return Array.from(grouped.values())
+      .map((items) => {
+        const sorted = [...items].sort(sortByGeneratedAtDesc)
+        return {
+          latest: sorted[0],
+          previous: sorted[1] ?? null,
+          count: sorted.length,
+        }
+      })
+      .filter((item) => !!item.latest)
+      .sort((a, b) => sortByGeneratedAtDesc(a.latest, b.latest))
+  }, [filteredRecords])
+
+  const visibleRecords = useMemo(() => {
+    if (activeView === 'stocks') return []
+    return [...filteredRecords].sort(sortByGeneratedAtDesc)
+  }, [activeView, filteredRecords])
+
+  const resetFilters = () => {
+    setTypeFilter('ALL')
+    setConfidenceFilter('ALL')
+    setFreshnessFilter('ALL')
+    setActionFilter('ALL')
+    setStockQuery('')
+    setDateFrom('')
+    setDateTo('')
+    setExpandedId(null)
+  }
 
   const handleDeleteRecord = async () => {
     if (!deleteTarget || !userId) return
@@ -76,360 +158,186 @@ export default function AiHistoryView() {
     }
   }
 
-  const availableTags = useMemo(() => {
-    const tags = new Set<string>()
-    for (const record of records) {
-      for (const tag of record.tags) tags.add(tag)
-    }
-    return Array.from(tags).sort((a, b) => a.localeCompare(b, 'zh-CN'))
-  }, [records])
-
-  const recordsAfterFilters = useMemo(() => {
-    const normalizedQuery = stockQuery.trim().toLowerCase()
-    return records.filter((record) => {
-      if (tagFilter !== 'ALL' && !record.tags.includes(tagFilter)) {
-        return false
-      }
-
-      if (freshnessFilter !== 'ALL') {
-        const fresh = isFresh(record.generatedAt)
-        if (freshnessFilter === 'fresh' && !fresh) return false
-        if (freshnessFilter === 'stale' && fresh) return false
-      }
-
-      if (typeFilter === 'stock' && normalizedQuery) {
-        const haystack = `${record.stockName ?? ''} ${record.stockCode ?? ''}`.toLowerCase()
-        return haystack.includes(normalizedQuery)
-      }
-
-      return true
-    })
-  }, [freshnessFilter, records, stockQuery, tagFilter, typeFilter])
-
-  const visibleRecords = recordsAfterFilters
-
-  const overviewStats = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10)
-    const todayCount = recordsAfterFilters.filter((record) => record.generatedAt.slice(0, 10) === today).length
-    const highCount = recordsAfterFilters.filter((record) => record.confidence === 'high').length
-    const portfolioCount = recordsAfterFilters.filter((record) => record.type === 'portfolio').length
-    const stockCount = recordsAfterFilters.filter((record) => record.type === 'stock').length
-    const marketCount = recordsAfterFilters.filter((record) => record.type === 'market').length
-
-    return {
-      total: recordsAfterFilters.length,
-      todayCount,
-      highCount,
-      highShare: recordsAfterFilters.length > 0 ? Math.round((highCount / recordsAfterFilters.length) * 100) : 0,
-      portfolioCount,
-      stockCount,
-      marketCount,
-    }
-  }, [recordsAfterFilters])
-
-  const globalStats = useMemo(() => {
-    const freshRecords = records.filter((record) => isFresh(record.generatedAt))
-    const stockCodes = new Set(records.filter((record) => record.type === 'stock' && record.stockCode).map((record) => record.stockCode))
-    const latest = records[0] ?? null
-    const latestPortfolio = records.find((record) => record.type === 'portfolio') ?? null
-
-    return {
-      total: records.length,
-      fresh: freshRecords.length,
-      stale: Math.max(0, records.length - freshRecords.length),
-      stockCoverage: stockCodes.size,
-      latestGeneratedAt: latest?.generatedAt ?? null,
-      latestPortfolioAction: latestPortfolio ? getPrimaryAction(latestPortfolio) : '暂无组合分析',
-    }
-  }, [records])
-
-  const recentRecords = useMemo(() => recordsAfterFilters.slice(0, 5), [recordsAfterFilters])
-
-  const stockDossiers = useMemo(() => {
-    const grouped = new Map<string, AiAnalysisHistoryRecord[]>()
-    for (const record of recordsAfterFilters) {
-      if (record.type !== 'stock') continue
-      const key = record.stockCode || record.stockId || record.id
-      const bucket = grouped.get(key) ?? []
-      bucket.push(record)
-      grouped.set(key, bucket)
-    }
-
-    return Array.from(grouped.values())
-      .map((items) => {
-        const sorted = [...items].sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
-        return {
-          latest: sorted[0],
-          previous: sorted[1] ?? null,
-          count: sorted.length,
-        }
-      })
-      .filter((item) => !!item.latest)
-      .sort((a, b) => new Date(b.latest.generatedAt).getTime() - new Date(a.latest.generatedAt).getTime())
-      .slice(0, 8)
-  }, [recordsAfterFilters])
-
-  const pageCopy = useMemo(() => {
-    if (typeFilter === 'portfolio') {
-      return {
-        title: '组合分析记录',
-        description: '这里聚合的是面向整仓视角的历史分析，适合回看当时的仓位结构、风险暴露和组合判断。',
-      }
-    }
-    if (typeFilter === 'stock') {
-      return {
-        title: '个股分析记录',
-        description: '这里聚合的是单只股票的历史分析，更适合按股票代码、名称和时间回看当时的判断变化。',
-      }
-    }
-    if (typeFilter === 'market') {
-      return {
-        title: '大盘分析记录',
-        description: '这里聚合的是 A 股、港股和美股代表指数的历史分析，适合回看当时的大盘强弱与节奏判断。',
-      }
-    }
-    return {
-      title: '全部分析记录',
-      description: '先按频道切换记录类型，再通过信心、标签和日期筛选进一步缩小范围。',
-    }
-  }, [typeFilter])
-
   return (
-    <div className="space-y-6">
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <StatCard label="总报告" value={`${globalStats.total}`} detail="已保存的 AI 分析报告" />
-        <StatCard label="有效期内" value={`${globalStats.fresh}`} detail="1 小时内生成" />
-        <StatCard label="待刷新" value={`${globalStats.stale}`} detail="超过 1 小时的历史快照" />
-        <StatCard label="个股覆盖" value={`${globalStats.stockCoverage}`} detail="已分析过的股票数" />
+    <div className="space-y-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="最近分析"
-          value={globalStats.latestGeneratedAt ? formatRelativeTime(globalStats.latestGeneratedAt) : '暂无'}
-          detail={globalStats.latestGeneratedAt ? new Date(globalStats.latestGeneratedAt).toLocaleString('zh-CN') : '尚未生成报告'}
+          value={overviewStats.latestGeneratedAt ? formatRelativeTime(overviewStats.latestGeneratedAt) : '暂无'}
+          detail={overviewStats.latestGeneratedAt ? new Date(overviewStats.latestGeneratedAt).toLocaleString('zh-CN') : '尚未生成报告'}
         />
-        <StatCard label="最新组合动作" value={globalStats.latestPortfolioAction} detail="最近一次组合分析主结论" />
+        <StatCard label="有效期内" value={`${overviewStats.fresh}`} detail="1 小时内生成的报告" />
+        <StatCard label="待刷新" value={`${overviewStats.stale}`} detail="超过 1 小时的历史快照" />
+        <StatCard label="覆盖标的" value={`${overviewStats.stockCoverage}`} detail="有过个股分析的股票" />
       </section>
 
       <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div>
-            <div className="text-sm font-medium text-foreground">快速查看</div>
-            <div className="mt-1 text-xs text-muted-foreground">先看报告是否仍在有效期内，再按分析对象和信心切换。</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <TagBadge active={typeFilter === 'ALL' && freshnessFilter === 'ALL' && confidenceFilter === 'ALL'} onClick={() => {
-              setTypeFilter('ALL')
-              setFreshnessFilter('ALL')
-              setConfidenceFilter('ALL')
-            }}>
-              全部报告
-            </TagBadge>
-            <TagBadge active={freshnessFilter === 'fresh'} onClick={() => {
-              setFreshnessFilter('fresh')
-            }}>
-              有效期内
-            </TagBadge>
-            <TagBadge active={freshnessFilter === 'stale'} onClick={() => {
-              setFreshnessFilter('stale')
-            }}>
-              待刷新
-            </TagBadge>
-            <TagBadge active={typeFilter === 'stock'} onClick={() => setTypeFilter('stock')}>个股分析</TagBadge>
-            <TagBadge active={typeFilter === 'portfolio'} onClick={() => setTypeFilter('portfolio')}>组合分析</TagBadge>
-            <TagBadge active={typeFilter === 'market'} onClick={() => setTypeFilter('market')}>大盘分析</TagBadge>
-            <TagBadge active={confidenceFilter === 'high'} onClick={() => setConfidenceFilter('high')}>高信心</TagBadge>
+        <div className="p-4">
+          <div className="grid gap-2 md:grid-cols-3">
+            <ViewTab
+              active={activeView === 'recent'}
+              title="最近报告"
+              detail="按时间查看所有分析结论"
+              count={records.length}
+              onClick={() => {
+                setActiveView('recent')
+                setTypeFilter('ALL')
+              }}
+            />
+            <ViewTab
+              active={activeView === 'stocks'}
+              title="个股档案"
+              detail="按股票查看结论变化"
+              count={stockDossiers.length}
+              onClick={() => {
+                setActiveView('stocks')
+                setTypeFilter('stock')
+              }}
+            />
+            <ViewTab
+              active={activeView === 'review'}
+              title="组合复盘"
+              detail="回看组合和大盘判断"
+              count={records.filter((record) => record.type === 'portfolio' || record.type === 'market').length}
+              onClick={() => {
+                setActiveView('review')
+                setTypeFilter('ALL')
+              }}
+            />
           </div>
         </div>
       </Card>
 
       <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium text-foreground">最近分析</div>
-              <div className="mt-1 text-xs text-muted-foreground">优先展示最新报告、主动作、时效状态和关键建议。</div>
+        <div className="space-y-4 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-primary" />
+              <div>
+                <div className="text-sm font-medium text-foreground">筛选报告</div>
+                <div className="mt-1 text-xs text-muted-foreground">按对象、状态、动作和时间快速缩小历史范围。</div>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground">{loading ? '加载中...' : `展示 ${recentRecords.length} 条`}</div>
+            <Button type="button" variant="outline" size="sm" onClick={resetFilters}>
+              重置筛选
+            </Button>
           </div>
 
-          {recentRecords.length === 0 ? (
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-              当前筛选条件下暂无最近报告。
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+            <div className="relative xl:col-span-2">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={stockQuery}
+                onChange={(e) => setStockQuery(e.target.value)}
+                placeholder="搜索股票、代码或结论关键词"
+                className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <Select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as AnalysisTypeFilter)}
+              className="h-10 bg-background"
+              disabled={activeView === 'stocks'}
+            >
+              <option value="ALL">全部类型</option>
+              <option value="stock">个股</option>
+              <option value="portfolio">组合</option>
+              <option value="market">大盘</option>
+            </Select>
+            <Select
+              value={freshnessFilter}
+              onChange={(e) => setFreshnessFilter(e.target.value as FreshnessFilter)}
+              className="h-10 bg-background"
+            >
+              <option value="ALL">全部时效</option>
+              <option value="fresh">有效期内</option>
+              <option value="stale">待刷新</option>
+            </Select>
+            <Select
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value as ActionFilter)}
+              className="h-10 bg-background"
+            >
+              {ACTION_OPTIONS.map((action) => (
+                <option key={action} value={action}>{action === 'ALL' ? '全部动作' : action}</option>
+              ))}
+            </Select>
+            <Select
+              value={confidenceFilter}
+              onChange={(e) => setConfidenceFilter(e.target.value as typeof confidenceFilter)}
+              className="h-10 bg-background"
+            >
+              <option value="ALL">全部信心</option>
+              <option value="high">高信心</option>
+              <option value="medium">中等信心</option>
+              <option value="low">低信心</option>
+            </Select>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
+            <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <div className="space-y-4 p-5">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-medium text-foreground">{getViewTitle(activeView)}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{getViewDescription(activeView)}</div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {loading ? '加载中...' : activeView === 'stocks' ? `${stockDossiers.length} 只股票` : `共 ${visibleRecords.length} 条`}
+            </div>
+          </div>
+
+          {error && <div className="text-sm text-destructive">{error}</div>}
+
+          {!error && activeView === 'stocks' && stockDossiers.length === 0 && (
+            <EmptyState text="当前筛选条件下暂无个股档案。" />
+          )}
+
+          {!error && activeView !== 'stocks' && visibleRecords.length === 0 && (
+            <EmptyState text="当前筛选条件下暂无分析报告。" />
+          )}
+
+          {activeView === 'stocks' ? (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {stockDossiers.map((item) => (
+                <StockDossierCard
+                  key={item.latest.stockCode ?? item.latest.id}
+                  latest={item.latest}
+                  previous={item.previous}
+                  count={item.count}
+                  expanded={expandedId === item.latest.id}
+                  onToggle={() => setExpandedId((current) => current === item.latest.id ? null : item.latest.id)}
+                  onDelete={() => setDeleteTarget(item.latest)}
+                />
+              ))}
             </div>
           ) : (
-            <div className="grid gap-3 xl:grid-cols-2">
-              {recentRecords.map((record) => (
-                <ReportPreviewCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
+            <div className="space-y-3">
+              {visibleRecords.map((record) => (
+                <ReportSummaryCard
+                  key={record.id}
+                  record={record}
+                  expanded={expandedId === record.id}
+                  onToggle={() => setExpandedId((current) => current === record.id ? null : record.id)}
+                  onDelete={() => setDeleteTarget(record)}
+                />
               ))}
             </div>
           )}
         </div>
       </Card>
 
-      {(typeFilter === 'ALL' || typeFilter === 'stock') && (
-        <Card className="border-border bg-card">
-          <div className="p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-medium text-foreground">个股研判档案</div>
-                <div className="mt-1 text-xs text-muted-foreground">按股票聚合最近判断，方便看结论是否发生变化。</div>
-              </div>
-              <div className="text-xs text-muted-foreground">{stockDossiers.length} 只股票</div>
-            </div>
-
-            {stockDossiers.length === 0 ? (
-              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-                当前筛选条件下暂无个股分析档案。
-              </div>
-            ) : (
-              <div className="grid gap-3 xl:grid-cols-2">
-                {stockDossiers.map((item) => (
-                  <StockDossierCard
-                    key={item.latest.stockCode ?? item.latest.id}
-                    latest={item.latest}
-                    previous={item.previous}
-                    count={item.count}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-
-      <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div>
-            <div className="text-sm font-medium text-foreground">记录频道</div>
-            <div className="mt-1 text-xs text-muted-foreground">先区分你要看的是组合分析，还是个股分析，再进入后续筛选。</div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <ChannelCard
-              title="全部"
-              description="混合查看组合与个股历史，用来纵览整体 AI 使用节奏。"
-              active={typeFilter === 'ALL'}
-              onClick={() => setTypeFilter('ALL')}
-            />
-            <ChannelCard
-              title="组合分析"
-              description="聚焦整仓视角的判断、仓位风险与组合观察。"
-              active={typeFilter === 'portfolio'}
-              onClick={() => setTypeFilter('portfolio')}
-            />
-            <ChannelCard
-              title="个股分析"
-              description="聚焦单只股票的历史结论、信心变化和重点观察。"
-              active={typeFilter === 'stock'}
-              onClick={() => setTypeFilter('stock')}
-            />
-            <ChannelCard
-              title="大盘分析"
-              description="聚焦三地代表指数的强弱结构、风险偏好和市场节奏。"
-              active={typeFilter === 'market'}
-              onClick={() => setTypeFilter('market')}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-primary" />
-            <div>
-              <div className="text-sm font-medium text-foreground">{pageCopy.title}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{pageCopy.description}</div>
-            </div>
-          </div>
-
-          <div className={`grid grid-cols-1 gap-3 ${typeFilter === 'stock' ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
-            <Select
-              value={confidenceFilter}
-              onChange={(e) => setConfidenceFilter(e.target.value as typeof confidenceFilter)}
-              className="h-10 bg-background"
-            >
-              <option value="ALL">全部信心标签</option>
-              <option value="high">高信心</option>
-              <option value="medium">中等信心</option>
-              <option value="low">低信心</option>
-            </Select>
-            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
-            <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
-            {typeFilter === 'stock' && (
-              <input
-                type="text"
-                value={stockQuery}
-                onChange={(e) => setStockQuery(e.target.value)}
-                placeholder="搜索股票名称或代码"
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <TagBadge active={tagFilter === 'ALL'} onClick={() => setTagFilter('ALL')}>全部标签</TagBadge>
-            {availableTags.map((tag) => (
-              <TagBadge key={tag} active={tagFilter === tag} onClick={() => setTagFilter(tag)}>
-                {tag}
-              </TagBadge>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="总分析次数" value={`${overviewStats.total}`} detail={loading ? '正在更新...' : '当前筛选结果'} />
-        <StatCard label="今天新增" value={`${overviewStats.todayCount}`} detail="当天生成的分析数" />
-        <StatCard label="高信心占比" value={`${overviewStats.highShare}%`} detail={`共 ${overviewStats.highCount} 条高信心记录`} />
-        <StatCard label="分析构成" value={`${overviewStats.portfolioCount} / ${overviewStats.stockCount} / ${overviewStats.marketCount}`} detail="组合 / 个股 / 大盘" />
-      </section>
-
-      <Card className="border-border bg-card">
-        <div className="p-5 space-y-4">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-medium text-foreground">分析记录</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                这里是主工作区。先用频道、筛选器和日期范围锁定范围，再往下看具体分析。
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {loading ? '加载中...' : `共 ${visibleRecords.length} 条`}
-            </div>
-          </div>
-
-          {error && <div className="text-sm text-destructive">{error}</div>}
-
-          {!error && visibleRecords.length === 0 && (
-            <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-              当前筛选条件下暂无分析记录。
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {visibleRecords.map((record) => (
-              record.type === 'portfolio' ? (
-                <PortfolioRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
-              ) : record.type === 'market' ? (
-                <MarketRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
-              ) : (
-                <StockRecordCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
-              )
-            ))}
-          </div>
-        </div>
-      </Card>
-
       <ConfirmDialog
         open={!!deleteTarget}
         title="确认删除分析记录"
-        description={deleteTarget ? `确定删除 ${
-          deleteTarget.type === 'portfolio'
-            ? '这条组合分析'
-            : deleteTarget.type === 'market'
-              ? '这条大盘分析'
-              : `${deleteTarget.stockName ?? '该个股'}分析`
-        } 吗？删除后无法恢复。` : undefined}
+        description={deleteTarget ? `确定删除 ${getRecordTitle(deleteTarget)} 吗？删除后无法恢复。` : undefined}
         confirmText="删除"
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
@@ -440,36 +348,41 @@ export default function AiHistoryView() {
   )
 }
 
-function ChannelCard({
-  title,
-  description,
+function ViewTab({
   active,
+  title,
+  detail,
+  count,
   onClick,
 }: {
-  title: string
-  description: string
   active: boolean
+  title: string
+  detail: string
+  count: number
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-2xl border p-4 text-left transition-colors ${
+      className={`rounded-lg border px-4 py-3 text-left transition-colors ${
         active
-          ? 'border-primary/30 bg-primary/10'
-          : 'border-border/70 bg-muted/20 hover:border-primary/20 hover:bg-card'
+          ? 'border-primary/40 bg-primary/10'
+          : 'border-border/70 bg-muted/20 hover:border-primary/30 hover:bg-card'
       }`}
     >
-      <div className="text-sm font-medium text-foreground">{title}</div>
-      <div className="mt-2 text-xs leading-5 text-muted-foreground">{description}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        <span className="rounded-full border border-border/70 bg-card px-2 py-0.5 text-xs text-muted-foreground">{count}</span>
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
     </button>
   )
 }
 
 function StatCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-card px-4 py-4">
+    <div className="rounded-lg border border-border/70 bg-card px-4 py-4">
       <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
       <div className="mt-3 text-xl font-semibold leading-7 text-foreground line-clamp-2">{value}</div>
       <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
@@ -477,81 +390,61 @@ function StatCard({ label, value, detail }: { label: string; value: string; deta
   )
 }
 
-function TagBadge({
-  children,
-  active = false,
-  onClick,
-}: {
-  children: React.ReactNode
-  active?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? 'border-primary/40 bg-primary/10 text-primary'
-          : 'border-border/70 bg-card text-muted-foreground hover:border-primary/30 hover:text-foreground'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function StaticTag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
-      {children}
-    </span>
-  )
-}
-
-function ReportPreviewCard({
+function ReportSummaryCard({
   record,
+  expanded,
+  onToggle,
   onDelete,
 }: {
   record: AiAnalysisHistoryRecord
+  expanded: boolean
+  onToggle: () => void
   onDelete: () => void
 }) {
-  const title = record.type === 'portfolio'
-    ? '组合分析'
-    : record.type === 'market'
-      ? '大盘分析'
-      : `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`
-  const action = getPrimaryAction(record)
-  const keyReasons = record.result.facts.length > 0 ? record.result.facts : record.result.evidence
-  const keyActions = record.result.actionPlan.length > 0 ? record.result.actionPlan : record.result.actionableObservations
+  const reasons = getReasons(record)
+  const actions = getActions(record)
+  const risks = getRisks(record)
+  const primaryAction = getPrimaryAction(record)
 
   return (
-    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+    <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">{getRecordTitle(record)}</span>
+            <FreshnessTag generatedAt={record.generatedAt} />
+            <StaticTag>{CONFIDENCE_LABELS[record.confidence]}</StaticTag>
+            <ActionTag action={primaryAction} />
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+          </div>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2 pr-10">
-        <span className="text-sm font-semibold text-foreground">{title}</span>
-        <FreshnessTag generatedAt={record.generatedAt} />
-        <StaticTag>{CONFIDENCE_LABELS[record.confidence]}</StaticTag>
-        <StaticTag>{action}</StaticTag>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onToggle}>
+            {expanded ? '收起' : '展开详情'}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <div className="mt-2 text-xs text-muted-foreground">
-        {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
-      </div>
+
       <div className="mt-3 text-sm leading-6 text-foreground">{record.result.summary}</div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <SmallBlock title="关键依据" items={keyReasons.slice(0, 2)} />
-        <SmallBlock title="操作建议" items={keyActions.slice(0, 2)} />
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <SmallBlock title="关键理由" items={reasons.slice(0, 2)} />
+        <SmallBlock title="操作计划" items={actions.slice(0, 2)} />
+        <SmallBlock title="风险提醒" items={risks.slice(0, 1)} />
       </div>
+
+      {expanded && (
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <SmallBlock title="失效条件" items={record.result.invalidationSignals.slice(0, 3)} />
+          <SmallBlock title="关键价位/指标" items={record.result.keyLevels.concat(record.result.technicalSignals.map((signal) => `${signal.name}: ${signal.value}，${signal.interpretation}`)).slice(0, 4)} />
+        </div>
+      )}
     </div>
   )
 }
@@ -560,48 +453,85 @@ function StockDossierCard({
   latest,
   previous,
   count,
+  expanded,
+  onToggle,
+  onDelete,
 }: {
   latest: AiAnalysisHistoryRecord
   previous: AiAnalysisHistoryRecord | null
   count: number
+  expanded: boolean
+  onToggle: () => void
+  onDelete: () => void
 }) {
   const latestAction = getPrimaryAction(latest)
   const previousAction = previous ? getPrimaryAction(previous) : '暂无'
   const changed = previous ? latestAction !== previousAction : false
 
   return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
               {latest.stockName ?? '个股'} · {latest.stockCode ?? ''}
             </span>
             <FreshnessTag generatedAt={latest.generatedAt} />
+            <StaticTag>{CONFIDENCE_LABELS[latest.confidence]}</StaticTag>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">
             共 {count} 次分析 · 最近 {new Date(latest.generatedAt).toLocaleString('zh-CN')}
           </div>
         </div>
-        <StaticTag>{CONFIDENCE_LABELS[latest.confidence]}</StaticTag>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onToggle}>
+            {expanded ? '收起' : '展开详情'}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-border/70 bg-card/60 p-3">
-          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">最近结论</div>
-          <div className="mt-2 text-sm font-medium text-foreground">{latestAction}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{latest.result.stance}</div>
-        </div>
-        <div className="rounded-lg border border-border/70 bg-card/60 p-3">
-          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">上次结论</div>
-          <div className="mt-2 text-sm font-medium text-foreground">{previousAction}</div>
-          <div className={`mt-1 text-xs ${changed ? 'text-amber-100' : 'text-muted-foreground'}`}>
-            {previous ? (changed ? `${previousAction} -> ${latestAction}` : '结论未变化') : '暂无可比记录'}
-          </div>
-        </div>
+        <ConclusionBox label="当前结论" value={latestAction} detail={latest.result.stance} />
+        <ConclusionBox
+          label="上次结论"
+          value={previousAction}
+          detail={previous ? (changed ? `${previousAction} -> ${latestAction}` : '结论未变化') : '暂无可比记录'}
+          highlight={changed}
+        />
       </div>
 
       <div className="mt-3 text-sm leading-6 text-foreground">{latest.result.summary}</div>
+
+      {expanded && (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <SmallBlock title="关键理由" items={getReasons(latest).slice(0, 2)} />
+          <SmallBlock title="操作计划" items={getActions(latest).slice(0, 2)} />
+          <SmallBlock title="风险提醒" items={getRisks(latest).slice(0, 2)} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ConclusionBox({
+  label,
+  value,
+  detail,
+  highlight = false,
+}: {
+  label: string
+  value: string
+  detail: string
+  highlight?: boolean
+}) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-card/60 p-3">
+      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
+      <div className={`mt-1 text-xs ${highlight ? 'text-amber-100' : 'text-muted-foreground'}`}>{detail}</div>
     </div>
   )
 }
@@ -620,155 +550,20 @@ function FreshnessTag({ generatedAt }: { generatedAt: string }) {
   )
 }
 
-function PortfolioRecordCard({
-  record,
-  onDelete,
-}: {
-  record: AiAnalysisHistoryRecord
-  onDelete: () => void
-}) {
+function ActionTag({ action }: { action: string }) {
   return (
-    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 xl:pr-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">组合分析</span>
-            {record.tags.slice(0, 4).map((tag) => (
-              <StaticTag key={tag}>{tag}</StaticTag>
-            ))}
-          </div>
-          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
-          </div>
-        </div>
-
-        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">组合视角</div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            {record.result.portfolioRiskNotes?.length ?? 0} 个风险点
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <SmallBlock title="风险观察" items={record.result.portfolioRiskNotes?.slice(0, 3) ?? []} />
-        <SmallBlock title="建议动作" items={record.result.actionableObservations.slice(0, 3)} />
-      </div>
-    </div>
+    <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-primary">
+      <TrendingUp className="mr-1 h-3.5 w-3.5" />
+      {action}
+    </span>
   )
 }
 
-function StockRecordCard({
-  record,
-  onDelete,
-}: {
-  record: AiAnalysisHistoryRecord
-  onDelete: () => void
-}) {
+function StaticTag({ children }: { children: React.ReactNode }) {
   return (
-    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 xl:pr-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">
-              {record.stockName ?? '个股'} · {record.stockCode ?? ''}
-            </span>
-            {record.tags.slice(0, 5).map((tag) => (
-              <StaticTag key={tag}>{tag}</StaticTag>
-            ))}
-          </div>
-          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
-          </div>
-        </div>
-
-        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">个股视角</div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            {record.result.probabilityAssessment.length} 个场景
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
-        <SmallBlock title="关键动作" items={record.result.actionableObservations.slice(0, 3)} />
-      </div>
-    </div>
-  )
-}
-
-function MarketRecordCard({
-  record,
-  onDelete,
-}: {
-  record: AiAnalysisHistoryRecord
-  onDelete: () => void
-}) {
-  return (
-    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-        onClick={onDelete}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 xl:pr-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-foreground">大盘分析</span>
-            {record.tags.slice(0, 5).map((tag) => (
-              <StaticTag key={tag}>{tag}</StaticTag>
-            ))}
-          </div>
-          <div className="mt-2 text-sm leading-6 text-foreground">{record.result.summary}</div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
-          </div>
-        </div>
-
-        <div className="shrink-0 rounded-xl border border-border/70 bg-card/70 px-3 py-2 pr-12 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">大盘视角</div>
-          <div className="mt-1 flex items-center justify-end gap-1 text-sm font-medium text-foreground">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" />
-            {record.result.technicalSignals.length} 个信号
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <SmallBlock title="概率分析" items={record.result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%`)} />
-        <SmallBlock title="观察动作" items={record.result.actionableObservations.slice(0, 3)} />
-      </div>
-    </div>
+    <span className="inline-flex items-center rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
+      {children}
+    </span>
   )
 }
 
@@ -779,7 +574,7 @@ function SmallBlock({ title, items }: { title: string; items: string[] }) {
       <div className="mt-2 space-y-1.5">
         {items.length > 0 ? (
           items.map((item) => (
-            <div key={item} className="text-sm text-foreground">
+            <div key={item} className="text-sm leading-5 text-foreground">
               {item}
             </div>
           ))
@@ -789,6 +584,51 @@ function SmallBlock({ title, items }: { title: string; items: string[] }) {
       </div>
     </div>
   )
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+      {text}
+    </div>
+  )
+}
+
+function getViewTitle(view: HistoryView) {
+  if (view === 'stocks') return '个股档案'
+  if (view === 'review') return '组合复盘'
+  return '最近报告'
+}
+
+function getViewDescription(view: HistoryView) {
+  if (view === 'stocks') return '按股票聚合最近分析，重点看当前结论、上次结论和判断变化。'
+  if (view === 'review') return '集中回看组合与大盘分析，关注仓位建议、风险暴露和市场节奏。'
+  return '按时间倒序查看 AI 历史报告，重点看动作结论、关键理由和风险提醒。'
+}
+
+function getRecordTitle(record: AiAnalysisHistoryRecord) {
+  if (record.type === 'portfolio') return '组合分析'
+  if (record.type === 'market') return '大盘分析'
+  return `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`
+}
+
+function getReasons(record: AiAnalysisHistoryRecord) {
+  return record.result.facts.length > 0 ? record.result.facts : record.result.evidence
+}
+
+function getActions(record: AiAnalysisHistoryRecord) {
+  if (record.result.actionPlan.length > 0) return record.result.actionPlan
+  if (record.result.positionAdvice && record.result.positionAdvice.length > 0) return record.result.positionAdvice
+  return record.result.actionableObservations
+}
+
+function getRisks(record: AiAnalysisHistoryRecord) {
+  if (record.result.risks.length > 0) return record.result.risks
+  return record.result.portfolioRiskNotes ?? []
+}
+
+function sortByGeneratedAtDesc(a: AiAnalysisHistoryRecord, b: AiAnalysisHistoryRecord) {
+  return new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
 }
 
 function isFresh(generatedAt: string) {
@@ -815,7 +655,7 @@ function formatRelativeTime(generatedAt: string) {
   return `${Math.floor(dayCount / 365)} 年前`
 }
 
-function getPrimaryAction(record: AiAnalysisHistoryRecord) {
+function getPrimaryAction(record: AiAnalysisHistoryRecord): Exclude<ActionFilter, 'ALL'> | string {
   const candidates = [
     record.result.actionPlan[0],
     record.result.positionAdvice?.[0],
@@ -825,8 +665,9 @@ function getPrimaryAction(record: AiAnalysisHistoryRecord) {
   ].filter(Boolean) as string[]
 
   const text = candidates.join(' ')
-  const actionWords = ['买入', '加仓', '继续持有', '持有', '减仓', '卖出', '观望', '回避', '控制仓位', '暂不加仓', '调整结构', '分批减仓', '等待确认']
+  const actionWords: Exclude<ActionFilter, 'ALL'>[] = ['买入', '加仓', '继续持有', '减仓', '卖出', '观望', '回避']
   const found = actionWords.find((word) => text.includes(word))
-  if (found === '持有') return '继续持有'
-  return found ?? record.result.stance ?? '暂无结论'
+  if (found) return found
+  if (text.includes('持有')) return '继续持有'
+  return record.result.stance ?? '暂无结论'
 }

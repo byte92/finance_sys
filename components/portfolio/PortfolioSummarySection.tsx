@@ -185,13 +185,13 @@ export default function PortfolioSummarySection() {
         <div className="text-xs text-muted-foreground">共 {portfolio.stockCount} 只资产</div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3">
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">今日盈亏</div>
-          <div className={`text-xl font-bold font-mono ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-value ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(todayPnl.amount, displayCurrency)}
           </div>
-          <div className={`text-xs mt-1 ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-subvalue ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPercent(todayPnl.rate)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
@@ -205,7 +205,7 @@ export default function PortfolioSummarySection() {
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">持有市值</div>
-          <div className="text-xl font-bold font-mono text-foreground">
+          <div className="stat-value text-foreground">
             {formatWithCurrency(todayPnl.marketValue)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
@@ -215,10 +215,10 @@ export default function PortfolioSummarySection() {
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">浮动盈亏</div>
-          <div className={`text-xl font-bold font-mono ${todayPnl.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-value ${todayPnl.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(todayPnl.unrealizedPnl, displayCurrency)}
           </div>
-          <div className={`text-xs mt-1 ${todayPnl.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-subvalue ${todayPnl.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPercent(todayPnl.unrealizedPnlPercent)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
@@ -228,17 +228,17 @@ export default function PortfolioSummarySection() {
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">累计已实现收益</div>
-          <div className={`text-xl font-bold font-mono ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-value ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(portfolio.totalRealizedPnl, displayCurrency)}
           </div>
-          <div className={`text-xs mt-1 ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
+          <div className={`stat-subvalue ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPercent(portfolio.totalRealizedPnlPercent)}
           </div>
         </Card>
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">总手续费</div>
-          <div className="text-lg font-bold font-mono text-foreground">
+          <div className="stat-value text-foreground">
             {formatWithCurrency(portfolio.totalCommission)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">累计手续费</div>
@@ -246,7 +246,7 @@ export default function PortfolioSummarySection() {
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">累计分红</div>
-          <div className="text-lg font-bold font-mono text-foreground">
+          <div className="stat-value text-foreground">
             {formatWithCurrency(portfolio.totalDividend)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">税后到账</div>
@@ -254,7 +254,7 @@ export default function PortfolioSummarySection() {
 
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">持仓股数</div>
-          <div className="text-lg font-bold font-mono text-foreground">
+          <div className="stat-value text-foreground">
             {portfolio.totalHolding.toLocaleString()}
           </div>
           <div className="text-xs text-muted-foreground mt-1">全部市场</div>

@@ -81,7 +81,7 @@ export interface AiConfig {
   model: string
   apiKey: string
   temperature: number
-  maxTokens: number
+  maxContextTokens: number
   newsEnabled: boolean
   analysisLanguage: AiAnalysisLanguage
   promptTemplates: AiPromptTemplates
@@ -256,4 +256,35 @@ export interface AiAnalysisHistoryRecord {
   generatedAt: string
   createdAt: string
   result: AiAnalysisResult
+}
+
+export type AiChatRole = 'system' | 'user' | 'assistant'
+export type AiContextLevel = 'short' | 'medium' | 'long' | 'near-limit'
+
+export interface AiChatSession {
+  id: string
+  userId: string
+  title: string
+  scope: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+  latestMessageAt?: string | null
+}
+
+export interface AiChatMessage {
+  id: string
+  sessionId: string
+  userId: string
+  role: AiChatRole
+  content: string
+  contextSnapshot?: Record<string, unknown> | null
+  tokenEstimate: number
+  createdAt: string
+}
+
+export interface AiChatContextStats {
+  tokenEstimate: number
+  maxContextTokens: number
+  level: AiContextLevel
 }

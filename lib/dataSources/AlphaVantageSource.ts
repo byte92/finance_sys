@@ -24,7 +24,10 @@ export class AlphaVantageDataSource implements StockDataSource {
     try {
       const std = toAlphaSymbol(symbol, market)
       const url = `${API_BASE}?function=GLOBAL_QUOTE&symbol=${std}&apikey=${this.config.apiKey}`
-      const res = await fetch(url)
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(8000),
+        cache: 'no-store',
+      })
       if (!res.ok) return null
       const data = await res.json()
       if (data['Error Message'] || data['Information'] || data['Note']) return null

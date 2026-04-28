@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
@@ -18,6 +19,16 @@ type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transfer
 type PromptField = keyof AiPromptTemplates
 type SectionId = 'basic' | 'ai' | 'preferences' | 'prompts'
 const SETTINGS_SECTIONS_STORAGE_KEY = 'stock-tracker-settings-sections'
+
+type AiEnvStatus = {
+  configured: boolean
+  provider?: AiProvider
+  baseUrl?: string
+  baseUrlConfigured: boolean
+  model?: string
+  apiKeyConfigured: boolean
+  apiKeyPreview?: string
+}
 
 const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }> = [
   { key: 'baseSystem', label: '基础系统提示词', hint: '定义 AI 的角色、边界、客观性要求与输出纪律。' },
@@ -46,6 +57,8 @@ export default function SettingsContent({
   const [saving, setSaving] = useState(false)
   const [testingModel, setTestingModel] = useState(false)
   const [testMessage, setTestMessage] = useState('')
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [aiEnvStatus, setAiEnvStatus] = useState<AiEnvStatus | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>({
     basic: true,
@@ -82,6 +95,25 @@ export default function SettingsContent({
     localStorage.setItem(SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
   }, [openSections])
 
+  useEffect(() => {
+    let cancelled = false
+    async function loadAiEnvStatus() {
+      try {
+        const res = await fetch('/api/ai/config/status', { cache: 'no-store' })
+        const data = await res.json()
+        if (!cancelled && res.ok) {
+          setAiEnvStatus(data.env ?? null)
+        }
+      } catch {
+        if (!cancelled) setAiEnvStatus(null)
+      }
+    }
+    void loadAiEnvStatus()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const basicDirty = useMemo(() => {
     return JSON.stringify({
       defaultMarket,
@@ -104,7 +136,7 @@ export default function SettingsContent({
       model: aiConfig.model,
       apiKey: aiConfig.apiKey,
       temperature: aiConfig.temperature,
-      maxTokens: aiConfig.maxTokens,
+      maxContextTokens: aiConfig.maxContextTokens,
       newsEnabled: aiConfig.newsEnabled,
       analysisLanguage: aiConfig.analysisLanguage,
     }) !== JSON.stringify({
@@ -114,13 +146,19 @@ export default function SettingsContent({
       model: config.aiConfig.model,
       apiKey: config.aiConfig.apiKey,
       temperature: config.aiConfig.temperature,
-      maxTokens: config.aiConfig.maxTokens,
+      maxContextTokens: config.aiConfig.maxContextTokens,
       newsEnabled: config.aiConfig.newsEnabled,
       analysisLanguage: config.aiConfig.analysisLanguage,
     })
   }, [aiConfig, config.aiConfig])
 
   const preferencesDirty = draftDisplayCurrency !== displayCurrency
+  const envAiConfigured = aiEnvStatus?.configured === true
+  const displayedAiEnabled = envAiConfigured ? true : aiConfig.enabled
+  const displayedAiProvider = envAiConfigured && aiEnvStatus?.provider ? aiEnvStatus.provider : aiConfig.provider
+  const displayedAiBaseUrl = envAiConfigured && aiEnvStatus?.baseUrl ? aiEnvStatus.baseUrl : aiConfig.baseUrl
+  const displayedAiModel = envAiConfigured && aiEnvStatus?.model ? aiEnvStatus.model : aiConfig.model
+  const displayedAiApiKey = envAiConfigured ? (aiEnvStatus?.apiKeyPreview ?? '') : aiConfig.apiKey
 
   const isDirty = useMemo(() => {
     return basicDirty || aiDirty || promptDirty || preferencesDirty
@@ -202,10 +240,8 @@ export default function SettingsContent({
   }
 
   const handleClearAll = () => {
-    if (!window.confirm('确定清空所有持仓、交易和配置吗？该操作不可恢复。')) {
-      return
-    }
     clearAll()
+    setClearConfirmOpen(false)
     onSaved?.()
   }
 
@@ -389,12 +425,19 @@ export default function SettingsContent({
         dirty: aiDirty,
         content: (
           <div className="rounded-lg border border-border p-4 space-y-4">
+          {aiEnvStatus?.configured && (
+            <div className="rounded-md border border-primary/25 bg-primary/10 p-3 text-xs text-primary">
+              当前检测到服务端 .env AI 配置，将优先使用环境变量中的 Provider / Base URL / Model / API Key。下方连接配置仅作为本地兜底；Temperature、Max Context Tokens 和提示词仍使用设置页配置。
+              {aiEnvStatus.model && <span className="ml-1">当前环境模型：{aiEnvStatus.model}</span>}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="ai-enabled">启用 AI</Label>
               <Select
                 id="ai-enabled"
-                value={aiConfig.enabled ? 'true' : 'false'}
+                value={displayedAiEnabled ? 'true' : 'false'}
+                disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, enabled: e.target.value === 'true' }))}
               >
                 <option value="true">启用</option>
@@ -405,7 +448,8 @@ export default function SettingsContent({
               <Label htmlFor="ai-provider">Provider</Label>
               <Select
                 id="ai-provider"
-                value={aiConfig.provider}
+                value={displayedAiProvider}
+                disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, provider: e.target.value as AiProvider }))}
               >
                 <option value="openai-compatible">OpenAI Compatible</option>
@@ -418,7 +462,8 @@ export default function SettingsContent({
                 <Input
                   id="ai-model"
                   placeholder="gpt-4.1-mini / claude / gemini ..."
-                  value={aiConfig.model}
+                  value={displayedAiModel}
+                  disabled={envAiConfigured}
                   onChange={(e) => setAiConfig((current) => ({ ...current, model: e.target.value }))}
                 />
                 <Button type="button" variant="outline" onClick={handleTestModel} disabled={testingModel}>
@@ -431,7 +476,8 @@ export default function SettingsContent({
               <Input
                 id="ai-base-url"
                 placeholder="https://api.openai.com/v1"
-                value={aiConfig.baseUrl}
+                value={displayedAiBaseUrl}
+                disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, baseUrl: e.target.value }))}
               />
             </div>
@@ -439,9 +485,10 @@ export default function SettingsContent({
               <Label htmlFor="ai-key">API Key</Label>
               <Input
                 id="ai-key"
-                type="password"
+                type={envAiConfigured ? 'text' : 'password'}
                 placeholder="sk-..."
-                value={aiConfig.apiKey}
+                value={displayedAiApiKey}
+                disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, apiKey: e.target.value }))}
               />
             </div>
@@ -458,14 +505,14 @@ export default function SettingsContent({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-max-tokens">Max Tokens</Label>
+              <Label htmlFor="ai-max-context-tokens">Max Context Tokens</Label>
               <Input
-                id="ai-max-tokens"
+                id="ai-max-context-tokens"
                 type="number"
-                min="256"
-                step="64"
-                value={aiConfig.maxTokens}
-                onChange={(e) => setAiConfig((current) => ({ ...current, maxTokens: Number(e.target.value) || 1200 }))}
+                min="4096"
+                step="1024"
+                value={aiConfig.maxContextTokens}
+                onChange={(e) => setAiConfig((current) => ({ ...current, maxContextTokens: Number(e.target.value) || 128000 }))}
               />
             </div>
             <div className="space-y-1.5">
@@ -493,7 +540,7 @@ export default function SettingsContent({
           </div>
 
           <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-            API Key 当前按本地模式保存在你的 SQLite 配置中，仅本机使用。开源后请不要把含有真实密钥的备份文件提交到 Git。
+            推荐把 AI_PROVIDER、AI_BASE_URL、AI_MODEL、AI_API_KEY 放在 .env.local 中。若未配置环境变量，系统会继续使用这里保存的本地兜底配置；JSON 导出会自动移除 API Key。
           </div>
 
           {testMessage && (
@@ -579,7 +626,7 @@ export default function SettingsContent({
             <Upload className="h-4 w-4 mr-1" />
             导入备份
           </Button>
-          <Button type="button" variant="outline" className="text-destructive" onClick={handleClearAll}>
+          <Button type="button" variant="outline" className="text-destructive" onClick={() => setClearConfirmOpen(true)}>
             <Trash2 className="h-4 w-4 mr-1" />
             清空数据
           </Button>
@@ -611,6 +658,15 @@ export default function SettingsContent({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title="确认清空数据"
+        description="确定清空所有持仓、交易和配置吗？该操作不可恢复。"
+        confirmText="清空"
+        onOpenChange={setClearConfirmOpen}
+        onConfirm={handleClearAll}
+      />
     </div>
   )
 }

@@ -103,7 +103,7 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   model: '',
   apiKey: '',
   temperature: 0.3,
-  maxTokens: 1400,
+  maxContextTokens: 128000,
   newsEnabled: true,
   analysisLanguage: 'zh-CN',
   promptTemplates: DEFAULT_AI_PROMPT_TEMPLATES,

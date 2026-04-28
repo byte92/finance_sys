@@ -19,6 +19,7 @@ import type {
 import type { Market } from '@/types'
 
 const ANALYSIS_CACHE = new Map<string, { expiresAt: number; result: AiAnalysisResult }>()
+const ANTHROPIC_ANALYSIS_RESPONSE_TOKEN_LIMIT = 4096
 
 type PortfolioAnalysisContext = {
   baseCurrency: Currency
@@ -670,7 +671,6 @@ async function callOpenAiCompatible(config: AiConfig, systemPrompt: string, user
     body: JSON.stringify({
       model: config.model,
       temperature: config.temperature,
-      max_tokens: config.maxTokens,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: systemPrompt },
@@ -705,7 +705,7 @@ async function callAnthropicCompatible(config: AiConfig, systemPrompt: string, u
       model: config.model,
       system: systemPrompt,
       temperature: config.temperature,
-      max_tokens: config.maxTokens,
+      max_tokens: ANTHROPIC_ANALYSIS_RESPONSE_TOKEN_LIMIT,
       messages: [
         { role: 'user', content: userPrompt },
       ],

@@ -126,6 +126,33 @@ FINANCE_SQLITE_PATH=/absolute/path/to/finance.sqlite
 FINANCE_SQLITE_PATH=./data/dev-finance.sqlite npm run dev
 ```
 
+## AI 模型配置
+
+推荐把模型连接信息放在 `.env.local`，避免 API Key 写入 SQLite 配置或 JSON 备份：
+
+```bash
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4.1-mini
+AI_API_KEY=sk-...
+```
+
+如果这些环境变量配置完整，服务端会优先使用 `.env.local` 中的 Provider / Base URL / Model / API Key。设置页中的连接配置会作为本地兜底；Temperature、Max Context Tokens 和提示词仍由设置页控制。
+
+### 环境变量说明
+
+| 变量 | 必填 | 示例 | 说明 |
+| --- | --- | --- | --- |
+| `AI_PROVIDER` | 是 | `openai-compatible` | AI provider 类型。可选 `openai-compatible` 或 `anthropic-compatible`。 |
+| `AI_BASE_URL` | 是 | `https://api.openai.com/v1` | AI 服务地址。OpenAI 兼容接口通常以 `/v1` 结尾；本地或第三方兼容网关也可以填写自己的地址。 |
+| `AI_MODEL` | 是 | `gpt-4.1-mini` | 模型名称，由服务商决定，例如 `gpt-4.1-mini`、`deepseek-chat`、`qwen-plus`、`claude-3-5-sonnet-latest`。 |
+| `AI_API_KEY` | 是 | `sk-...` | AI 服务密钥。只在服务端读取，不会发送到浏览器；真实值建议只放 `.env.local`。 |
+| `ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | Alpha Vantage 行情备用源密钥，服务端读取。 |
+| `NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | 兼容旧配置，不推荐。`NEXT_PUBLIC_` 变量会暴露到前端。 |
+| `FINANCE_SQLITE_PATH` | 否 | `./data/dev-finance.sqlite` | 自定义 SQLite 数据库文件路径。未设置时默认使用 `data/finance.sqlite`。 |
+
+`.env` 与 `.env.local` 都会被 Next.js 加载；同名变量通常 `.env.local` 优先。建议把示例和非敏感默认值放 `.env`，把真实 API Key 放 `.env.local`。
+
 ### 数据库初始化流程
 
 应用内部会自动执行等价于下面的逻辑：

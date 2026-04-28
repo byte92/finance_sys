@@ -24,22 +24,24 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogClose onClick={() => onOpenChange(false)} />
         </DialogHeader>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
-        <DialogFooter className="justify-end mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {cancelText}
-          </Button>
-          <Button variant="destructive" onClick={onConfirm}>
-            {confirmText}
-          </Button>
-        </DialogFooter>
+        <div className="px-5 pb-5 pt-4">
+          {description && (
+            <p className="max-w-[34ch] text-sm leading-6 text-muted-foreground">{description}</p>
+          )}
+          <DialogFooter className="mt-5 border-t border-border pt-4">
+            <Button className="min-w-20" variant="outline" onClick={() => onOpenChange(false)}>
+              {cancelText}
+            </Button>
+            <Button className="min-w-20" variant="destructive" onClick={onConfirm}>
+              {confirmText}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )

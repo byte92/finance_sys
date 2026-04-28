@@ -120,6 +120,15 @@ async function persistRemote(userId: string, stocks: Stock[], config: AppConfig)
   if (!res.ok) throw new Error(`Failed to persist remote data (${res.status})`);
 }
 
+async function clearRemoteAiChat(userId: string) {
+  const res = await fetch("/api/ai/chat/sessions", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, all: true }),
+  });
+  if (!res.ok) throw new Error(`Failed to clear AI chat (${res.status})`);
+}
+
 function sortTrades(stocks: Stock[]) {
   return stocks.map((stock) => ({
     ...stock,
@@ -346,13 +355,20 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
   exportData: () => {
     const { stocks, config } = get();
+    const exportConfig = {
+      ...config,
+      aiConfig: {
+        ...config.aiConfig,
+        apiKey: "",
+      },
+    };
     return {
       meta: {
         version: config.version,
         exportedAt: new Date().toISOString(),
         appName: "StockTracker",
       },
-      config,
+      config: exportConfig,
       stocks,
     };
   },
@@ -382,6 +398,9 @@ export const useStockStore = create<StockStore>()((set, get) => ({
     if (userId) {
       void persistRemote(userId, next.stocks, next.config).catch((error) => {
         console.error("Clear data failed:", error);
+      });
+      void clearRemoteAiChat(userId).catch((error) => {
+        console.error("Clear AI chat failed:", error);
       });
     }
   },

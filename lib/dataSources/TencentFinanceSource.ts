@@ -83,6 +83,8 @@ export class TencentFinanceSource implements StockDataSource {
       const url = `${API_BASE}/q=${code}&r=${Date.now()}`
       const res = await fetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
       })
       if (!res.ok) return null
 
@@ -101,6 +103,8 @@ export class TencentFinanceSource implements StockDataSource {
       const url = `${API_BASE}/q=${codes}&r=${Date.now()}`
       const res = await fetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
       })
       if (!res.ok) return []
       const text = await decodeGBK(res)

@@ -18,6 +18,7 @@ import type {
 import type { Market } from '@/types'
 
 const MARKET_ANALYSIS_CACHE = new Map<string, { expiresAt: number; result: AiAnalysisResult }>()
+const ANTHROPIC_MARKET_RESPONSE_TOKEN_LIMIT = 4096
 
 type MarketIndexDefinition = {
   id: string
@@ -154,7 +155,7 @@ async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: 
         model: config.model,
         system: systemPrompt,
         temperature: config.temperature,
-        max_tokens: config.maxTokens,
+        max_tokens: ANTHROPIC_MARKET_RESPONSE_TOKEN_LIMIT,
         messages: [{ role: 'user', content: userPrompt }],
       }),
     })
@@ -191,7 +192,6 @@ async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: 
     body: JSON.stringify({
       model: config.model,
       temperature: config.temperature,
-      max_tokens: config.maxTokens,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: systemPrompt },

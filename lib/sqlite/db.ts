@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
-import type { AiAnalysisHistoryRecord, AiAnalysisResult, AppConfig, Market, Stock } from "@/types";
+import type { AiAnalysisHistoryRecord, AiAnalysisResult, AiChatMessage, AiChatSession, AiChatRole, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
   stocks: Stock[];
@@ -64,6 +64,33 @@ function initSchema(db: Database.Database) {
     generated_at TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    context_snapshot_json TEXT,
+    token_estimate INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_user_updated
+    ON ai_chat_sessions(user_id, updated_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session_created
+    ON ai_chat_messages(session_id, created_at ASC);
   `);
 }
 
@@ -78,6 +105,23 @@ type ListAiAnalysisFilters = {
   stockCode?: string;
   market?: string;
   limit?: number;
+};
+
+type SaveAiChatSessionInput = {
+  id: string;
+  userId: string;
+  title: string;
+  scope?: string;
+};
+
+type SaveAiChatMessageInput = {
+  id: string;
+  sessionId: string;
+  userId: string;
+  role: AiChatRole;
+  content: string;
+  contextSnapshot?: Record<string, unknown> | null;
+  tokenEstimate?: number;
 };
 
 function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord {
@@ -118,6 +162,42 @@ function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord
     tags: JSON.parse(String(row.tags_json)) as string[],
     result: normalizedResult,
     generatedAt: String(row.generated_at),
+    createdAt: String(row.created_at),
+  };
+}
+
+function parseChatSessionRow(row: Record<string, unknown>): AiChatSession {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    title: String(row.title),
+    scope: String(row.scope),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    messageCount: Number(row.message_count ?? 0),
+    latestMessageAt: row.latest_message_at ? String(row.latest_message_at) : null,
+  };
+}
+
+function parseChatMessageRow(row: Record<string, unknown>): AiChatMessage {
+  const contextRaw = row.context_snapshot_json ? String(row.context_snapshot_json) : '';
+  let contextSnapshot: Record<string, unknown> | null = null;
+  if (contextRaw) {
+    try {
+      contextSnapshot = JSON.parse(contextRaw) as Record<string, unknown>;
+    } catch {
+      contextSnapshot = null;
+    }
+  }
+
+  return {
+    id: String(row.id),
+    sessionId: String(row.session_id),
+    userId: String(row.user_id),
+    role: String(row.role) as AiChatRole,
+    content: String(row.content),
+    contextSnapshot,
+    tokenEstimate: Number(row.token_estimate ?? 0),
     createdAt: String(row.created_at),
   };
 }
@@ -265,6 +345,129 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return result.changes > 0;
   }
 
+  function saveAiChatSession(input: SaveAiChatSessionInput) {
+    const now = new Date().toISOString();
+    db.prepare(
+      `
+      INSERT INTO ai_chat_sessions (id, user_id, title, scope, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        scope = excluded.scope,
+        updated_at = excluded.updated_at
+      `,
+    ).run(input.id, input.userId, input.title, input.scope ?? 'portfolio', now, now);
+  }
+
+  function updateAiChatSessionTitle(userId: string, sessionId: string, title: string) {
+    db.prepare(
+      `
+      UPDATE ai_chat_sessions
+      SET title = ?, updated_at = ?
+      WHERE user_id = ? AND id = ?
+      `,
+    ).run(title, new Date().toISOString(), userId, sessionId);
+  }
+
+  function touchAiChatSession(userId: string, sessionId: string) {
+    db.prepare(
+      `
+      UPDATE ai_chat_sessions
+      SET updated_at = ?
+      WHERE user_id = ? AND id = ?
+      `,
+    ).run(new Date().toISOString(), userId, sessionId);
+  }
+
+  function listAiChatSessions(userId: string) {
+    const rows = db.prepare(
+      `
+      SELECT
+        s.*,
+        COUNT(m.id) AS message_count,
+        MAX(m.created_at) AS latest_message_at
+      FROM ai_chat_sessions s
+      LEFT JOIN ai_chat_messages m ON m.session_id = s.id AND m.user_id = s.user_id
+      WHERE s.user_id = ?
+      GROUP BY s.id
+      ORDER BY s.updated_at DESC
+      `,
+    ).all(userId) as Array<Record<string, unknown>>;
+
+    return rows.map(parseChatSessionRow);
+  }
+
+  function getAiChatSession(userId: string, sessionId: string) {
+    const row = db.prepare(
+      `
+      SELECT
+        s.*,
+        COUNT(m.id) AS message_count,
+        MAX(m.created_at) AS latest_message_at
+      FROM ai_chat_sessions s
+      LEFT JOIN ai_chat_messages m ON m.session_id = s.id AND m.user_id = s.user_id
+      WHERE s.user_id = ? AND s.id = ?
+      GROUP BY s.id
+      `,
+    ).get(userId, sessionId) as Record<string, unknown> | undefined;
+
+    return row ? parseChatSessionRow(row) : null;
+  }
+
+  function saveAiChatMessage(input: SaveAiChatMessageInput) {
+    const createdAt = new Date().toISOString();
+    db.prepare(
+      `
+      INSERT INTO ai_chat_messages (
+        id, session_id, user_id, role, content, context_snapshot_json, token_estimate, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.id,
+      input.sessionId,
+      input.userId,
+      input.role,
+      input.content,
+      input.contextSnapshot ? JSON.stringify(input.contextSnapshot) : null,
+      input.tokenEstimate ?? 0,
+      createdAt,
+    );
+    touchAiChatSession(input.userId, input.sessionId);
+  }
+
+  function listAiChatMessages(userId: string, sessionId: string, limit?: number) {
+    const cappedLimit = limit && Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : null;
+    const rows = db.prepare(
+      `
+      SELECT *
+      FROM ai_chat_messages
+      WHERE user_id = ? AND session_id = ?
+      ORDER BY created_at ASC
+      ${cappedLimit ? "LIMIT ?" : ""}
+      `,
+    ).all(...(cappedLimit ? [userId, sessionId, String(cappedLimit)] : [userId, sessionId])) as Array<Record<string, unknown>>;
+
+    return rows.map(parseChatMessageRow);
+  }
+
+  function deleteAiChatSession(userId: string, sessionId: string) {
+    db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
+    const result = db.prepare("DELETE FROM ai_chat_sessions WHERE user_id = ? AND id = ?").run(userId, sessionId);
+    return result.changes > 0;
+  }
+
+  function clearAiChatMessages(userId: string, sessionId: string) {
+    const result = db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
+    touchAiChatSession(userId, sessionId);
+    return result.changes;
+  }
+
+  function clearAiChatByUserId(userId: string) {
+    db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ?").run(userId);
+    const result = db.prepare("DELETE FROM ai_chat_sessions WHERE user_id = ?").run(userId);
+    return result.changes;
+  }
+
   return {
     dbPath,
     getPortfolioByUserId,
@@ -272,6 +475,15 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     saveAiAnalysis,
     listAiAnalysisByUserId,
     deleteAiAnalysisById,
+    saveAiChatSession,
+    updateAiChatSessionTitle,
+    getAiChatSession,
+    listAiChatSessions,
+    saveAiChatMessage,
+    listAiChatMessages,
+    deleteAiChatSession,
+    clearAiChatMessages,
+    clearAiChatByUserId,
     rawInsert,
     close,
   };
@@ -297,4 +509,40 @@ export function listAiAnalysisByUserId(userId: string, filters: ListAiAnalysisFi
 
 export function deleteAiAnalysisById(userId: string, id: string) {
   return portfolioStore.deleteAiAnalysisById(userId, id);
+}
+
+export function saveAiChatSession(input: SaveAiChatSessionInput) {
+  portfolioStore.saveAiChatSession(input);
+}
+
+export function updateAiChatSessionTitle(userId: string, sessionId: string, title: string) {
+  portfolioStore.updateAiChatSessionTitle(userId, sessionId, title);
+}
+
+export function getAiChatSession(userId: string, sessionId: string) {
+  return portfolioStore.getAiChatSession(userId, sessionId);
+}
+
+export function listAiChatSessions(userId: string) {
+  return portfolioStore.listAiChatSessions(userId);
+}
+
+export function saveAiChatMessage(input: SaveAiChatMessageInput) {
+  portfolioStore.saveAiChatMessage(input);
+}
+
+export function listAiChatMessages(userId: string, sessionId: string, limit?: number) {
+  return portfolioStore.listAiChatMessages(userId, sessionId, limit);
+}
+
+export function deleteAiChatSession(userId: string, sessionId: string) {
+  return portfolioStore.deleteAiChatSession(userId, sessionId);
+}
+
+export function clearAiChatMessages(userId: string, sessionId: string) {
+  return portfolioStore.clearAiChatMessages(userId, sessionId);
+}
+
+export function clearAiChatByUserId(userId: string) {
+  return portfolioStore.clearAiChatByUserId(userId);
 }

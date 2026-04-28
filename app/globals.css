@@ -124,6 +124,13 @@
   .stat-card {
     @apply rounded-lg border bg-card p-5 transition-all duration-200 hover:shadow-card-hover hover:border-primary/30;
   }
+  .stat-value {
+    @apply font-bold font-mono leading-tight whitespace-nowrap tabular-nums;
+    font-size: clamp(1rem, 3.6vw, 1.25rem);
+  }
+  .stat-subvalue {
+    @apply mt-1 text-xs leading-tight whitespace-nowrap tabular-nums;
+  }
   .profit-text {
     @apply font-semibold;
     color: hsl(var(--profit));

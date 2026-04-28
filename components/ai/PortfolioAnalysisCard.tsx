@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Sparkles, RefreshCw, AlertTriangle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
@@ -10,11 +10,20 @@ import type { AiAnalysisResult } from '@/types'
 export default function PortfolioAnalysisCard({ compact = false }: { compact?: boolean }) {
   const { stocks, config, userId } = useStockStore()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const [loading, setLoading] = useState(false)
   const [bootstrapping, setBootstrapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const topRisks = useMemo(() => result?.portfolioRiskNotes?.slice(0, compact ? 2 : 4) ?? [], [compact, result])
+
+  useEffect(() => {
+    if (!result) return
+
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [result])
 
   useEffect(() => {
     if (!userId) return
@@ -118,7 +127,10 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 总结</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 总结</div>
+                      <PortfolioSnapshotAgeBadge generatedAt={result.generatedAt} now={now} />
+                    </div>
                     <div className="mt-2 text-base font-medium text-foreground leading-7">{result.summary}</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {result.stance && (
@@ -187,6 +199,41 @@ function InfoBlock({ title, items, emptyText = '暂无内容' }: { title: string
       </div>
     </div>
   )
+}
+
+function PortfolioSnapshotAgeBadge({ generatedAt, now }: { generatedAt: string; now: number }) {
+  const generatedTime = new Date(generatedAt).getTime()
+  if (!Number.isFinite(generatedTime)) return null
+
+  const ageMs = Math.max(0, now - generatedTime)
+  const { label, stale } = formatSnapshotAge(ageMs)
+  return (
+    <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium normal-case tracking-normal ${
+      stale
+        ? 'border-amber-500/30 bg-amber-500/15 text-amber-100'
+        : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-100'
+    }`}>
+      <Clock className="mr-1 h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
+
+function formatSnapshotAge(ageMs: number) {
+  const hourMs = 60 * 60 * 1000
+  const dayMs = 24 * hourMs
+  if (ageMs < hourMs) return { label: '有效期内', stale: false }
+
+  const hourCount = Math.floor(ageMs / hourMs)
+  if (ageMs < dayMs) return { label: `${hourCount} 小时前 · 非实时`, stale: true }
+
+  const dayCount = Math.floor(ageMs / dayMs)
+  if (dayCount < 30) return { label: `${dayCount} 天前 · 非实时`, stale: true }
+
+  const monthCount = Math.floor(dayCount / 30)
+  if (monthCount < 12) return { label: `${monthCount} 个月前 · 非实时`, stale: true }
+
+  return { label: `${Math.floor(dayCount / 365)} 年前 · 非实时`, stale: true }
 }
 
 function formatConfidence(confidence: AiAnalysisResult['confidence']) {

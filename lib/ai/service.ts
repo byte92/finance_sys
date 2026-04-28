@@ -115,7 +115,13 @@ function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputCon
         medium: '1-4 周',
       },
       outputRules: [
-        '必须先得出结论，再给出证据依据。',
+        '必须先得出结论，再给出证据依据；summary 第一句话必须包含明确主动作。',
+        '个股主动作只能从“买入 / 加仓 / 继续持有 / 减仓 / 卖出 / 观望 / 回避”中选择；组合主动作只能从“继续持有 / 分批减仓 / 控制仓位 / 暂不加仓 / 调整结构 / 等待确认”中选择。',
+        '不能把“仅供参考”“结合自身情况”“继续观察”作为主结论；若选择观望或等待确认，必须说明等待的具体信号、当前不操作的原因和后续触发动作。',
+        'actionPlan 必须是可执行清单，每条都要包含动作、触发条件或原因，不能只写泛泛提醒。',
+        '禁止输出“不要只凭单一信号操作”“避免情绪化买卖”“投资有风险”这类用户已经知道的常识句，必须替换为当前标的或组合的具体条件。',
+        '凡是提到“支撑”“阻力”“新闻情绪”“趋势确认”“风险边界”，必须给出具体数值、方向、依据或明确说明当前数据缺失。',
+        '个股 actionPlan 至少包含一条买入/加仓触发条件、一条减仓/卖出触发条件，以及一条继续持有或观望的前提。',
         '必须把事实与推断分开表达。',
         '必须给出概率分析，且概率总和为 100。',
         '高强度模式下必须给明确倾向，且必须回答“现在更应该做什么”“现在不该做什么”。',
@@ -586,8 +592,16 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
     actionPlan: parsed?.actionPlan?.length
       ? parsed.actionPlan
       : fallback.mode === 'stock'
-        ? ['优先结合你的成本区与仓位节奏，不要仅凭单一信号贸然加仓。']
-        : ['优先从仓位集中度和回撤控制角度处理组合风险，而不是只看单票盈亏。'],
+        ? [
+            '现在建议以继续持有或观望为主，除非价格、趋势和新闻信号同时改善。',
+            '暂不建议仅凭单一技术信号追高加仓，先确认关键支撑和量价结构是否有效。',
+            '如果跌破关键支撑或新闻面明显转弱，则应重新评估是否减仓控制风险。',
+          ]
+        : [
+            '现在建议先从仓位集中度和回撤控制角度处理组合风险，而不是只看单票盈亏。',
+            '暂不建议在强弱分化没有改善前继续放大风险暴露。',
+            '如果核心持仓继续转弱或最大仓位回撤扩大，则优先考虑分批降风险。',
+          ],
     invalidationSignals: parsed?.invalidationSignals?.length
       ? parsed.invalidationSignals
       : ['若关键支撑/阻力被有效突破，或新闻与量价结构明显反向，应重新评估当前结论。'],
@@ -599,7 +613,14 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, fallb
     technicalSignals: parsed?.technicalSignals?.length ? parsed.technicalSignals : (fallback.signals ?? []),
     newsDrivers: parsed?.newsDrivers?.length ? parsed.newsDrivers : (fallback.news ?? []),
     keyLevels: parsed?.keyLevels?.length ? parsed.keyLevels : ['关注近期支撑/阻力是否被有效突破'],
-    positionAdvice: fallback.mode === 'stock' ? (parsed?.positionAdvice?.length ? parsed.positionAdvice : ['优先结合你的成本区与仓位控制节奏，不要把 AI 结论当作单一信号。']) : undefined,
+    positionAdvice: fallback.mode === 'stock'
+      ? (parsed?.positionAdvice?.length
+          ? parsed.positionAdvice
+          : [
+              '若已有持仓且未跌破关键支撑，优先继续持有并观察确认信号。',
+              '若计划新增买入，等待突破阻力或回踩支撑有效后再考虑分批，而不是一次性追入。',
+            ])
+      : undefined,
     portfolioRiskNotes: fallback.mode === 'portfolio' ? (parsed?.portfolioRiskNotes?.length ? parsed.portfolioRiskNotes : ['优先留意单一标的过度集中和盈利回撤风险。']) : undefined,
     actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把 AI 结论作为复盘辅助，而不是独立交易依据。'],
     risks: parsed?.risks?.length ? parsed.risks : ['外部新闻、行情与估值数据可能延迟或缺失。'],
@@ -741,7 +762,7 @@ function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
       evidence: ['string'],
       disclaimer: 'string',
     },
-    '请对当前组合做短中期分析，重点关注仓位集中度、已实现/未实现盈亏结构、主要风险暴露，并给出具有指导意义的组合结论。',
+    '请对当前组合做短中期分析，重点关注仓位集中度、已实现/未实现盈亏结构、主要风险暴露，并给出可执行的组合操作建议。',
     context,
   )
 }
@@ -770,7 +791,7 @@ function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
       evidence: ['string'],
       disclaimer: 'string',
     },
-    '请对这只股票从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出尽量真实直接的判断和建议。',
+    '请对这只股票从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出买入、卖出、继续持有、减仓或观望等明确操作建议。',
     context,
   )
 }
@@ -784,6 +805,95 @@ function toAiNewsDrivers(news: NewsItem[]): AiNewsDriver[] {
     impact: item.summary || '关注新闻对短中期情绪的影响。',
     url: item.url,
   }))
+}
+
+function classifyStockNews(news: NewsItem[]) {
+  const positivePattern = /上调|增长|盈利|利好|合作|回购|新高|超预期|增持|净买入|中标|突破/i
+  const negativePattern = /下调|调查|下跌|利空|风险|裁员|诉讼|减持|净卖出|亏损|处罚/i
+  const positiveCount = news.filter((item) => positivePattern.test(`${item.title} ${item.summary}`)).length
+  const negativeCount = news.filter((item) => negativePattern.test(`${item.title} ${item.summary}`)).length
+  const bias = positiveCount > negativeCount
+    ? '偏正向'
+    : negativeCount > positiveCount
+      ? '偏负向'
+      : news.length > 0
+        ? '中性或分化'
+        : '暂无新闻数据'
+
+  return { bias, positiveCount, negativeCount }
+}
+
+function formatPriceLevel(value: number | null | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '暂无'
+}
+
+function buildStockFallbackPayload(context: StockAnalysisContext): Partial<AiAnalysisResult> {
+  const { indicators, quote, stock, summary } = context
+  const support = formatPriceLevel(indicators?.supportLevel)
+  const resistance = formatPriceLevel(indicators?.resistanceLevel)
+  const currentPrice = typeof quote?.price === 'number' ? quote.price.toFixed(2) : '暂无'
+  const newsSentiment = classifyStockNews(context.news)
+  const trend = indicators?.trendBias ?? 'neutral'
+  const hasLevels = support !== '暂无' && resistance !== '暂无'
+
+  return {
+    summary: `${stock.name} 当前主动作偏继续持有或观望：现价 ${currentPrice}，近 20 日支撑 ${support}、阻力 ${resistance}，新闻情绪${newsSentiment.bias}；只有站上阻力并且新闻继续偏正向时才考虑加仓，跌破支撑或新闻转负时优先减仓控风险。`,
+    facts: [
+      `当前持仓 ${summary.currentHolding}，已实现收益 ${summary.realizedPnl.toFixed(2)}，未实现盈亏 ${summary.unrealizedPnl.toFixed(2)}。`,
+      `当前价格 ${currentPrice}，近 20 日支撑 ${support}，近 20 日阻力 ${resistance}，趋势偏向 ${trend}。`,
+      `新闻情绪${newsSentiment.bias}：正向线索 ${newsSentiment.positiveCount} 条，负向线索 ${newsSentiment.negativeCount} 条。`,
+    ],
+    inferences: [
+      hasLevels
+        ? `现价相对 ${support}-${resistance} 区间的位置决定短线动作：未突破阻力前不宜把“继续持有”升级为加仓，跌破支撑则持有前提失效。`
+        : '当前缺少完整支撑/阻力数据，因此操作上应降低进攻性，优先等价位结构补全后再判断。',
+      newsSentiment.bias === '偏正向'
+        ? '新闻面暂时提供正向支撑，但仍需要价格突破阻力来确认。'
+        : newsSentiment.bias === '偏负向'
+          ? '新闻面偏负向，短线应先防守而不是主动加仓。'
+          : '新闻面没有形成明确方向，短线更应以价位触发条件为准。',
+    ],
+    actionPlan: [
+      `现在建议继续持有或观望：只要价格没有有效跌破 ${support}，先不急于卖出。`,
+      `如果价格放量站上 ${resistance}，且新闻情绪维持正向，再考虑分批加仓；否则不把持有升级为买入。`,
+      `如果价格跌破 ${support}，或新闻情绪从当前的${newsSentiment.bias}转为偏负向，则优先减仓或停止新增买入。`,
+    ],
+    invalidationSignals: [
+      `跌破 ${support} 会削弱继续持有前提。`,
+      `无法突破 ${resistance} 且新闻转负，会削弱加仓或继续乐观的前提。`,
+    ],
+    keyLevels: [
+      `近 20 日支撑：${support}`,
+      `近 20 日阻力：${resistance}`,
+      `当前价格：${currentPrice}`,
+    ],
+    positionAdvice: [
+      `持仓者：守住 ${support} 可继续持有观察，跌破则优先控制风险。`,
+      `准备买入者：等突破 ${resistance} 或回踩 ${support} 后重新转强，再考虑分批。`,
+    ],
+    actionableObservations: [
+      `下一步优先看价格是否在 ${support}-${resistance} 区间内完成方向选择。`,
+      `新闻面当前${newsSentiment.bias}，若方向变化，需要同步更新操作计划。`,
+    ],
+    evidence: [
+      `支撑 ${support}`,
+      `阻力 ${resistance}`,
+      `新闻情绪${newsSentiment.bias}`,
+    ],
+  }
+}
+
+function stockResultNeedsConcreteFallback(result: AiAnalysisResult, context: StockAnalysisContext) {
+  const summary = result.summary
+  const support = formatPriceLevel(context.indicators?.supportLevel)
+  const resistance = formatPriceLevel(context.indicators?.resistanceLevel)
+  const newsSentiment = classifyStockNews(context.news).bias
+  const usesAbstractTriggers = /关键支撑|关键阻力|新闻情绪|趋势确认|支撑和阻力/.test(summary)
+  const repeatsLowValueWarning = /单一信号|情绪化买|情绪化卖|情绪化操作/.test(summary)
+  const missesConcreteLevels = support !== '暂无' && resistance !== '暂无' && (!summary.includes(support) || !summary.includes(resistance))
+  const missesNewsDirection = newsSentiment !== '暂无新闻数据' && !summary.includes(newsSentiment)
+
+  return repeatsLowValueWarning || (usesAbstractTriggers && (missesConcreteLevels || missesNewsDirection))
 }
 
 export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiConfig, forceRefresh = false): Promise<AiAnalysisResult> {
@@ -860,8 +970,9 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
   const raw = await callProvider(aiConfig, system, user)
   const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
 
+  const stockFallback = buildStockFallbackPayload(context)
   const result = normalizeAnalysisResult(parsed, {
-    summary: `${stock.name} 当前更适合结合持仓成本、关键价位与新闻变化做条件式观察，而不是单一信号决策。`,
+    summary: stockFallback.summary ?? `${stock.name} 当前主动作偏继续持有或观望。`,
     evidence: [
       `当前持仓 ${summary.currentHolding}`,
       `已实现收益 ${summary.realizedPnl.toFixed(2)}`,
@@ -876,6 +987,26 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
     const inferred = inferStockFallback(context)
     result.probabilityAssessment = buildFallbackProbability(inferred)
     result.confidence = parsed?.confidence ?? inferred.confidence
+  }
+  result.summary = parsed?.summary?.trim() || stockFallback.summary || result.summary
+  result.facts = parsed?.facts?.length ? parsed.facts : (stockFallback.facts || result.facts)
+  result.inferences = parsed?.inferences?.length ? parsed.inferences : (stockFallback.inferences || result.inferences)
+  result.actionPlan = parsed?.actionPlan?.length ? parsed.actionPlan : (stockFallback.actionPlan || result.actionPlan)
+  result.invalidationSignals = parsed?.invalidationSignals?.length ? parsed.invalidationSignals : (stockFallback.invalidationSignals || result.invalidationSignals)
+  result.keyLevels = parsed?.keyLevels?.length ? parsed.keyLevels : (stockFallback.keyLevels || result.keyLevels)
+  result.positionAdvice = parsed?.positionAdvice?.length ? parsed.positionAdvice : (stockFallback.positionAdvice || result.positionAdvice)
+  result.actionableObservations = parsed?.actionableObservations?.length ? parsed.actionableObservations : (stockFallback.actionableObservations || result.actionableObservations)
+  result.evidence = parsed?.evidence?.length ? parsed.evidence : (stockFallback.evidence || result.evidence)
+  if (stockResultNeedsConcreteFallback(result, context)) {
+    result.summary = stockFallback.summary || result.summary
+    result.facts = stockFallback.facts || result.facts
+    result.inferences = stockFallback.inferences || result.inferences
+    result.actionPlan = stockFallback.actionPlan || result.actionPlan
+    result.invalidationSignals = stockFallback.invalidationSignals || result.invalidationSignals
+    result.keyLevels = stockFallback.keyLevels || result.keyLevels
+    result.positionAdvice = stockFallback.positionAdvice || result.positionAdvice
+    result.actionableObservations = stockFallback.actionableObservations || result.actionableObservations
+    result.evidence = stockFallback.evidence || result.evidence
   }
   setCachedAnalysis(cacheKey, result, 600)
   return result

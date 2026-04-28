@@ -11,9 +11,18 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
   const { config, userId } = useStockStore()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
   const [restoredFromHistory, setRestoredFromHistory] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
   const [loading, setLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!result) return
+
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [result])
 
   useEffect(() => {
     if (!userId || !stock.id) return
@@ -112,16 +121,11 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         {result && (
           <>
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 结论</div>
-                  <div className="mt-2 text-base font-medium text-foreground leading-7">{result.summary}</div>
-                </div>
-                <div className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-100">
-                  <Clock className="mr-1 inline h-3.5 w-3.5" />
-                  {restoredFromHistory ? '历史快照 · 非实时' : result.cached ? '缓存结果 · 非实时' : '分析快照 · 非实时'}
-                </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 结论</div>
+                <SnapshotAgeBadge generatedAt={result.generatedAt} now={now} />
               </div>
+              <div className="mt-2 text-base font-medium text-foreground leading-7">{result.summary}</div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>分析时间：{new Date(result.generatedAt).toLocaleString('zh-CN')}</span>
                 {result.cached && <span>命中缓存</span>}
@@ -130,14 +134,14 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
             </div>
 
             <div className="grid gap-3 lg:grid-cols-2">
+              <Block title="行动建议" items={result.actionPlan} />
+              <Block title="持仓建议" items={result.positionAdvice ?? []} />
               <Block title="事实依据" items={result.facts} />
               <Block title="核心判断" items={result.inferences} />
-              <Block title="行动建议" items={result.actionPlan} />
               <Block title="失效信号" items={result.invalidationSignals} />
               <Block title="概率分析" items={result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%：${item.rationale}`)} />
               <Block title="技术信号" items={result.technicalSignals.map((item) => `${item.name}：${item.value}，${item.interpretation}`)} />
               <Block title="关键价位" items={result.keyLevels} />
-              <Block title="持仓建议" items={result.positionAdvice ?? []} />
               <Block title="新闻驱动" items={result.newsDrivers.map((item) => `${item.headline}（${item.source}）：${item.impact}`)} />
               <Block title="风险提示" items={result.risks} />
             </div>
@@ -151,6 +155,41 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       </CardContent>
     </Card>
   )
+}
+
+function SnapshotAgeBadge({ generatedAt, now }: { generatedAt: string; now: number }) {
+  const generatedTime = new Date(generatedAt).getTime()
+  if (!Number.isFinite(generatedTime)) return null
+
+  const ageMs = Math.max(0, now - generatedTime)
+  const { label, stale } = formatSnapshotAge(ageMs)
+  return (
+    <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium normal-case tracking-normal ${
+      stale
+        ? 'border-amber-500/30 bg-amber-500/15 text-amber-100'
+        : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-100'
+    }`}>
+      <Clock className="mr-1 h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
+
+function formatSnapshotAge(ageMs: number) {
+  const hourMs = 60 * 60 * 1000
+  const dayMs = 24 * hourMs
+  if (ageMs < hourMs) return { label: '有效期内', stale: false }
+
+  const hourCount = Math.floor(ageMs / hourMs)
+  if (ageMs < dayMs) return { label: `${hourCount} 小时前 · 非实时`, stale: true }
+
+  const dayCount = Math.floor(ageMs / dayMs)
+  if (dayCount < 30) return { label: `${dayCount} 天前 · 非实时`, stale: true }
+
+  const monthCount = Math.floor(dayCount / 30)
+  if (monthCount < 12) return { label: `${monthCount} 个月前 · 非实时`, stale: true }
+
+  return { label: `${Math.floor(dayCount / 365)} 年前 · 非实时`, stale: true }
 }
 
 function Block({ title, items }: { title: string; items: string[] }) {

@@ -12,6 +12,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useStockQuote } from '@/hooks/useStockQuote'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPercent, formatPnl } from '@/lib/finance'
+import { CURRENCY_SYMBOLS, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { Stock } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
@@ -40,7 +41,7 @@ export default function HoldingsList({
 }) {
   const router = useRouter()
   const { stocks, deleteStock } = useStockStore()
-  const { displayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
+  const { convertAmountSync } = useCurrency()
   const [showAddStock, setShowAddStock] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('default')
@@ -199,9 +200,6 @@ export default function HoldingsList({
               <StockListRow
                 key={stock.id}
                 stock={stock}
-                displayCurrency={displayCurrency}
-                convertAmountSync={convertAmountSync}
-                formatWithCurrency={formatWithCurrency}
                 preloadedQuote={quotesByStockId[stock.id] ?? null}
                 onOpen={() => router.push(`/stock/${stock.id}`)}
                 onDelete={() => setDeleteTarget({ id: stock.id, name: stock.name, code: stock.code })}
@@ -238,17 +236,11 @@ export default function HoldingsList({
 
 function StockListRow({
   stock,
-  displayCurrency,
-  convertAmountSync,
-  formatWithCurrency,
   preloadedQuote,
   onOpen,
   onDelete,
 }: {
   stock: Stock
-  displayCurrency: string
-  convertAmountSync: (amount: number, fromMarket: string) => number
-  formatWithCurrency: (amount: number) => string
   preloadedQuote: StockQuote | null
   onOpen: () => void
   onDelete: () => void
@@ -256,15 +248,17 @@ function StockListRow({
   const { quote: liveQuote } = useStockQuote(stock.code, stock.market, { autoRefresh: true, refreshInterval: 60000 })
   const quote = liveQuote ?? preloadedQuote
   const summary = calcStockSummary(stock, quote?.price)
-  const totalCost = convertAmountSync(summary.avgCostPrice * summary.currentHolding, stock.market)
-  const avgCost = convertAmountSync(summary.avgCostPrice, stock.market)
-  const realizedPnl = convertAmountSync(summary.realizedPnl, stock.market)
-  const unrealizedPnl = quote ? convertAmountSync(summary.unrealizedPnl, stock.market) : null
-  const totalPnl = quote ? convertAmountSync(summary.totalPnl, stock.market) : null
-  const todayPnl = quote ? convertAmountSync(summary.currentHolding * quote.change, stock.market) : null
+  const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
+  const formatNativeAmount = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const totalCost = summary.avgCostPrice * summary.currentHolding
+  const avgCost = summary.avgCostPrice
+  const realizedPnl = summary.realizedPnl
+  const unrealizedPnl = quote ? summary.unrealizedPnl : null
+  const totalPnl = quote ? summary.totalPnl : null
+  const todayPnl = quote ? summary.currentHolding * quote.change : null
   const previousClose = quote ? quote.price - quote.change : null
   const todayPnlRate = quote && previousClose && previousClose > 0 ? (quote.change / previousClose) * 100 : null
-  const currentPrice = quote ? convertAmountSync(quote.price, stock.market) : null
+  const currentPrice = quote ? quote.price : null
 
   return (
     <div
@@ -284,31 +278,31 @@ function StockListRow({
 
       <div className="space-y-1">
         <div className="text-sm font-mono font-semibold text-foreground">
-          {formatWithCurrency(totalCost)}
+          {formatNativeAmount(totalCost)}
         </div>
         <div className="text-xs text-muted-foreground">
           持仓 {summary.currentHolding.toLocaleString()} 股
         </div>
         <div className="text-xs text-muted-foreground">
-          均价 {formatWithCurrency(avgCost)}
+          均价 {formatNativeAmount(avgCost)}
         </div>
       </div>
 
       <div className="space-y-1">
         <div className={`text-sm font-mono font-semibold ${(todayPnl ?? 0) >= 0 ? 'profit-text' : 'loss-text'}`}>
-          {quote ? formatPnl(todayPnl ?? 0, displayCurrency) : '--'}
+          {quote ? formatPnl(todayPnl ?? 0, nativeCurrency) : '--'}
         </div>
         <div className={`text-xs ${(todayPnlRate ?? 0) >= 0 ? 'profit-text' : 'loss-text'}`}>
           {todayPnlRate === null ? '暂无当日行情' : formatPercent(todayPnlRate)}
         </div>
         <div className="text-xs text-muted-foreground">
-          {quote ? `现价 ${formatWithCurrency(currentPrice ?? 0)}` : '等待行情返回'}
+          {quote ? `现价 ${formatNativeAmount(currentPrice ?? 0)}` : '等待行情返回'}
         </div>
       </div>
 
       <div className="space-y-1">
         <div className={`text-sm font-mono font-semibold ${(totalPnl ?? realizedPnl) >= 0 ? 'profit-text' : 'loss-text'}`}>
-          {formatPnl(totalPnl ?? realizedPnl, displayCurrency)}
+          {formatPnl(totalPnl ?? realizedPnl, nativeCurrency)}
         </div>
         {totalPnl === null ? (
           <div className="text-xs text-muted-foreground">
@@ -317,7 +311,7 @@ function StockListRow({
         ) : (
           <>
             <div className="text-xs text-muted-foreground">
-              已实现 {formatPnl(realizedPnl, displayCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, displayCurrency)}
+              已实现 {formatPnl(realizedPnl, nativeCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, nativeCurrency)}
             </div>
             <div className="text-xs text-muted-foreground">
               累计视角
@@ -342,4 +336,9 @@ function StockListRow({
       </div>
     </div>
   )
+}
+
+function formatWithNativeCurrency(amount: number, currency: Currency) {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '¥'
+  return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }

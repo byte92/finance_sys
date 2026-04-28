@@ -11,7 +11,6 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_LABELS } from '@/config/defaults'
 import { useStockQuote } from '@/hooks/useStockQuote'
-import { useCurrency } from '@/hooks/useCurrency'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
 import AddTradeModal from '@/components/AddTradeModal'
 import AddStockModal from '@/components/AddStockModal'
@@ -20,7 +19,6 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import PageHeader from '@/components/layout/PageHeader'
 import StockAnalysisPanel from '@/components/ai/StockAnalysisPanel'
 import type { Stock, Trade, TradePnlDetail } from '@/types'
-import type { Currency } from '@/lib/ExchangeRateService'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts'
@@ -32,7 +30,6 @@ interface StockDetailProps {
 
 export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const { deleteTrade } = useStockStore()
-  const { displayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
   const [showAddTrade, setShowAddTrade] = useState(false)
   const [showEditStock, setShowEditStock] = useState(false)
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
@@ -54,20 +51,10 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
   const currentPriceNum = quote?.price || parseFloat(manualPrice) || undefined
   const summary = calcStockSummary(stock, currentPriceNum)
-  const convertMoney = (amount: number) => convertAmountSync(amount, stock.market)
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
-  const showNativeAmount = displayCurrency === 'CNY' && nativeCurrency !== 'CNY'
   const quoteTimeLabel = quote?.timestamp ? formatQuoteTimestamp(quote.timestamp) : null
-  const formatAmountWithNative = (amount: number) => {
-    const primary = formatWithCurrency(convertMoney(amount))
-    if (!showNativeAmount) return primary
-    return `${primary}（${formatWithCurrency(amount, nativeCurrency)}）`
-  }
-  const formatPnlWithNative = (amount: number) => {
-    const primary = formatPnl(convertMoney(amount), displayCurrency)
-    if (!showNativeAmount) return primary
-    return `${primary}（${formatPnl(amount, nativeCurrency)}）`
-  }
+  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const formatPnlWithNative = (amount: number) => formatPnl(amount, nativeCurrency)
   const isFundLike = stock.market === 'FUND' || isEtfLikeCode(stock.code, stock.market)
 
   const sortedTrades = [...stock.trades].sort((a, b) => b.date.localeCompare(a.date))
@@ -106,10 +93,10 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
       const detail = pnlMap.get(t.id)
       if (t.type === 'SELL' && detail) {
         cumPnl += detail.pnl
-        pts.push({ date: t.date, pnl: convertMoney(cumPnl), type: 'SELL' })
+        pts.push({ date: t.date, pnl: cumPnl, type: 'SELL' })
       } else if (t.type === 'DIVIDEND' && detail) {
         cumPnl += detail.pnl
-        pts.push({ date: t.date, pnl: convertMoney(cumPnl), type: 'DIVIDEND' })
+        pts.push({ date: t.date, pnl: cumPnl, type: 'DIVIDEND' })
       }
     }
     return pts
@@ -375,7 +362,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 12% 20%)" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(215 12% 52%)' }} />
-                  <YAxis tick={{ fontSize: 10, fill: 'hsl(215 12% 52%)' }} tickFormatter={(v) => formatWithCurrency(Number(v))} />
+                  <YAxis tick={{ fontSize: 10, fill: 'hsl(215 12% 52%)' }} tickFormatter={(v) => formatAmountWithNative(Number(v))} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
@@ -393,7 +380,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                       const color = pnlValue >= 0 ? 'var(--profit)' : 'var(--loss)'
                       return [
                         <span style={{ color, fontWeight: 'bold' }}>
-                          {sign}{formatWithCurrency(Math.abs(pnlValue))}
+                          {sign}{formatAmountWithNative(Math.abs(pnlValue))}
                         </span>,
                         '累计盈亏'
                       ]
@@ -558,10 +545,6 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                           key={row.trade.id}
                           row={row}
                           market={stock.market}
-                          displayCurrency={displayCurrency}
-                          convertAmountSync={convertAmountSync}
-                          formatWithCurrency={formatWithCurrency}
-                          showNativeAmount={showNativeAmount}
                           onEdit={() => setEditTrade(row.trade)}
                           onDelete={() => setDeleteTradeTarget(row.trade)}
                         />
@@ -700,8 +683,13 @@ function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): strin
   return `${symbols[currency] ?? ''}${(value / unit.threshold).toFixed(2)}${unit.suffix}`
 }
 
+function formatWithNativeCurrency(amount: number, currency: keyof typeof CURRENCY_SYMBOLS) {
+  const symbol = CURRENCY_SYMBOLS[currency] ?? '¥'
+  return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 function TradeTableRow({
-  row, market, displayCurrency, convertAmountSync, formatWithCurrency, showNativeAmount, onEdit, onDelete,
+  row, market, onEdit, onDelete,
 }: {
   row: {
     trade: Trade
@@ -716,10 +704,6 @@ function TradeTableRow({
     buyLotState: string | null
   }
   market: Stock['market']
-  displayCurrency: string
-  convertAmountSync: (amount: number, fromMarket: string) => number
-  formatWithCurrency: (amount: number, currency?: Currency) => string
-  showNativeAmount: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -727,18 +711,9 @@ function TradeTableRow({
   const isBuy = trade.type === 'BUY'
   const isSell = trade.type === 'SELL'
   const isDividend = trade.type === 'DIVIDEND'
-  const convertMoney = (amount: number) => convertAmountSync(amount, market)
   const nativeCurrency = MARKET_CURRENCY[market] || 'CNY'
-  const formatAmountWithNative = (amount: number) => {
-    const primary = formatWithCurrency(convertMoney(amount))
-    if (!showNativeAmount) return primary
-    return `${primary}（${formatWithCurrency(amount, nativeCurrency)}）`
-  }
-  const formatPnlWithNative = (amount: number) => {
-    const primary = formatPnl(convertMoney(amount), displayCurrency)
-    if (!showNativeAmount) return primary
-    return `${primary}（${formatPnl(amount, nativeCurrency)}）`
-  }
+  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const formatPnlWithNative = (amount: number) => formatPnl(amount, nativeCurrency)
 
   return (
     <tr className="border-b border-border last:border-b-0 align-top hover:bg-muted/20">

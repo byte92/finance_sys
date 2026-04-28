@@ -74,6 +74,10 @@ type ListAiAnalysisFilters = {
   confidence?: string;
   dateFrom?: string;
   dateTo?: string;
+  stockId?: string;
+  stockCode?: string;
+  market?: string;
+  limit?: number;
 };
 
 function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord {
@@ -221,15 +225,31 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
       clauses.push("date(generated_at) <= date(?)");
       params.push(filters.dateTo);
     }
+    if (filters.stockId) {
+      clauses.push("stock_id = ?");
+      params.push(filters.stockId);
+    }
+    if (filters.stockCode) {
+      clauses.push("stock_code = ?");
+      params.push(filters.stockCode);
+    }
+    if (filters.market) {
+      clauses.push("market = ?");
+      params.push(filters.market);
+    }
 
+    const limit = filters.limit && Number.isFinite(filters.limit)
+      ? Math.max(1, Math.floor(filters.limit))
+      : null;
     const rows = db.prepare(
       `
       SELECT *
       FROM ai_analysis_history
       WHERE ${clauses.join(" AND ")}
       ORDER BY generated_at DESC
+      ${limit ? "LIMIT ?" : ""}
       `,
-    ).all(...params) as Array<Record<string, unknown>>;
+    ).all(...(limit ? [...params, String(limit)] : params)) as Array<Record<string, unknown>>;
 
     return rows.map(parseAnalysisRow);
   }

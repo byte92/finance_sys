@@ -116,10 +116,27 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
           {result && (
             <>
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 总结</div>
-                    <div className="mt-2 text-base font-medium text-foreground">{result.summary}</div>
+                    <div className="mt-2 text-base font-medium text-foreground leading-7">{result.summary}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {result.stance && (
+                        <span className="rounded-full border border-primary/20 bg-background/70 px-2.5 py-1 text-xs text-foreground">
+                          当前判断：{result.stance}
+                        </span>
+                      )}
+                      {result.actionPlan[0] && (
+                        <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-200">
+                          首要动作：{result.actionPlan[0]}
+                        </span>
+                      )}
+                      {topRisks[0] && (
+                        <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-100">
+                          主要风险：{topRisks[0]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-xs text-muted-foreground">信心</div>
@@ -141,7 +158,7 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
               </div>
 
               {!compact && <InfoBlock title="失效信号" items={result.invalidationSignals} emptyText="暂无失效信号" />}
-              {!compact && result.evidence.length > 0 && <InfoBlock title="证据维度" items={result.evidence} emptyText="暂无证据维度" />}
+              {!compact && result.evidence.length > 0 && <InfoBlock title="决策依据" items={result.evidence} emptyText="暂无决策依据" />}
 
               <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
                 <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />

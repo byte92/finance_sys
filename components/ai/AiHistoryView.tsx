@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Filter, Tag, Trash2, TrendingUp } from 'lucide-react'
+import { CalendarDays, Clock, Filter, RefreshCw, Tag, Trash2, TrendingUp } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ const CONFIDENCE_LABELS: Record<AiConfidence, string> = {
 
 type HeatmapGranularity = 'day' | 'week' | 'month'
 type HeatmapWindow = '90d' | 'year'
+type FreshnessFilter = 'ALL' | 'fresh' | 'stale'
 
 type BucketSummary = {
   key: string
@@ -34,6 +35,7 @@ export default function AiHistoryView() {
   const [error, setError] = useState<string | null>(null)
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'portfolio' | 'stock' | 'market'>('ALL')
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | AiConfidence>('ALL')
+  const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilter>('ALL')
   const [tagFilter, setTagFilter] = useState('ALL')
   const [stockQuery, setStockQuery] = useState('')
   const [heatmapGranularity, setHeatmapGranularity] = useState<HeatmapGranularity>('day')
@@ -102,6 +104,12 @@ export default function AiHistoryView() {
         return false
       }
 
+      if (freshnessFilter !== 'ALL') {
+        const fresh = isFresh(record.generatedAt)
+        if (freshnessFilter === 'fresh' && !fresh) return false
+        if (freshnessFilter === 'stale' && fresh) return false
+      }
+
       if (typeFilter === 'stock' && normalizedQuery) {
         const haystack = `${record.stockName ?? ''} ${record.stockCode ?? ''}`.toLowerCase()
         return haystack.includes(normalizedQuery)
@@ -109,7 +117,7 @@ export default function AiHistoryView() {
 
       return true
     })
-  }, [records, stockQuery, tagFilter, typeFilter])
+  }, [freshnessFilter, records, stockQuery, tagFilter, typeFilter])
 
   const heatmapRecords = useMemo(() => {
     if (heatmapWindow === 'year') return recordsAfterFilters
@@ -180,6 +188,48 @@ export default function AiHistoryView() {
     }
   }, [recordsAfterFilters])
 
+  const globalStats = useMemo(() => {
+    const freshRecords = records.filter((record) => isFresh(record.generatedAt))
+    const stockCodes = new Set(records.filter((record) => record.type === 'stock' && record.stockCode).map((record) => record.stockCode))
+    const latest = records[0] ?? null
+    const latestPortfolio = records.find((record) => record.type === 'portfolio') ?? null
+
+    return {
+      total: records.length,
+      fresh: freshRecords.length,
+      stale: Math.max(0, records.length - freshRecords.length),
+      stockCoverage: stockCodes.size,
+      latestGeneratedAt: latest?.generatedAt ?? null,
+      latestPortfolioAction: latestPortfolio ? getPrimaryAction(latestPortfolio) : '暂无组合分析',
+    }
+  }, [records])
+
+  const recentRecords = useMemo(() => recordsAfterFilters.slice(0, 5), [recordsAfterFilters])
+
+  const stockDossiers = useMemo(() => {
+    const grouped = new Map<string, AiAnalysisHistoryRecord[]>()
+    for (const record of recordsAfterFilters) {
+      if (record.type !== 'stock') continue
+      const key = record.stockCode || record.stockId || record.id
+      const bucket = grouped.get(key) ?? []
+      bucket.push(record)
+      grouped.set(key, bucket)
+    }
+
+    return Array.from(grouped.values())
+      .map((items) => {
+        const sorted = [...items].sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())
+        return {
+          latest: sorted[0],
+          previous: sorted[1] ?? null,
+          count: sorted.length,
+        }
+      })
+      .filter((item) => !!item.latest)
+      .sort((a, b) => new Date(b.latest.generatedAt).getTime() - new Date(a.latest.generatedAt).getTime())
+      .slice(0, 8)
+  }, [recordsAfterFilters])
+
   const pageCopy = useMemo(() => {
     if (typeFilter === 'portfolio') {
       return {
@@ -207,6 +257,109 @@ export default function AiHistoryView() {
 
   return (
     <div className="space-y-6">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <StatCard label="总报告" value={`${globalStats.total}`} detail="已保存的 AI 分析报告" />
+        <StatCard label="有效期内" value={`${globalStats.fresh}`} detail="1 小时内生成" />
+        <StatCard label="待刷新" value={`${globalStats.stale}`} detail="超过 1 小时的历史快照" />
+        <StatCard label="个股覆盖" value={`${globalStats.stockCoverage}`} detail="已分析过的股票数" />
+        <StatCard
+          label="最近分析"
+          value={globalStats.latestGeneratedAt ? formatRelativeTime(globalStats.latestGeneratedAt) : '暂无'}
+          detail={globalStats.latestGeneratedAt ? new Date(globalStats.latestGeneratedAt).toLocaleString('zh-CN') : '尚未生成报告'}
+        />
+        <StatCard label="最新组合动作" value={globalStats.latestPortfolioAction} detail="最近一次组合分析主结论" />
+      </section>
+
+      <Card className="border-border bg-card">
+        <div className="p-5 space-y-4">
+          <div>
+            <div className="text-sm font-medium text-foreground">快速查看</div>
+            <div className="mt-1 text-xs text-muted-foreground">先看报告是否仍在有效期内，再按分析对象和信心切换。</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <TagBadge active={typeFilter === 'ALL' && freshnessFilter === 'ALL' && confidenceFilter === 'ALL'} onClick={() => {
+              setTypeFilter('ALL')
+              setFreshnessFilter('ALL')
+              setConfidenceFilter('ALL')
+              setSelectedBucketKey(null)
+            }}>
+              全部报告
+            </TagBadge>
+            <TagBadge active={freshnessFilter === 'fresh'} onClick={() => {
+              setFreshnessFilter('fresh')
+              setSelectedBucketKey(null)
+            }}>
+              有效期内
+            </TagBadge>
+            <TagBadge active={freshnessFilter === 'stale'} onClick={() => {
+              setFreshnessFilter('stale')
+              setSelectedBucketKey(null)
+            }}>
+              待刷新
+            </TagBadge>
+            <TagBadge active={typeFilter === 'stock'} onClick={() => setTypeFilter('stock')}>个股分析</TagBadge>
+            <TagBadge active={typeFilter === 'portfolio'} onClick={() => setTypeFilter('portfolio')}>组合分析</TagBadge>
+            <TagBadge active={typeFilter === 'market'} onClick={() => setTypeFilter('market')}>大盘分析</TagBadge>
+            <TagBadge active={confidenceFilter === 'high'} onClick={() => setConfidenceFilter('high')}>高信心</TagBadge>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <div className="p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-foreground">最近分析</div>
+              <div className="mt-1 text-xs text-muted-foreground">优先展示最新报告、主动作、时效状态和关键建议。</div>
+            </div>
+            <div className="text-xs text-muted-foreground">{loading ? '加载中...' : `展示 ${recentRecords.length} 条`}</div>
+          </div>
+
+          {recentRecords.length === 0 ? (
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+              当前筛选条件下暂无最近报告。
+            </div>
+          ) : (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {recentRecords.map((record) => (
+                <ReportPreviewCard key={record.id} record={record} onDelete={() => setDeleteTarget(record)} />
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {(typeFilter === 'ALL' || typeFilter === 'stock') && (
+        <Card className="border-border bg-card">
+          <div className="p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">个股研判档案</div>
+                <div className="mt-1 text-xs text-muted-foreground">按股票聚合最近判断，方便看结论是否发生变化。</div>
+              </div>
+              <div className="text-xs text-muted-foreground">{stockDossiers.length} 只股票</div>
+            </div>
+
+            {stockDossiers.length === 0 ? (
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
+                当前筛选条件下暂无个股分析档案。
+              </div>
+            ) : (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {stockDossiers.map((item) => (
+                  <StockDossierCard
+                    key={item.latest.stockCode ?? item.latest.id}
+                    latest={item.latest}
+                    previous={item.previous}
+                    count={item.count}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Card className="border-border bg-card">
         <div className="p-5 space-y-4">
           <div>
@@ -486,7 +639,7 @@ function StatCard({ label, value, detail }: { label: string; value: string; deta
   return (
     <div className="rounded-2xl border border-border/70 bg-card px-4 py-4">
       <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="mt-3 text-2xl font-semibold text-foreground">{value}</div>
+      <div className="mt-3 text-xl font-semibold leading-7 text-foreground line-clamp-2">{value}</div>
       <div className="mt-2 text-xs text-muted-foreground">{detail}</div>
     </div>
   )
@@ -520,6 +673,117 @@ function StaticTag({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground">
       {children}
+    </span>
+  )
+}
+
+function ReportPreviewCard({
+  record,
+  onDelete,
+}: {
+  record: AiAnalysisHistoryRecord
+  onDelete: () => void
+}) {
+  const title = record.type === 'portfolio'
+    ? '组合分析'
+    : record.type === 'market'
+      ? '大盘分析'
+      : `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`
+  const action = getPrimaryAction(record)
+  const keyReasons = record.result.facts.length > 0 ? record.result.facts : record.result.evidence
+  const keyActions = record.result.actionPlan.length > 0 ? record.result.actionPlan : record.result.actionableObservations
+
+  return (
+    <div className="group relative rounded-xl border border-border/70 bg-muted/20 p-4">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="absolute right-3 top-3 opacity-0 transition-opacity text-muted-foreground hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
+      <div className="flex flex-wrap items-center gap-2 pr-10">
+        <span className="text-sm font-semibold text-foreground">{title}</span>
+        <FreshnessTag generatedAt={record.generatedAt} />
+        <StaticTag>{CONFIDENCE_LABELS[record.confidence]}</StaticTag>
+        <StaticTag>{action}</StaticTag>
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">
+        {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+      </div>
+      <div className="mt-3 text-sm leading-6 text-foreground">{record.result.summary}</div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <SmallBlock title="关键依据" items={keyReasons.slice(0, 2)} />
+        <SmallBlock title="操作建议" items={keyActions.slice(0, 2)} />
+      </div>
+    </div>
+  )
+}
+
+function StockDossierCard({
+  latest,
+  previous,
+  count,
+}: {
+  latest: AiAnalysisHistoryRecord
+  previous: AiAnalysisHistoryRecord | null
+  count: number
+}) {
+  const latestAction = getPrimaryAction(latest)
+  const previousAction = previous ? getPrimaryAction(previous) : '暂无'
+  const changed = previous ? latestAction !== previousAction : false
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">
+              {latest.stockName ?? '个股'} · {latest.stockCode ?? ''}
+            </span>
+            <FreshnessTag generatedAt={latest.generatedAt} />
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            共 {count} 次分析 · 最近 {new Date(latest.generatedAt).toLocaleString('zh-CN')}
+          </div>
+        </div>
+        <StaticTag>{CONFIDENCE_LABELS[latest.confidence]}</StaticTag>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-border/70 bg-card/60 p-3">
+          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">最近结论</div>
+          <div className="mt-2 text-sm font-medium text-foreground">{latestAction}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{latest.result.stance}</div>
+        </div>
+        <div className="rounded-lg border border-border/70 bg-card/60 p-3">
+          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">上次结论</div>
+          <div className="mt-2 text-sm font-medium text-foreground">{previousAction}</div>
+          <div className={`mt-1 text-xs ${changed ? 'text-amber-100' : 'text-muted-foreground'}`}>
+            {previous ? (changed ? `${previousAction} -> ${latestAction}` : '结论未变化') : '暂无可比记录'}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 text-sm leading-6 text-foreground">{latest.result.summary}</div>
+    </div>
+  )
+}
+
+function FreshnessTag({ generatedAt }: { generatedAt: string }) {
+  const fresh = isFresh(generatedAt)
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs ${
+      fresh
+        ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-100'
+        : 'border-amber-500/30 bg-amber-500/15 text-amber-100'
+    }`}>
+      {fresh ? <Clock className="mr-1 h-3.5 w-3.5" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+      {fresh ? '有效期内' : `${formatRelativeTime(generatedAt)} · 待刷新`}
     </span>
   )
 }
@@ -741,4 +1005,44 @@ function heatColor(confidence: AiConfidence, count: number) {
   if (confidence === 'high') return `bg-emerald-500/25 text-emerald-200 ${level}`
   if (confidence === 'medium') return `bg-sky-500/20 text-sky-200 ${level}`
   return `bg-amber-500/20 text-amber-200 ${level}`
+}
+
+function isFresh(generatedAt: string) {
+  const time = new Date(generatedAt).getTime()
+  if (!Number.isFinite(time)) return false
+  return Date.now() - time < 60 * 60 * 1000
+}
+
+function formatRelativeTime(generatedAt: string) {
+  const time = new Date(generatedAt).getTime()
+  if (!Number.isFinite(time)) return '时间未知'
+  const ageMs = Math.max(0, Date.now() - time)
+  const minuteMs = 60 * 1000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+
+  if (ageMs < minuteMs) return '刚刚'
+  if (ageMs < hourMs) return `${Math.floor(ageMs / minuteMs)} 分钟前`
+  if (ageMs < dayMs) return `${Math.floor(ageMs / hourMs)} 小时前`
+  const dayCount = Math.floor(ageMs / dayMs)
+  if (dayCount < 30) return `${dayCount} 天前`
+  const monthCount = Math.floor(dayCount / 30)
+  if (monthCount < 12) return `${monthCount} 个月前`
+  return `${Math.floor(dayCount / 365)} 年前`
+}
+
+function getPrimaryAction(record: AiAnalysisHistoryRecord) {
+  const candidates = [
+    record.result.actionPlan[0],
+    record.result.positionAdvice?.[0],
+    record.result.actionableObservations[0],
+    record.result.summary,
+    record.result.stance,
+  ].filter(Boolean) as string[]
+
+  const text = candidates.join(' ')
+  const actionWords = ['买入', '加仓', '继续持有', '持有', '减仓', '卖出', '观望', '回避', '控制仓位', '暂不加仓', '调整结构', '分批减仓', '等待确认']
+  const found = actionWords.find((word) => text.includes(word))
+  if (found === '持有') return '继续持有'
+  return found ?? record.result.stance ?? '暂无结论'
 }

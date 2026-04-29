@@ -31,8 +31,32 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
     let browser: import('playwright').Browser | null = null
     try {
       // 动态导入避免 SSR 时加载原生模块
+      const path = await import('node:path')
+      const fs = await import('node:fs')
+      const os = await import('node:os')
+
       const { chromium } = await import('playwright')
-      browser = await chromium.launch({ headless: true })
+
+      // 查找已安装的 headless shell 二进制文件（处理版本不匹配）
+      const cacheDir = process.env.PLAYWRIGHT_BROWSERS_PATH
+        || path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+
+      const findExecutable = (): string | undefined => {
+        if (!fs.existsSync(cacheDir)) return undefined
+        const dirs = fs.readdirSync(cacheDir).filter((d) => d.startsWith('chromium_headless_shell-'))
+        for (const dir of dirs.sort().reverse()) {
+          const exe = path.join(cacheDir, dir, 'chrome-headless-shell-mac-arm64', 'chrome-headless-shell')
+          if (fs.existsSync(exe)) return exe
+        }
+        return undefined
+      }
+
+      const execPath = findExecutable()
+      if (!execPath) {
+        return { skillName: 'web.search', ok: false, error: '未找到 Playwright 浏览器，请运行: npx playwright install chromium' }
+      }
+
+      browser = await chromium.launch({ executablePath: execPath, headless: true })
       const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         viewport: { width: 1280, height: 800 },

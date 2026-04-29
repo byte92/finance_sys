@@ -1,6 +1,7 @@
 import { detectStockCode, formatStockCandidate, matchStocks } from '@/lib/agent/entity/stockMatcher'
 import type { AgentPlan } from '@/lib/agent/types'
-import type { Market, Stock } from '@/types'
+import type { AiConfig, Market, Stock } from '@/types'
+import { callJsonCompletion } from '@/lib/external/llmProvider'
 
 const PORTFOLIO_KEYWORDS = ['组合', '仓位', '持仓', '风险', '亏损', '盈利', '收益', '回撤', '集中', '配置', '哪只', '哪些']
 const TRADE_KEYWORDS = ['交易', '复盘', '买入', '卖出', '分红', '成本', '加仓', '减仓']
@@ -20,15 +21,85 @@ function buildStockSkillCalls(stockId: string) {
   ]
 }
 
-export function planAgentResponse({
+const PLANNER_SYSTEM_PROMPT = [
+  '你是 StockTracker Agent Planner。你的唯一任务是：根据用户问题输出一个 JSON 计划。',
+  '你必须严格输出以下 JSON 格式，不要包含任何其他文字：',
+  '{',
+  '  "intent": "stock_analysis | portfolio_risk | portfolio_summary | trade_review | market_question | out_of_scope",',
+  '  "entities": [{ "type": "stock | market | portfolio", "raw": "原文", "code": "代码(可选)", "market": "A|HK|US|FUND|CRYPTO(可选)", "confidence": 0.0-1.0 }],',
+  '  "requiredSkills": [{ "name": "skill名称", "args": {}, "reason": "调用原因" }],',
+  '  "responseMode": "answer | clarify | refuse",',
+  '  "clarifyQuestion": "需澄清时间问题(仅 clarify 时填写)"',
+  '}',
+  '',
+  '可用的 Skill：',
+  '- stock.match: 匹配持仓中的股票名称或代码',
+  '- stock.getHolding: 读取某只股票的持仓摘要',
+  '- stock.getRecentTrades: 读取最近交易记录',
+  '- stock.getQuote: 读取行情和估值',
+  '- stock.getTechnicalSnapshot: 读取技术指标摘要',
+  '- stock.getExternalQuote: 抓取未持仓股票行情',
+  '- portfolio.getSummary: 读取组合总览',
+  '- portfolio.getTopPositions: 读取最大仓位/盈亏',
+  '- market.resolveCandidate: 解析名称/代码对应的候选标的',
+  '',
+  '规则：',
+  '- 如果用户问题与股票投资无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
+  '- 如果标的不明确，responseMode 设为 clarify',
+  '- 只规划数据读取 Skill，不要规划分析 Skill（如 getAnalysisContext）',
+  '- args 中的值从用户消息中提取，不要编造',
+].join('\n')
+
+async function planViaLLM(userMessage: string, stocks: Stock[], aiConfig: AiConfig): Promise<AgentPlan> {
+  const stockSummary = stocks.length
+    ? `当前持仓：\n${stocks.map((s) => `- ${s.name} (${s.code}, ${s.market})`).join('\n')}`
+    : '当前无持仓'
+
+  const userPrompt = [
+    `用户持仓信息：`,
+    stockSummary,
+    '',
+    `用户问题：${userMessage}`,
+  ].join('\n')
+
+  try {
+    const raw = await callJsonCompletion(aiConfig, PLANNER_SYSTEM_PROMPT, userPrompt)
+    // 提取 JSON（可能有 markdown 代码块包裹）
+    const json = raw.replace(/```(?:json)?\s*/g, '').replace(/```\s*$/g, '').trim()
+    const parsed = JSON.parse(json)
+
+    return {
+      intent: parsed.intent || 'unknown',
+      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+      requiredSkills: Array.isArray(parsed.requiredSkills) ? parsed.requiredSkills : [],
+      responseMode: parsed.responseMode || 'answer',
+      clarifyQuestion: parsed.clarifyQuestion,
+    }
+  } catch {
+    // LLM 失败时回退到规则兜底
+    return {
+      intent: 'unknown',
+      entities: [{ type: 'portfolio', raw: '当前组合', confidence: 0.45 }],
+      requiredSkills: [
+        { name: 'portfolio.getSummary', args: {}, reason: 'LLM Planner 失败，使用兜底组合摘要' },
+        { name: 'portfolio.getTopPositions', args: { limit: 5 }, reason: 'LLM Planner 失败，使用兜底持仓' },
+      ],
+      responseMode: 'answer',
+    }
+  }
+}
+
+export async function planAgentResponse({
   userMessage,
   stocks,
   externalStocks = [],
+  aiConfig,
 }: {
   userMessage: string
   stocks: Stock[]
   externalStocks?: Array<{ symbol: string; market: Market }>
-}): AgentPlan {
+  aiConfig: AiConfig
+}): Promise<AgentPlan> {
   const content = userMessage.trim()
   const code = detectStockCode(content)
 
@@ -109,13 +180,6 @@ export function planAgentResponse({
     }
   }
 
-  return {
-    intent: 'unknown',
-    entities: [{ type: 'portfolio', raw: '当前组合', confidence: 0.45 }],
-    requiredSkills: [
-      { name: 'portfolio.getSummary', args: {}, reason: '意图不明确时提供轻量组合摘要作为兜底上下文' },
-      { name: 'portfolio.getTopPositions', args: { limit: 5 }, reason: '意图不明确时提供少量关键持仓用于回答' },
-    ],
-    responseMode: 'answer',
-  }
+  // 规则无法明确判断 → LLM 兜底
+  return planViaLLM(userMessage, stocks, aiConfig)
 }

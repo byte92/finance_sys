@@ -5,10 +5,11 @@ import type { AgentRunInput, AgentRunResult } from '@/lib/agent/types'
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const maxContextTokens = Math.max(4096, input.aiConfig.maxContextTokens || 128000)
-  const plan = planAgentResponse({
+  const plan = await planAgentResponse({
     userMessage: input.userMessage,
     stocks: input.stocks,
     externalStocks: input.externalStocks ?? [],
+    aiConfig: input.aiConfig,
   })
 
   const skillResults = plan.responseMode === 'answer'

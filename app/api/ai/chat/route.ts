@@ -4,7 +4,7 @@ import { safeReadJsonBody } from '@/lib/api/request'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildChatTitle, estimateTokens, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
 import { runAgent } from '@/lib/agent/runtime'
-import { getAiChatSession, listAiChatMessages, saveAiAgentRun, saveAiChatMessage, saveAiChatSession, updateAiChatSessionTitle } from '@/lib/sqlite/db'
+import { getAiChatSession, getSessionContext, listAiChatMessages, saveAiAgentRun, saveAiChatMessage, saveAiChatSession, setSessionContext, updateAiChatSessionTitle } from '@/lib/sqlite/db'
 import type { AiConfig, Market, Stock } from '@/types'
 
 type Body = {
@@ -59,6 +59,23 @@ export async function POST(request: Request) {
           })
         }
 
+        // 检查是否有待澄清的状态（多轮）
+        const pending = existingSession ? getSessionContext(body.userId!, sessionId) : null
+        let externalStocks = body.externalStocks ?? []
+        if (pending?.type === 'clarify' && Array.isArray(pending.candidates) && pending.candidates.length > 0) {
+          // 用户正在选择一个候选标的
+          const userAnswer = userMessage.trim()
+          const candidates = pending.candidates as Array<{ code: string; name: string; market: string }>
+          const match = candidates.find((c) =>
+            userAnswer.includes(c.code) || userAnswer.includes(c.name) || userAnswer.includes(c.market)
+          ) || candidates[0]
+
+          if (match && match.market) {
+            externalStocks = [{ symbol: match.code, market: match.market as Market }]
+          }
+          setSessionContext(body.userId!, sessionId, null) // 消费后清空
+        }
+
         const history = listAiChatMessages(body.userId!, sessionId)
         controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'planning' })}\n\n`))
 
@@ -70,7 +87,7 @@ export async function POST(request: Request) {
           stocks: body.stocks!,
           history,
           userMessage,
-          externalStocks: body.externalStocks ?? [],
+          externalStocks,
         })
         contextMs = Date.now() - contextStartedAt
         agentRunId = randomUUID()
@@ -97,6 +114,20 @@ export async function POST(request: Request) {
           skillResults: agent.skillResults,
           contextStats: agent.stats as unknown as Record<string, unknown>,
         })
+
+        // 如果是澄清模式，保存候选列表供下一轮消费
+        if (agent.plan.responseMode === 'clarify') {
+          const candidatesResult = agent.skillResults.find((r) => r.skillName === 'market.resolveCandidate')
+          if (candidatesResult?.ok && candidatesResult.data) {
+            const data = candidatesResult.data as { candidates?: Array<{ code: string; name: string; market: string }> }
+            if (data.candidates?.length) {
+              setSessionContext(body.userId!, sessionId, {
+                type: 'clarify',
+                candidates: data.candidates,
+              })
+            }
+          }
+        }
 
         if (existingSession && existingSession.title === '新对话') {
           updateAiChatSessionTitle(body.userId!, sessionId, buildChatTitle(userMessage))

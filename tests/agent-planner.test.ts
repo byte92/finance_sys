@@ -1,7 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { planAgentResponse } from '@/lib/agent/planner'
-import type { Stock } from '@/types'
+import type { AiConfig, Stock } from '@/types'
+
+const mockAiConfig: AiConfig = {
+  enabled: true,
+  provider: 'openai-compatible',
+  baseUrl: 'http://localhost:8080/v1',
+  model: 'test-model',
+  apiKey: 'test-key',
+  temperature: 0,
+  maxContextTokens: 128000,
+  newsEnabled: false,
+  analysisLanguage: 'zh-CN',
+}
 
 function stock(id: string, code: string, name: string): Stock {
   return {
@@ -21,10 +33,11 @@ const stocks = [
   stock('stock-3', '000001', '平安银行'),
 ]
 
-test('agent planner uses stock skills for a single-stock question', () => {
-  const plan = planAgentResponse({
+test('agent planner uses stock skills for a single-stock question', async () => {
+  const plan = await planAgentResponse({
     userMessage: '成都银行现在走势健康吗',
     stocks,
+    aiConfig: mockAiConfig,
   })
 
   assert.equal(plan.intent, 'stock_analysis')
@@ -38,10 +51,11 @@ test('agent planner uses stock skills for a single-stock question', () => {
   ])
 })
 
-test('agent planner uses portfolio skills for portfolio risk questions', () => {
-  const plan = planAgentResponse({
+test('agent planner uses portfolio skills for portfolio risk questions', async () => {
+  const plan = await planAgentResponse({
     userMessage: '我现在组合最大的风险是什么',
     stocks,
+    aiConfig: mockAiConfig,
   })
 
   assert.equal(plan.intent, 'portfolio_risk')
@@ -52,10 +66,11 @@ test('agent planner uses portfolio skills for portfolio risk questions', () => {
   ])
 })
 
-test('agent planner refuses clearly out-of-scope questions', () => {
-  const plan = planAgentResponse({
+test('agent planner refuses clearly out-of-scope questions', async () => {
+  const plan = await planAgentResponse({
     userMessage: '帮我看看今天成都天气怎么样',
     stocks,
+    aiConfig: mockAiConfig,
   })
 
   assert.equal(plan.intent, 'out_of_scope')

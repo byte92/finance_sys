@@ -189,28 +189,27 @@ export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData
     const { symbol, market } = args
     if (!symbol) return { skillName: 'stock.getFinancials', ok: false, error: '缺少标的代码' }
 
-    // A 股：直接走新浪财经财报页面（东方财富 API 不稳定，Yahoo Finance 限制访问）
+    // A 股：通过 Google 搜索最新财报
     if (market === 'A') {
-      const sinaUrl = `https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/${symbol}.phtml`
       return {
         skillName: 'stock.getFinancials',
         ok: false,
-        error: 'A 股财报需通过新浪财经抓取',
+        error: 'A 股财报需通过搜索引擎查找',
         needsFollowUp: true,
         suggestedSkills: [
-          { name: 'web.fetch', args: { url: sinaUrl, extractPrompt: '从新浪财经财报页面提取最新报告期的关键数据：基本每股收益(元)、营业收入(亿元)、营业收入同比增长率(%)、归母净利润(亿元)、归母净利润同比增长率(%)、加权平均净资产收益率(%)。页面中表格有三列分别对应不同报告期，取最新一列（通常是第一列数据列）' }, reason: '抓取新浪财经财报摘要页面' },
+          { name: 'web.search', args: { query: `${symbol} 最新财报 每股收益 营收增长 净利润`, limit: 5 }, reason: '通过 Google 搜索该股票最新财报信息' },
         ],
       }
     }
 
-    // 美股 / 港股：Yahoo Finance 网页版抓取
+    // 美股 / 港股：Google 搜索英文财报
     return {
       skillName: 'stock.getFinancials',
       ok: false,
-      error: '美股/港股财报需通过网页抓取',
+      error: '美股/港股财报需通过搜索引擎查找',
       needsFollowUp: true,
       suggestedSkills: [
-        { name: 'web.fetch', args: { url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '从 Yahoo Finance 页面提取最新财报关键指标：EPS (Earnings Per Share)、Revenue Growth (YoY)、Earnings Growth (YoY)' }, reason: '抓取 Yahoo Finance 股票页面获取财报摘要' },
+        { name: 'web.search', args: { query: `${symbol} stock latest quarterly earnings EPS revenue`, limit: 5 }, reason: '通过 Google 搜索该股票最新财报信息' },
       ],
     }
   },

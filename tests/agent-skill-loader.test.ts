@@ -25,6 +25,7 @@ test('agent skill loader reads builtin markdown manifests', () => {
     'stock.getTechnicalSnapshot',
     'stock.match',
     'web.fetch',
+    'web.search',
   ].sort())
 
   const holding = manifests.find((manifest) => manifest.name === 'stock.getHolding')

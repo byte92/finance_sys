@@ -52,6 +52,39 @@ test('sqlite store persists and reloads portfolio payload', () => {
   }
 })
 
+test('sqlite store can recover latest non-empty local portfolio', () => {
+  const store = createPortfolioStore(createTempDbPath())
+
+  try {
+    const emptyPayload = { stocks: [], config: DEFAULT_APP_CONFIG }
+    const filledPayload = {
+      stocks: [
+        {
+          id: 'stock-1',
+          code: '601838',
+          name: '成都银行',
+          market: 'A' as const,
+          trades: [],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      config: DEFAULT_APP_CONFIG,
+    }
+
+    store.savePortfolioByUserId('local:empty-device', emptyPayload)
+    store.savePortfolioByUserId('local:filled-device', filledPayload)
+
+    const recovered = store.getLatestNonEmptyLocalPortfolio()
+
+    assert.equal(recovered?.userId, 'local:filled-device')
+    assert.equal(recovered?.recovered, true)
+    assert.deepEqual(recovered?.stocks, filledPayload.stocks)
+  } finally {
+    store.close()
+  }
+})
+
 test('sqlite store falls back to default config when payload is invalid json', () => {
   const store = createPortfolioStore(createTempDbPath())
   const originalConsoleError = console.error

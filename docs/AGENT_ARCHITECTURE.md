@@ -110,6 +110,15 @@ lib/agent/skills/
   history.ts
     对话历史技能：最近消息、未来的会话摘要。
 
+lib/agent/tasks/
+  analysis.ts
+    固定分析场景的 Agent Task。组合分析和个股分析仍沿用稳定 JSON 输出契约，
+    但数据准备统一通过固定 Plan + Skill 执行，避免分析入口绕过 Agent Runtime。
+
+lib/agent/prompts/
+  analysis.ts
+    分析类固定提示词。提示词属于 Skill/Task 能力定义的一部分，不再作为用户配置项存储。
+
 lib/agent/entity/
   stockMatcher.ts
     股票名称、代码、拼音或别名匹配。
@@ -194,6 +203,11 @@ export type AgentSkillResult<TResult = unknown> = {
 
 首版只提供内置 Skill，覆盖最常见的对话问题。每个 Skill 以目录包形式组织，`SKILL.md` 是技能描述源，执行逻辑通过受控 TypeScript 函数绑定。
 
+当前内置 Skill 分为两类：
+
+- 对话按需 Skill：用于自由对话中的轻量取数，例如 `stock.getHolding`、`stock.getQuote`、`portfolio.getSummary`。
+- 固定任务 Skill：用于固定模板分析场景，例如 `portfolio.getAnalysisContext`、`stock.getAnalysisContext`、`market.getAnalysisContext`。这类 Skill 可以读取更完整但仍受控的分析上下文，保持模板输出稳定。
+
 ```text
 skills/builtin/stock-get-holding/
   SKILL.md
@@ -213,12 +227,15 @@ inputs:
 dependencies:
   - lib/finance.ts
 script: lib/agent/skills/stock.ts#stockGetHoldingSkill
+prompt: lib/agent/prompts/analysis.ts#STOCK_ANALYSIS_PROMPT
 ---
 
 # 使用场景
 
 当用户询问某只已持仓股票的走势、成本、盈亏、仓位、是否继续持有或风险时使用。
 ```
+
+分析类 Skill 可以通过 `prompt` 字段绑定固定提示词。配置侧只负责模型连接和运行参数，避免用户配置覆盖导致 JSON 输出契约和 UI 渲染不稳定。
 
 | Skill | 数据范围 | 用途 |
 | --- | --- | --- |
@@ -229,9 +246,17 @@ script: lib/agent/skills/stock.ts#stockGetHoldingSkill
 | `stock.getRecentTrades` | `trade.read` | 获取单只股票最近交易记录。 |
 | `stock.getQuote` | `quote.read` | 获取行情、涨跌幅、PE、PB、EPS、市值等。 |
 | `stock.getTechnicalSnapshot` | `quote.read` | 获取 K 线衍生技术指标摘要。 |
+| `portfolio.getAnalysisContext` | `portfolio.read` / `quote.read` | 固定组合分析模板所需的完整受控上下文。 |
+| `stock.getAnalysisContext` | `stock.read` / `trade.read` / `quote.read` | 固定个股分析模板所需的完整受控上下文。 |
+| `market.getAnalysisContext` | `market.read` / `quote.read` | 固定大盘分析模板所需的三地指数、技术指标和新闻上下文。 |
 | `market.resolveCandidate` | `quote.read` | 当用户只提供名称或代码且市场不明确时，返回候选项。 |
 
-V1 不支持任意用户上传 Skill，不支持 shell，不支持文件写入，不支持无限制网络请求。`script` 字段只允许绑定仓库内受控执行器，不代表可以执行任意脚本。
+V1 支持两类 Skill manifest 来源：
+
+- 内置目录：`skills/builtin/*/SKILL.md`
+- 外部目录：默认读取 `skills/custom`，也可以通过 `AGENT_SKILL_PATHS` 追加多个目录
+
+外部 Skill 首版只支持覆盖或扩展 `SKILL.md` 元数据，例如描述、依赖、权限、prompt 绑定和文档说明；执行逻辑仍必须绑定仓库内受控 TypeScript executor。V1 不支持任意用户上传并执行脚本，不支持 shell，不支持文件写入，不支持无限制网络请求。`script` 字段只允许绑定仓库内受控执行器，不代表可以执行任意外部脚本。
 
 ## 7. Planner 设计
 

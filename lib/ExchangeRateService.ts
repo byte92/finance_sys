@@ -32,6 +32,9 @@ let cachedRates: ExchangeRates | null = null
 let cacheTime = 0
 const CACHE_DURATION = 60 * 60 * 1000 // 1小时
 
+/**
+ * 汇率服务，负责获取并缓存外部汇率数据，提供组合资产跨币种折算能力。
+ */
 class ExchangeRateService {
   private apiUrl = 'https://api.exchangerate-api.com/v4/latest/USD'
 

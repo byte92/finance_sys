@@ -315,7 +315,7 @@ export function formatPnl(
   currency = "CNY",
   decimals = 2,
 ): string {
-  const sign = value >= 0 ? "+" : "";
+  const sign = value >= 0 ? "+" : "-";
   const symbols: Record<string, string> = {
     CNY: "¥",
     HKD: "HK$",
@@ -323,7 +323,7 @@ export function formatPnl(
     USDT: "$",
   };
   const symbol = symbols[currency] || "¥";
-  return `${sign}${symbol}${formatAmount(value, decimals)}`;
+  return `${sign}${symbol}${formatAmount(Math.abs(value), decimals)}`;
 }
 
 // 格式化百分比

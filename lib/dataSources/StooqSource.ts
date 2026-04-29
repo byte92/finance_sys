@@ -3,6 +3,9 @@ import type { Market } from '@/types'
 
 const API_BASE = 'https://stooq.com/q/l/'
 
+/**
+ * Stooq 行情数据源，负责获取美股 CSV 报价，主要作为美股报价链路的轻量 fallback。
+ */
 export class StooqSource implements StockDataSource {
   provider = 'stooq' as const
   config: DataSourceConfig

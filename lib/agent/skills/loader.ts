@@ -10,6 +10,7 @@ export type AgentSkillManifest = {
   inputs: Record<string, unknown>
   dependencies: string[]
   script?: string
+  prompt?: string
   documentation: string
   sourcePath: string
 }
@@ -70,7 +71,7 @@ function parseFrontmatter(raw: string) {
   return result
 }
 
-function parseSkillMarkdown(filePath: string): AgentSkillManifest {
+export function parseSkillMarkdown(filePath: string): AgentSkillManifest {
   const raw = fs.readFileSync(filePath, 'utf8')
   const match = raw.match(SKILL_FRONTMATTER_PATTERN)
   if (!match) {
@@ -94,19 +95,41 @@ function parseSkillMarkdown(filePath: string): AgentSkillManifest {
       : {},
     dependencies: Array.isArray(metadata.dependencies) ? metadata.dependencies.map(String) : [],
     script: typeof metadata.script === 'string' ? metadata.script : undefined,
+    prompt: typeof metadata.prompt === 'string' ? metadata.prompt : undefined,
     documentation: match[2].trim(),
     sourcePath: filePath,
   }
 }
 
-export function loadBuiltinSkillManifests(rootDir = path.join(process.cwd(), 'skills', 'builtin')) {
+export function loadSkillManifests(rootDir: string) {
   if (!fs.existsSync(rootDir)) return []
+  const rootSkillPath = path.join(rootDir, 'SKILL.md')
+  if (fs.existsSync(rootSkillPath)) {
+    return [parseSkillMarkdown(rootSkillPath)]
+  }
   return fs
     .readdirSync(rootDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(rootDir, entry.name, 'SKILL.md'))
     .filter((filePath) => fs.existsSync(filePath))
     .map(parseSkillMarkdown)
+}
+
+export function loadBuiltinSkillManifests(rootDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'skills', 'builtin')) {
+  return loadSkillManifests(rootDir)
+}
+
+function getConfiguredSkillRoots() {
+  const roots = [path.join(/*turbopackIgnore: true*/ process.cwd(), 'skills', 'custom')]
+  const envRoots = process.env.AGENT_SKILL_PATHS
+    ?.split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean) ?? []
+  return [...roots, ...envRoots]
+}
+
+export function loadConfiguredSkillManifests(roots = getConfiguredSkillRoots()) {
+  return roots.flatMap((root) => loadSkillManifests(path.isAbsolute(root) ? root : path.join(/*turbopackIgnore: true*/ process.cwd(), root)))
 }
 
 export function applySkillManifest<TArgs, TResult>(
@@ -122,6 +145,7 @@ export function applySkillManifest<TArgs, TResult>(
     requiredScopes: manifest.scopes,
     dependencies: manifest.dependencies,
     script: manifest.script,
+    prompt: manifest.prompt,
     documentation: manifest.documentation,
     sourcePath: manifest.sourcePath,
   }

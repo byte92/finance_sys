@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto'
-import { AI_MAX_STRENGTH_PROMPT } from '@/config/defaults'
-import { exchangeRateService, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
-import { calcStockSummary } from '@/lib/finance'
-import { stockPriceService } from '@/lib/StockPriceService'
-import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
+import { buildAnalysisSystemPrompt, PORTFOLIO_ANALYSIS_PROMPT, STOCK_ANALYSIS_PROMPT } from '@/lib/agent/prompts/analysis'
+import { runPortfolioAnalysisAgentTask, runStockAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
+import { callJsonCompletion } from '@/lib/external/llmProvider'
+import type { PortfolioAnalysisContext, StockAnalysisContext } from '@/lib/agent/skills/analysis'
 import type {
   AiAnalysisHistoryRecord,
   AiAnalysisResult,
@@ -19,52 +18,6 @@ import type {
 import type { Market } from '@/types'
 
 const ANALYSIS_CACHE = new Map<string, { expiresAt: number; result: AiAnalysisResult }>()
-const ANTHROPIC_ANALYSIS_RESPONSE_TOKEN_LIMIT = 4096
-
-type PortfolioAnalysisContext = {
-  baseCurrency: Currency
-  summaries: Array<{
-    id: string
-    code: string
-    name: string
-    market: Market
-    currentHolding: number
-    avgCostPrice: number
-    realizedPnl: number
-    unrealizedPnl: number
-    totalPnl: number
-    totalBuyAmount: number
-    currentCost: number
-    totalCommission: number
-    totalDividend: number
-    holdingWeight: number
-    currentPrice: number | null
-    changePercent: number | null
-    dailyPnl: number | null
-    lastTradeDate: string | null
-    lastTradeType: 'BUY' | 'SELL' | 'DIVIDEND' | null
-  }>
-  totalCurrentCost: number
-  totalHistoricalBuyAmount: number
-  totalRealizedPnl: number
-  totalUnrealizedPnl: number
-  totalDailyPnl: number
-  largestPositionWeight: number
-  profitableCount: number
-  losingCount: number
-  topHoldings: Array<{ code: string; name: string; weight: number; totalPnl: number }>
-  strongestHoldings: Array<{ code: string; name: string; totalPnl: number; changePercent: number | null }>
-  weakestHoldings: Array<{ code: string; name: string; totalPnl: number; changePercent: number | null }>
-  recentlyActiveHoldings: Array<{ code: string; name: string; lastTradeDate: string }>
-}
-
-type StockAnalysisContext = {
-  stock: Stock
-  summary: ReturnType<typeof calcStockSummary>
-  quote: Awaited<ReturnType<typeof stockPriceService.getQuote>>
-  indicators: TechnicalIndicatorSnapshot | null
-  news: NewsItem[]
-}
 
 type FallbackProbabilityInput = {
   bias: 'bullish' | 'neutral' | 'bearish'
@@ -102,12 +55,7 @@ function validateAiConfig(config: AiConfig) {
 
 function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputContract: Record<string, unknown>, task: string, context: unknown) {
   return {
-    system: [
-      config.promptTemplates.baseSystem,
-      analysisPrompt,
-      AI_MAX_STRENGTH_PROMPT,
-      `当前输出语言：${config.analysisLanguage}`,
-    ].join('\n\n'),
+    system: buildAnalysisSystemPrompt(config.analysisLanguage, analysisPrompt),
     user: JSON.stringify({
       task,
       intensity: 'high',
@@ -134,279 +82,6 @@ function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputCon
       outputContract,
     }),
   }
-}
-
-function ensureApiBase(baseUrl: string, mode: 'openai' | 'anthropic') {
-  const normalized = baseUrl.replace(/\/$/, '')
-  if (mode === 'openai') {
-    return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
-  }
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
-}
-
-async function fetchDailyCandles(symbol: string, market: Market): Promise<CandlePoint[]> {
-  if (market === 'US') {
-    const fromDate = getUsFromDate()
-    const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol.toUpperCase())}/historical?assetclass=stocks&limit=240&fromdate=${fromDate}`
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'Origin': 'https://www.nasdaq.com',
-        'Referer': 'https://www.nasdaq.com/',
-        'User-Agent': 'Mozilla/5.0',
-      },
-      signal: AbortSignal.timeout(7000),
-      cache: 'no-store',
-    })
-    if (!res.ok) return []
-    const payload = await res.json()
-    const rows = payload?.data?.tradesTable?.rows
-    if (!Array.isArray(rows)) return []
-
-    return rows
-      .map((row: Record<string, string>) => {
-        const date = parseNasdaqHistoricalDate(row.date)
-        const open = parseCurrencyNumber(row.open)
-        const high = parseCurrencyNumber(row.high)
-        const low = parseCurrencyNumber(row.low)
-        const close = parseCurrencyNumber(row.close)
-        const volume = parseLooseInteger(row.volume)
-        if (!date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
-          return null
-        }
-        return {
-          date,
-          time: Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000),
-          open,
-          high,
-          low,
-          close,
-          volume,
-        }
-      })
-      .filter((item): item is CandlePoint => item !== null)
-  }
-
-  const code = toTencentCode(symbol, market)
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,240,qfq`
-  const res = await fetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' })
-  if (!res.ok) return []
-  const data = await res.json()
-  const rows = (data?.data?.[code]?.qfqday ?? data?.data?.[code]?.day ?? []) as string[][]
-  return rows
-    .map((row) => {
-      const date = row?.[0]
-      const open = Number(row?.[1])
-      const close = Number(row?.[2])
-      const high = Number(row?.[3])
-      const low = Number(row?.[4])
-      const volume = Number(row?.[5])
-      if (!date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
-        return null
-      }
-      return {
-        date: date.slice(0, 10),
-        time: Math.floor(Date.parse(`${date.slice(0, 10)}T00:00:00+08:00`) / 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: Number.isFinite(volume) ? volume : 0,
-      }
-    })
-    .filter((item): item is CandlePoint => item !== null)
-}
-
-function getUsFromDate() {
-  const date = new Date()
-  date.setFullYear(date.getFullYear() - 1)
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-function parseNasdaqHistoricalDate(value: string | undefined): string | null {
-  if (!value) return null
-  const [month, day, year] = value.split('/')
-  if (!month || !day || !year) return null
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-}
-
-function parseCurrencyNumber(value: string | undefined) {
-  if (!value) return Number.NaN
-  return Number(value.replace(/[$,]/g, '').trim())
-}
-
-function parseLooseInteger(value: string | undefined) {
-  if (!value) return 0
-  const parsed = Number(value.replace(/,/g, '').trim())
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function toTencentCode(code: string, market: Market) {
-  if (market === 'HK') return `hk${code.padStart(5, '0')}`
-  if (market === 'A' || market === 'FUND') {
-    return code.startsWith('6') || code.startsWith('5') ? `sh${code}` : `sz${code}`
-  }
-  return code
-}
-
-export async function fetchStockNews(symbol: string, stockName: string, market: Market, limit = 5): Promise<NewsItem[]> {
-  const queryParts = [stockName, symbol]
-  if (market === 'A' || market === 'FUND') queryParts.push('A股')
-  if (market === 'HK') queryParts.push('港股')
-  if (market === 'US') queryParts.push('美股')
-  const query = queryParts.join(' ')
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`
-
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' })
-    if (!res.ok) return []
-    const xml = await res.text()
-    const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/g))
-      .map((match) => match[1])
-      .map((item) => ({
-        title: decodeXmlTag(item, 'title'),
-        source: decodeXmlTag(item, 'source') || 'Google News',
-        publishedAt: decodeXmlTag(item, 'pubDate'),
-        summary: stripHtml(decodeXmlTag(item, 'description')).slice(0, 220),
-        url: decodeXmlTag(item, 'link'),
-      }))
-      .filter((item) => item.title && item.url)
-
-    const deduped = new Map<string, NewsItem>()
-    for (const item of items) {
-      if (!deduped.has(item.title)) deduped.set(item.title, item)
-    }
-
-    return Array.from(deduped.values()).slice(0, limit)
-  } catch {
-    return []
-  }
-}
-
-function decodeXmlTag(xml: string, tag: string) {
-  const direct = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i'))
-  if (direct?.[1]) return decodeXmlEntities(direct[1]).trim()
-  const cdata = xml.match(new RegExp(`<${tag}><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i'))
-  return decodeXmlEntities(cdata?.[1] ?? '').trim()
-}
-
-function decodeXmlEntities(value: string) {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-  }
-
-function stripHtml(value: string) {
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function convertPortfolioMoney(amount: number, market: Market, rates: Record<string, number>, baseCurrency: Currency) {
-  const fromCurrency = MARKET_CURRENCY[market] || 'CNY'
-  if (fromCurrency === baseCurrency) return amount
-  const fromRate = rates[fromCurrency] || 1
-  const toRate = rates[baseCurrency] || 1
-  return (amount * fromRate) / toRate
-}
-
-function buildPortfolioContext(
-  stocks: Stock[],
-  quotes: Map<string, Awaited<ReturnType<typeof stockPriceService.getQuote>>>,
-  rates: Record<string, number>,
-  baseCurrency: Currency = 'CNY',
-) {
-  const summaries = stocks.map((stock) => {
-    const quote = quotes.get(stock.id) ?? null
-    const summary = calcStockSummary(stock, quote?.price)
-    const lastTrade = [...stock.trades].sort((left, right) => right.date.localeCompare(left.date))[0] ?? null
-    const currentCost = convertPortfolioMoney(summary.avgCostPrice * summary.currentHolding, stock.market, rates, baseCurrency)
-    const dailyPnl = quote && summary.currentHolding > 0
-      ? convertPortfolioMoney(summary.currentHolding * quote.change, stock.market, rates, baseCurrency)
-      : null
-    return {
-      id: stock.id,
-      code: stock.code,
-      name: stock.name,
-      market: stock.market,
-      currentHolding: summary.currentHolding,
-      avgCostPrice: convertPortfolioMoney(summary.avgCostPrice, stock.market, rates, baseCurrency),
-      realizedPnl: convertPortfolioMoney(summary.realizedPnl, stock.market, rates, baseCurrency),
-      unrealizedPnl: convertPortfolioMoney(summary.unrealizedPnl, stock.market, rates, baseCurrency),
-      totalPnl: convertPortfolioMoney(summary.totalPnl, stock.market, rates, baseCurrency),
-      totalBuyAmount: convertPortfolioMoney(summary.totalBuyAmount, stock.market, rates, baseCurrency),
-      currentCost,
-      totalCommission: convertPortfolioMoney(summary.totalCommission, stock.market, rates, baseCurrency),
-      totalDividend: convertPortfolioMoney(summary.totalDividend, stock.market, rates, baseCurrency),
-      currentPrice: quote?.price ?? null,
-      changePercent: quote?.changePercent ?? null,
-      dailyPnl,
-      lastTradeDate: lastTrade?.date ?? null,
-      lastTradeType: lastTrade?.type ?? null,
-      holdingWeight: 0,
-    }
-  })
-  const totalCurrentCost = summaries.reduce((sum, item) => sum + item.currentCost, 0)
-  const totalHistoricalBuyAmount = summaries.reduce((sum, item) => sum + item.totalBuyAmount, 0)
-  const enriched = summaries.map((item) => ({
-    ...item,
-    holdingWeight: totalCurrentCost > 0 ? item.currentCost / totalCurrentCost : 0,
-  }))
-  const topHoldings = [...enriched]
-    .sort((left, right) => right.holdingWeight - left.holdingWeight)
-    .slice(0, 3)
-    .map((item) => ({
-      code: item.code,
-      name: item.name,
-      weight: item.holdingWeight,
-      totalPnl: item.totalPnl,
-    }))
-  const strongestHoldings = [...enriched]
-    .sort((left, right) => right.totalPnl - left.totalPnl)
-    .slice(0, 2)
-    .map((item) => ({
-      code: item.code,
-      name: item.name,
-      totalPnl: item.totalPnl,
-      changePercent: item.changePercent,
-    }))
-  const weakestHoldings = [...enriched]
-    .sort((left, right) => left.totalPnl - right.totalPnl)
-    .slice(0, 2)
-    .map((item) => ({
-      code: item.code,
-      name: item.name,
-      totalPnl: item.totalPnl,
-      changePercent: item.changePercent,
-    }))
-  const recentlyActiveHoldings = [...enriched]
-    .filter((item) => item.lastTradeDate)
-    .sort((left, right) => (right.lastTradeDate ?? '').localeCompare(left.lastTradeDate ?? ''))
-    .slice(0, 3)
-    .map((item) => ({
-      code: item.code,
-      name: item.name,
-      lastTradeDate: item.lastTradeDate!,
-    }))
-  return {
-    baseCurrency,
-    summaries: enriched,
-    totalCurrentCost,
-    totalHistoricalBuyAmount,
-    totalRealizedPnl: enriched.reduce((sum, item) => sum + item.realizedPnl, 0),
-    totalUnrealizedPnl: enriched.reduce((sum, item) => sum + item.unrealizedPnl, 0),
-    totalDailyPnl: enriched.reduce((sum, item) => sum + (item.dailyPnl ?? 0), 0),
-    largestPositionWeight: enriched.reduce((max, item) => Math.max(max, item.holdingWeight), 0),
-    profitableCount: enriched.filter((item) => item.totalPnl >= 0).length,
-    losingCount: enriched.filter((item) => item.totalPnl < 0).length,
-    topHoldings,
-    strongestHoldings,
-    weakestHoldings,
-    recentlyActiveHoldings,
-  } satisfies PortfolioAnalysisContext
 }
 
 function mapTechnicalSignals(snapshot: TechnicalIndicatorSnapshot | null): AiTechnicalSignal[] {
@@ -660,91 +335,14 @@ function safeParseJsonObject<T>(raw: string): T | null {
   }
 }
 
-async function callOpenAiCompatible(config: AiConfig, systemPrompt: string, userPrompt: string) {
-  const baseUrl = ensureApiBase(config.baseUrl, 'openai')
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: config.temperature,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-  }
-
-  const payload = await res.json()
-  const content = payload?.choices?.[0]?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('LLM 未返回有效内容')
-  }
-  return content
-}
-
-async function callAnthropicCompatible(config: AiConfig, systemPrompt: string, userPrompt: string) {
-  const baseUrl = ensureApiBase(config.baseUrl, 'anthropic')
-  const res = await fetch(`${baseUrl}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      system: systemPrompt,
-      temperature: config.temperature,
-      max_tokens: ANTHROPIC_ANALYSIS_RESPONSE_TOKEN_LIMIT,
-      messages: [
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-  }
-
-  const payload = await res.json()
-  const contentBlocks = payload?.content
-  if (!Array.isArray(contentBlocks)) {
-    throw new Error('Anthropic 响应格式无效')
-  }
-  const text = contentBlocks
-    .map((block) => (block?.type === 'text' ? block.text : ''))
-    .filter(Boolean)
-    .join('\n')
-    .trim()
-
-  if (!text) {
-    throw new Error('LLM 未返回有效内容')
-  }
-  return text
-}
-
 async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: string) {
-  if (config.provider === 'anthropic-compatible') {
-    return callAnthropicCompatible(config, systemPrompt, userPrompt)
-  }
-  return callOpenAiCompatible(config, systemPrompt, userPrompt)
+  return callJsonCompletion(config, systemPrompt, userPrompt)
 }
 
 function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
   return buildPromptEnvelope(
     config,
-    config.promptTemplates.portfolioAnalysis,
+    PORTFOLIO_ANALYSIS_PROMPT,
     {
       analysisStrength: 'high|medium|weak',
       summary: 'string',
@@ -770,7 +368,7 @@ function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
 function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
   return buildPromptEnvelope(
     config,
-    config.promptTemplates.stockAnalysis,
+    STOCK_ANALYSIS_PROMPT,
     {
       analysisStrength: 'high|medium|weak',
       summary: 'string',
@@ -907,14 +505,8 @@ export async function generatePortfolioAnalysis(stocks: Stock[], aiConfig: AiCon
     if (cached) return cached
   }
 
-  const quotes = new Map<string, Awaited<ReturnType<typeof stockPriceService.getQuote>>>()
-  const rates = await exchangeRateService.getRates()
-  await Promise.all(stocks.map(async (stock) => {
-    const quote = await stockPriceService.getQuote(stock.code, stock.market)
-    quotes.set(stock.id, quote)
-  }))
-
-  const context = buildPortfolioContext(stocks, quotes, rates, 'CNY')
+  const task = await runPortfolioAnalysisAgentTask(stocks, aiConfig, { baseCurrency: 'CNY' })
+  const context = task.context
   const { system, user } = portfolioPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
   const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
@@ -959,12 +551,9 @@ export async function generateStockAnalysis(stock: Stock, aiConfig: AiConfig, fo
     if (cached) return cached
   }
 
-  const quote = await stockPriceService.getQuote(stock.code, stock.market)
-  const summary = calcStockSummary(stock, quote?.price)
-  const candles = await fetchDailyCandles(stock.code, stock.market)
-  const indicators = buildTechnicalIndicatorSnapshot(candles)
-  const news = aiConfig.newsEnabled ? await fetchStockNews(stock.code, stock.name, stock.market) : []
-  const context: StockAnalysisContext = { stock, summary, quote, indicators, news }
+  const task = await runStockAnalysisAgentTask(stock, aiConfig)
+  const context = task.context
+  const { summary, quote, indicators, news } = context
 
   const { system, user } = stockPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)

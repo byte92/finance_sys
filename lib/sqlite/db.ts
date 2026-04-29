@@ -1,13 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { DEFAULT_APP_CONFIG } from "@/config/defaults";
 import type { AiAgentRun, AiAnalysisHistoryRecord, AiAnalysisResult, AiChatMessage, AiChatSession, AiChatRole, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
   stocks: Stock[];
   config: AppConfig;
 };
+
+export type ResolvedStoredPayload = StoredPayload & {
+  userId: string;
+  recovered?: boolean;
+};
+
+type LegacyAiConfig = Partial<AppConfig["aiConfig"]> & {
+  promptTemplates?: unknown;
+};
+
+function normalizeAiConfig(aiConfig?: LegacyAiConfig): AppConfig["aiConfig"] {
+  const { promptTemplates: _legacyPromptTemplates, ...rest } = aiConfig ?? {};
+  return {
+    ...DEFAULT_APP_CONFIG.aiConfig,
+    ...rest,
+  };
+}
 
 function normalizePayload(payload: Partial<StoredPayload> | null | undefined): StoredPayload {
   return {
@@ -19,14 +36,7 @@ function normalizePayload(payload: Partial<StoredPayload> | null | undefined): S
         ...DEFAULT_APP_CONFIG.feeConfigs,
         ...(payload?.config?.feeConfigs ?? {}),
       },
-      aiConfig: {
-        ...DEFAULT_APP_CONFIG.aiConfig,
-        ...(payload?.config?.aiConfig ?? {}),
-        promptTemplates: {
-          ...DEFAULT_AI_PROMPT_TEMPLATES,
-          ...(payload?.config?.aiConfig?.promptTemplates ?? {}),
-        },
-      },
+      aiConfig: normalizeAiConfig(payload?.config?.aiConfig as LegacyAiConfig | undefined),
       currency: {
         ...DEFAULT_APP_CONFIG.currency,
         ...(payload?.config?.currency ?? {}),
@@ -283,6 +293,35 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     } catch (error) {
       console.error("Failed to parse SQLite payload:", error);
       return { stocks: [], config: DEFAULT_APP_CONFIG };
+    }
+  }
+
+  function getLatestNonEmptyLocalPortfolio(): ResolvedStoredPayload | null {
+    const row = db
+      .prepare(
+        `
+        SELECT user_id, payload
+        FROM portfolios
+        WHERE user_id LIKE 'local:%'
+          AND json_array_length(json_extract(payload, '$.stocks')) > 0
+        ORDER BY updated_at DESC
+        LIMIT 1
+        `,
+      )
+      .get() as { user_id: string; payload: string } | undefined;
+
+    if (!row) return null;
+
+    try {
+      const parsed = JSON.parse(row.payload) as Partial<StoredPayload>;
+      return {
+        ...normalizePayload(parsed),
+        userId: row.user_id,
+        recovered: true,
+      };
+    } catch (error) {
+      console.error("Failed to parse fallback SQLite payload:", error);
+      return null;
     }
   }
 
@@ -570,6 +609,7 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
   return {
     dbPath,
     getPortfolioByUserId,
+    getLatestNonEmptyLocalPortfolio,
     savePortfolioByUserId,
     saveAiAnalysis,
     listAiAnalysisByUserId,
@@ -594,6 +634,20 @@ const portfolioStore = createPortfolioStore();
 
 export function getPortfolioByUserId(userId: string): StoredPayload {
   return portfolioStore.getPortfolioByUserId(userId);
+}
+
+export function getPortfolioByUserIdWithLocalFallback(userId: string): ResolvedStoredPayload {
+  const payload = portfolioStore.getPortfolioByUserId(userId);
+  if (payload.stocks.length > 0 || !userId.startsWith("local:")) {
+    return { ...payload, userId };
+  }
+
+  const fallback = portfolioStore.getLatestNonEmptyLocalPortfolio();
+  if (fallback && fallback.userId !== userId) {
+    return fallback;
+  }
+
+  return { ...payload, userId };
 }
 
 export function savePortfolioByUserId(userId: string, payload: StoredPayload) {

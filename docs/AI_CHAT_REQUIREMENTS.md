@@ -310,7 +310,7 @@ AI 对话只对用户暴露上下文长度配置，不再提供单次输出 toke
 
 - 模型连接配置优先使用服务端 `.env.local`：`AI_PROVIDER`、`AI_BASE_URL`、`AI_MODEL`、`AI_API_KEY`。
 - 如果 `.env.local` 未配置完整，则继续使用设置页中的本地兜底配置。
-- 设置页继续控制 Temperature、Max Context Tokens 和提示词。
+- 设置页继续控制 Temperature、Max Context Tokens、新闻增强和分析语言；提示词由 Skill/Task 固定维护，不再从设置页编辑。
 - README 与 `.env.example` 必须说明每个环境变量的用途、可选值、示例值和是否会暴露到前端。
 - 使用当前本机 `userId` 进行会话隔离，保持本地优先，不引入登录体系。
 - 首版必须支持流式输出，这是基础体验要求。

@@ -17,6 +17,7 @@ export type AgentDataScope =
   | 'trade.read'
   | 'quote.read'
   | 'chat.read'
+  | 'market.read'
 
 export type AgentEntity = {
   type: 'stock' | 'market' | 'portfolio'
@@ -66,6 +67,7 @@ export type AgentSkill<TArgs = Record<string, unknown>, TResult = unknown> = {
   requiredScopes: AgentDataScope[]
   dependencies?: string[]
   script?: string
+  prompt?: string
   documentation?: string
   sourcePath?: string
   execute: (args: TArgs, ctx: AgentExecutionContext) => Promise<AgentSkillResult<TResult>>

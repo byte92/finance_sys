@@ -67,13 +67,6 @@ export type AiConfidence = 'low' | 'medium' | 'high'
 export type AiAnalysisStrength = 'high' | 'medium' | 'weak'
 export type MarketRegion = 'A' | 'HK' | 'US'
 
-export interface AiPromptTemplates {
-  baseSystem: string
-  portfolioAnalysis: string
-  stockAnalysis: string
-  marketAnalysis: string
-}
-
 export interface AiConfig {
   enabled: boolean
   provider: AiProvider
@@ -84,7 +77,6 @@ export interface AiConfig {
   maxContextTokens: number
   newsEnabled: boolean
   analysisLanguage: AiAnalysisLanguage
-  promptTemplates: AiPromptTemplates
 }
 
 // 应用配置

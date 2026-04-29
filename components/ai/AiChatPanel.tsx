@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Bot, Bug, Clock, Eraser, Info, Maximize2, Pencil, Plus, Send, Trash2, X } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import MarkdownMessage from '@/components/ai/MarkdownMessage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession, Market } from '@/types'
 
@@ -22,13 +24,6 @@ const MARKET_OPTIONS: Array<{ market: Market; label: string }> = [
   { market: 'US', label: '美股' },
   { market: 'FUND', label: '基金' },
   { market: 'CRYPTO', label: '加密资产' },
-]
-
-const SUGGESTIONS = [
-  '当前组合最大的风险是什么？',
-  '帮我复盘最近交易最多的股票。',
-  '我当前持仓里哪只股票需要重点关注？',
-  '按成本和盈亏帮我总结一下仓位结构。',
 ]
 
 const CHAT_TITLE_MAX_LENGTH = 24
@@ -62,6 +57,7 @@ function isSkillOk(result: unknown) {
 
 export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { userId, stocks, config } = useStockStore()
   const [sessions, setSessions] = useState<AiChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
@@ -85,6 +81,12 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const aiReady = Boolean(aiEnvStatus?.configured) || (config.aiConfig.enabled && config.aiConfig.baseUrl.trim() && config.aiConfig.model.trim() && config.aiConfig.apiKey.trim())
   const currentModelName = aiEnvStatus?.configured ? aiEnvStatus.model : config.aiConfig.model
   const currentTitle = activeSession?.title ?? (activeSessionId ? 'AI 对话' : '新对话')
+  const suggestions = buildAiChatSuggestions({
+    stocks,
+    pathname,
+    activeSessionId,
+    messageCount: messages.length,
+  })
 
   useEffect(() => {
     if (mode !== 'full') return
@@ -149,7 +151,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   }, [mode, refreshSessions])
 
   useEffect(() => {
-    if (mode !== 'full' && !activeSessionId) return
+    if (mode !== 'full') return
     void refreshMessages(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 消息失败'))
   }, [activeSessionId, mode, refreshMessages])
 
@@ -299,6 +301,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
             latestMessageAt: new Date().toISOString(),
           }, ...current]
         })
+        await refreshMessages(nextSessionId)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 对话失败')
@@ -524,11 +527,12 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               </div>
               <div className="text-sm text-muted-foreground">可以直接问我与你的持仓、交易复盘、股票估值或风险管理相关的问题。</div>
               <div className="grid gap-2">
-                {SUGGESTIONS.map((suggestion) => (
+                {suggestions.map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
-                    onClick={() => setInput(suggestion)}
+                    disabled={!aiReady || loading}
+                    onClick={() => void startSend(suggestion)}
                     className="rounded-md border border-border px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     {suggestion}
@@ -551,7 +555,11 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                       ? 'bg-primary text-primary-foreground'
                       : 'border border-border bg-secondary/60 text-foreground'
                   }`}>
-                    {message.content || (message.role === 'assistant' && loading ? (
+                    {message.content ? (
+                      message.role === 'assistant'
+                        ? <div className="markdown-message"><MarkdownMessage content={message.content} /></div>
+                        : message.content
+                    ) : (message.role === 'assistant' && loading ? (
                       <span className="inline-flex items-center gap-2 text-muted-foreground">
                         {streamStatus && <span>{streamStatus}</span>}
                         <span className="inline-flex items-center gap-1" aria-label={streamStatus || 'AI 正在生成'}>

@@ -1,23 +1,21 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Loader2, Upload, Download, Trash2, Sparkles, SlidersHorizontal, Settings2, FilePenLine } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, Upload, Download, Trash2, Sparkles, SlidersHorizontal, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { AiAnalysisLanguage, AiPromptTemplates, AiProvider, ExportData, Market } from '@/types'
+import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
-type PromptField = keyof AiPromptTemplates
-type SectionId = 'basic' | 'ai' | 'preferences' | 'prompts'
+type SectionId = 'basic' | 'ai' | 'preferences'
 const SETTINGS_SECTIONS_STORAGE_KEY = 'stock-tracker-settings-sections'
 
 type AiEnvStatus = {
@@ -29,13 +27,6 @@ type AiEnvStatus = {
   apiKeyConfigured: boolean
   apiKeyPreview?: string
 }
-
-const PROMPT_FIELD_META: Array<{ key: PromptField; label: string; hint: string }> = [
-  { key: 'baseSystem', label: '基础系统提示词', hint: '定义 AI 的角色、边界、客观性要求与输出纪律。' },
-  { key: 'portfolioAnalysis', label: '组合分析提示词', hint: '控制组合分析如何聚焦仓位结构、风险暴露和组合建议。' },
-  { key: 'stockAnalysis', label: '个股分析提示词', hint: '控制个股分析如何结合成本、技术指标和新闻输出判断。' },
-  { key: 'marketAnalysis', label: '大盘分析提示词', hint: '控制 A 股、港股、美股整体节奏和风险偏好分析。' },
-]
 
 export default function SettingsContent({
   onSaved,
@@ -65,7 +56,6 @@ export default function SettingsContent({
     basic: true,
     ai: true,
     preferences: false,
-    prompts: false,
   })
 
   useEffect(() => {
@@ -133,10 +123,6 @@ export default function SettingsContent({
     })
   }, [config.defaultMarket, config.feeConfigs, defaultMarket, feeConfigs])
 
-  const promptDirty = useMemo(() => {
-    return JSON.stringify(aiConfig.promptTemplates) !== JSON.stringify(config.aiConfig.promptTemplates)
-  }, [aiConfig.promptTemplates, config.aiConfig.promptTemplates])
-
   const aiDirty = useMemo(() => {
     return JSON.stringify({
       enabled: aiConfig.enabled,
@@ -170,8 +156,8 @@ export default function SettingsContent({
   const displayedAiApiKey = envAiConfigured ? (aiEnvStatus?.apiKeyPreview ?? '') : aiConfig.apiKey
 
   const isDirty = useMemo(() => {
-    return basicDirty || aiDirty || promptDirty || preferencesDirty
-  }, [aiDirty, basicDirty, preferencesDirty, promptDirty])
+    return basicDirty || aiDirty || preferencesDirty
+  }, [aiDirty, basicDirty, preferencesDirty])
 
   const updateFeeField = (market: Market, field: FeeField, value: string) => {
     const numericValue = Number(value)
@@ -180,16 +166,6 @@ export default function SettingsContent({
       [market]: {
         ...current[market],
         [field]: Number.isFinite(numericValue) ? numericValue : 0,
-      },
-    }))
-  }
-
-  const updatePromptField = (field: PromptField, value: string) => {
-    setAiConfig((current) => ({
-      ...current,
-      promptTemplates: {
-        ...current.promptTemplates,
-        [field]: value,
       },
     }))
   }
@@ -432,14 +408,14 @@ export default function SettingsContent({
         id: 'ai',
         icon: <Sparkles className="h-4 w-4" />,
         title: 'AI 设置',
-        description: '管理 provider、模型、密钥和默认分析强度。',
+        description: '管理 provider、模型、密钥和默认运行参数。',
         dirty: aiDirty,
         sectionRef: aiSectionRef,
         content: (
           <div className="rounded-lg border border-border p-4 space-y-4">
           {aiEnvStatus?.configured && (
             <div className="rounded-md border border-primary/25 bg-primary/10 p-3 text-xs text-primary">
-              当前检测到服务端 .env AI 配置，将优先使用环境变量中的 Provider / Base URL / Model / API Key。下方连接配置仅作为本地兜底；Temperature、Max Context Tokens 和提示词仍使用设置页配置。
+              当前检测到服务端 .env AI 配置，将优先使用环境变量中的 Provider / Base URL / Model / API Key。下方连接配置仅作为本地兜底；Temperature、Max Context Tokens、新闻增强和分析语言仍使用设置页配置。
               {aiEnvStatus.model && <span className="ml-1">当前环境模型：{aiEnvStatus.model}</span>}
             </div>
           )}
@@ -552,7 +528,7 @@ export default function SettingsContent({
           </div>
 
           <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-            推荐把 AI_PROVIDER、AI_BASE_URL、AI_MODEL、AI_API_KEY 放在 .env.local 中。若未配置环境变量，系统会继续使用这里保存的本地兜底配置；JSON 导出会自动移除 API Key。
+            推荐把 AI_PROVIDER、AI_BASE_URL、AI_MODEL、AI_API_KEY 放在 .env.local 中。若未配置环境变量，系统会继续使用这里保存的本地兜底配置；JSON 导出会自动移除 API Key。分析提示词由 Skill 固定维护，不再从设置页编辑。
           </div>
 
           {testMessage && (
@@ -587,37 +563,6 @@ export default function SettingsContent({
               <div className="text-xs text-muted-foreground">
                 主题模式已迁回侧边栏底部，方便随时切换。
               </div>
-            </div>
-          </div>
-        ),
-      })}
-
-      {renderSection({
-        id: 'prompts',
-        icon: <FilePenLine className="h-4 w-4" />,
-        title: '提示词设置',
-        description: '按模块编辑基础提示词、分析类型提示词和强度策略提示词。',
-        dirty: promptDirty,
-        content: (
-          <div className="space-y-4">
-            <div className="text-xs text-muted-foreground">
-              最终调用时会按“基础提示词 + 分析类型提示词”拼装。这里改动后，后续 AI 分析会直接使用你的版本。
-            </div>
-
-            <div className="space-y-4">
-              {PROMPT_FIELD_META.map((item) => (
-                <div key={item.key} className="space-y-1.5">
-                  <Label htmlFor={`prompt-${item.key}`}>{item.label}</Label>
-                  <div className="text-[11px] text-muted-foreground">{item.hint}</div>
-                  <Textarea
-                    id={`prompt-${item.key}`}
-                    value={aiConfig.promptTemplates[item.key]}
-                    onChange={(e) => updatePromptField(item.key, e.target.value)}
-                    rows={item.key === 'baseSystem' ? 6 : 5}
-                    className="min-h-[120px] font-mono text-xs"
-                  />
-                </div>
-              ))}
             </div>
           </div>
         ),

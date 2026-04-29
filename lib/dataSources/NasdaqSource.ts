@@ -28,6 +28,9 @@ type NasdaqChartResponse = {
   } | null
 }
 
+/**
+ * Nasdaq 行情数据源，负责获取美股实时/延时报价，并把 Nasdaq 响应归一化为系统统一报价结构。
+ */
 export class NasdaqSource implements StockDataSource {
   provider = 'nasdaq' as const
   config: DataSourceConfig

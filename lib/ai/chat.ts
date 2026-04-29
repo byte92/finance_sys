@@ -1,12 +1,10 @@
 import { calcStockSummary, generateId } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
+import { streamCompletion, type LlmProviderMessage } from '@/lib/external/llmProvider'
 import type { AiChatContextStats, AiChatMessage, AiConfig, Market, Stock } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
-export type ProviderMessage = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export type ProviderMessage = LlmProviderMessage
 
 export type ExternalStockRequest = {
   symbol: string
@@ -20,7 +18,6 @@ export type ChatContextBuildResult = {
 }
 
 const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
-const ANTHROPIC_CHAT_RESPONSE_TOKEN_LIMIT = 4096
 export const AI_CHAT_TITLE_MAX_LENGTH = 24
 
 export function validateAiChatConfig(config: AiConfig) {
@@ -65,15 +62,6 @@ export function normalizeChatTitle(content: string) {
   const normalized = content.replace(/\s+/g, ' ').trim()
   if (!normalized) return '新对话'
   return normalized.length > AI_CHAT_TITLE_MAX_LENGTH ? normalized.slice(0, AI_CHAT_TITLE_MAX_LENGTH) : normalized
-}
-
-function ensureApiBase(baseUrl: string, provider: AiConfig['provider']) {
-  const normalized = baseUrl.replace(/\/$/, '')
-  if (!normalized) throw new Error('请先配置 AI Base URL')
-  if (provider === 'openai-compatible') {
-    return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
-  }
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
 }
 
 function quoteToContext(quote: StockQuote | null) {
@@ -183,75 +171,6 @@ function compactHistory(messages: AiChatMessage[], maxHistoryTokens: number) {
   return compacted
 }
 
-function normalizeStreamContent(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value.map(normalizeStreamContent).join('')
-  if (!value || typeof value !== 'object') return ''
-
-  const part = value as Record<string, unknown>
-  if (typeof part.text === 'string') return part.text
-  if (typeof part.content === 'string') return part.content
-  if (Array.isArray(part.content)) return part.content.map(normalizeStreamContent).join('')
-  return ''
-}
-
-function extractOpenAiStreamText(choice: unknown): string {
-  if (!choice || typeof choice !== 'object') return ''
-
-  const item = choice as Record<string, unknown>
-  const delta = item.delta && typeof item.delta === 'object' ? (item.delta as Record<string, unknown>) : null
-  const message = item.message && typeof item.message === 'object' ? (item.message as Record<string, unknown>) : null
-  const candidates = [delta?.content, delta?.text, message?.content, item.text]
-
-  return candidates.map(normalizeStreamContent).join('')
-}
-
-function getProviderErrorMessage(error: unknown) {
-  if (!error || typeof error !== 'object') return null
-  const payload = error as Record<string, unknown>
-  if (typeof payload.message === 'string') return payload.message
-  if (typeof payload.error === 'string') return payload.error
-  if (payload.error && typeof payload.error === 'object') {
-    const nested = payload.error as Record<string, unknown>
-    if (typeof nested.message === 'string') return nested.message
-  }
-  return null
-}
-
-function parseStreamPayload(data: string) {
-  try {
-    return JSON.parse(data)
-  } catch {
-    throw new Error('LLM 返回了无法解析的流式数据')
-  }
-}
-
-function assertNormalFinish(finishReason: string | null, receivedText: boolean, onChunk: (chunk: string) => void) {
-  if (!finishReason) {
-    if (receivedText) {
-      console.warn('[ai-chat] stream ended without finish_reason')
-      return
-    }
-    throw new Error('AI 未返回有效内容')
-  }
-
-  if (['stop', 'end_turn', 'complete'].includes(finishReason)) return
-
-  if (['length', 'max_tokens'].includes(finishReason)) {
-    if (receivedText) {
-      onChunk('\n\n（本次回复已达到模型单次输出上限，后续内容停止生成。可以拆成更具体的问题继续追问。）')
-      return
-    }
-    throw new Error('AI 回复达到模型单次输出上限，未返回有效内容。请缩小问题范围后重试。')
-  }
-
-  if (['content_filter', 'safety', 'blocked'].includes(finishReason)) {
-    throw new Error('AI 回复被安全策略提前终止，请调整问题后重试。')
-  }
-
-  throw new Error(`AI 回复被提前终止：${finishReason}`)
-}
-
 export async function buildChatContext({
   aiConfig,
   stocks,
@@ -291,125 +210,8 @@ export async function buildChatContext({
   }
 }
 
-async function streamOpenAiCompatible(config: AiConfig, messages: ProviderMessage[], onChunk: (chunk: string) => void) {
-  const baseUrl = ensureApiBase(config.baseUrl, config.provider)
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: config.temperature,
-      stream: true,
-      messages,
-    }),
-  })
-
-  if (!res.ok || !res.body) {
-    const text = await res.text()
-    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let finishReason: string | null = null
-  let receivedText = false
-  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    buffer += decoder.decode(chunk, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (!data || data === '[DONE]') continue
-      const payload = parseStreamPayload(data)
-      const providerError = getProviderErrorMessage(payload?.error)
-      if (providerError) throw new Error(`LLM 流式返回错误：${providerError}`)
-
-      const choice = payload?.choices?.[0]
-      if (typeof choice?.finish_reason === 'string') finishReason = choice.finish_reason
-
-      const text = extractOpenAiStreamText(choice)
-      if (text) {
-        receivedText = true
-        onChunk(text)
-      }
-    }
-  }
-
-  assertNormalFinish(finishReason, receivedText, onChunk)
-}
-
-async function streamAnthropicCompatible(config: AiConfig, messages: ProviderMessage[], onChunk: (chunk: string) => void) {
-  const baseUrl = ensureApiBase(config.baseUrl, config.provider)
-  const system = messages.find((message) => message.role === 'system')?.content ?? ''
-  const rest = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'assistant' : 'user',
-      content: message.content,
-    }))
-
-  const res = await fetch(`${baseUrl}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      system,
-      temperature: config.temperature,
-      max_tokens: ANTHROPIC_CHAT_RESPONSE_TOKEN_LIMIT,
-      stream: true,
-      messages: rest,
-    }),
-  })
-
-  if (!res.ok || !res.body) {
-    const text = await res.text()
-    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-  }
-
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let finishReason: string | null = null
-  let receivedText = false
-  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    buffer += decoder.decode(chunk, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (!data) continue
-      const payload = parseStreamPayload(data)
-      const providerError = getProviderErrorMessage(payload?.error)
-      if (providerError) throw new Error(`LLM 流式返回错误：${providerError}`)
-
-      const text = payload?.delta?.text
-      if (typeof text === 'string') {
-        receivedText = true
-        onChunk(text)
-      }
-      if (typeof payload?.delta?.stop_reason === 'string') finishReason = payload.delta.stop_reason
-    }
-  }
-
-  assertNormalFinish(finishReason, receivedText, onChunk)
-}
-
 export async function streamChatCompletion(config: AiConfig, messages: ProviderMessage[], onChunk: (chunk: string) => void) {
-  if (config.provider === 'anthropic-compatible') {
-    await streamAnthropicCompatible(config, messages, onChunk)
-    return
-  }
-  await streamOpenAiCompatible(config, messages, onChunk)
+  await streamCompletion(config, messages, onChunk)
 }
 
 export function createChatMessageId() {

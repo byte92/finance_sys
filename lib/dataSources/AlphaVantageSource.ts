@@ -4,6 +4,9 @@ import type { Market } from '@/types'
 
 const API_BASE = 'https://www.alphavantage.co/query'
 
+/**
+ * Alpha Vantage 行情数据源，负责在配置 API Key 后获取跨市场报价，作为免费数据源的兜底补充。
+ */
 export class AlphaVantageDataSource implements StockDataSource {
   provider = 'alpha-vantage' as const
   config: DataSourceConfig

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
-import { getPortfolioByUserId, savePortfolioByUserId } from "@/lib/sqlite/db";
+import { getPortfolioByUserIdWithLocalFallback, savePortfolioByUserId } from "@/lib/sqlite/db";
 import type { AppConfig, Stock } from "@/types";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing userId" }, { status: 400 });
   }
 
-  const payload = getPortfolioByUserId(userId);
+  const payload = getPortfolioByUserIdWithLocalFallback(userId);
   return NextResponse.json(payload);
 }
 

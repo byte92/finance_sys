@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { autoCalcFees, calcBuyNetAmount, calcSellNetAmount, calcStockSummary } from '@/lib/finance'
+import { autoCalcFees, calcBuyNetAmount, calcSellNetAmount, calcStockSummary, formatPnl } from '@/lib/finance'
 import { DEFAULT_FEE_CONFIGS } from '@/config/defaults'
 import type { FeeConfig, Stock } from '@/types'
 
@@ -59,6 +59,12 @@ test('自动手续费会读取用户配置的佣金率，而不是写死默认�
   assert.equal(fees.commission, 2)
   assert.equal(fees.tax, 0.1)
   assert.equal(fees.netAmount, 10002.1)
+})
+
+test('formatPnl keeps sign before currency symbol', () => {
+  assert.equal(formatPnl(123.45, 'CNY'), '+¥123.45')
+  assert.equal(formatPnl(-123.45, 'CNY'), '-¥123.45')
+  assert.equal(formatPnl(-123.45, 'HKD'), '-HK$123.45')
 })
 
 test('FIFO 计算已实现盈亏和剩余持仓成本', () => {

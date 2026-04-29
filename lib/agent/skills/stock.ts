@@ -1,8 +1,8 @@
 import { buildTechnicalIndicatorSnapshot } from '@/lib/technicalIndicators'
-import type { CandlePoint } from '@/lib/technicalIndicators'
 import { calcStockSummary } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { matchStocks } from '@/lib/agent/entity/stockMatcher'
+import { fetchDailyCandles } from '@/lib/external/kline'
 import type { AgentSkill } from '@/lib/agent/types'
 import type { Market, Stock } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
@@ -34,40 +34,6 @@ function quoteToContext(quote: StockQuote | null) {
     valuationSource: quote.valuationSource ?? null,
     timestamp: quote.timestamp,
   }
-}
-
-async function fetchDailyCandles(symbol: string, market: Market): Promise<CandlePoint[]> {
-  if (market === 'FUND' || market === 'CRYPTO') return []
-
-  const normalized = symbol.trim()
-  const tencentPrefix = market === 'HK' ? 'hk' : market === 'US' ? 'us' : normalized.startsWith('6') ? 'sh' : 'sz'
-  const code = `${tencentPrefix}${normalized}`
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,160,qfq`
-  const res = await fetch(url, { signal: AbortSignal.timeout(5000), cache: 'no-store' }).catch(() => null)
-  if (!res?.ok) return []
-  const data = await res.json().catch(() => null)
-  const rows = (data?.data?.[code]?.qfqday ?? data?.data?.[code]?.day ?? []) as string[][]
-
-  return rows
-    .map((row) => {
-      const date = row?.[0]
-      const open = Number(row?.[1])
-      const close = Number(row?.[2])
-      const high = Number(row?.[3])
-      const low = Number(row?.[4])
-      const volume = Number(row?.[5])
-      if (!date || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null
-      return {
-        date: date.slice(0, 10),
-        time: Math.floor(Date.parse(`${date.slice(0, 10)}T00:00:00+08:00`) / 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: Number.isFinite(volume) ? volume : 0,
-      }
-    })
-    .filter((item): item is CandlePoint => item !== null)
 }
 
 export const stockMatchSkill: AgentSkill<{ query?: string }> = {

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
-import { AI_MAX_STRENGTH_PROMPT } from '@/config/defaults'
-import { buildTechnicalIndicatorSnapshot, type CandlePoint } from '@/lib/technicalIndicators'
-import { fetchStockNews } from '@/lib/ai/service'
+import { buildAnalysisSystemPrompt, MARKET_ANALYSIS_PROMPT } from '@/lib/agent/prompts/analysis'
+import { runMarketAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
+import { fetchStockNews } from '@/lib/external/news'
+import { callJsonCompletion } from '@/lib/external/llmProvider'
+import { MARKET_INDEX_DEFINITIONS, fetchMarketIndexSnapshot } from '@/lib/external/marketIndices'
 import type {
   AiAnalysisHistoryRecord,
   AiAnalysisResult,
@@ -18,16 +20,6 @@ import type {
 import type { Market } from '@/types'
 
 const MARKET_ANALYSIS_CACHE = new Map<string, { expiresAt: number; result: AiAnalysisResult }>()
-const ANTHROPIC_MARKET_RESPONSE_TOKEN_LIMIT = 4096
-
-type MarketIndexDefinition = {
-  id: string
-  code: string
-  name: string
-  region: MarketRegion
-  market: Market
-  tencentCode: string
-}
 
 type MarketGroup = {
   region: MarketRegion
@@ -57,7 +49,7 @@ type MarketOverview = {
   updatedAt: string
 }
 
-type MarketAnalysisContext = {
+export type MarketAnalysisContext = {
   groups: Array<{
     region: MarketRegion
     label: string
@@ -90,17 +82,6 @@ type MarketFallbackProbabilityInput = {
   confidence: AiConfidence
   note: string
 }
-
-const MARKET_INDEX_DEFINITIONS: MarketIndexDefinition[] = [
-  { id: 'shanghai-composite', code: '000001', name: '上证指数', region: 'A', market: 'A', tencentCode: 'sh000001' },
-  { id: 'shenzhen-component', code: '399001', name: '深证成指', region: 'A', market: 'A', tencentCode: 'sz399001' },
-  { id: 'chinext', code: '399006', name: '创业板指', region: 'A', market: 'A', tencentCode: 'sz399006' },
-  { id: 'hang-seng', code: 'HSI', name: '恒生指数', region: 'HK', market: 'HK', tencentCode: 'hkHSI' },
-  { id: 'hang-seng-tech', code: 'HSTECH', name: '恒生科技指数', region: 'HK', market: 'HK', tencentCode: 'hkHSTECH' },
-  { id: 'dow-jones', code: 'DJI', name: '道琼斯', region: 'US', market: 'US', tencentCode: 'usDJI' },
-  { id: 'sp500', code: 'SPX', name: '标普500', region: 'US', market: 'US', tencentCode: 'usINX' },
-  { id: 'nasdaq', code: 'IXIC', name: '纳斯达克', region: 'US', market: 'US', tencentCode: 'usIXIC' },
-]
 
 const GROUP_LABELS: Record<MarketRegion, string> = {
   A: 'A 股大盘',
@@ -136,81 +117,8 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
-function ensureApiBase(baseUrl: string) {
-  const normalized = baseUrl.replace(/\/$/, '')
-  return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`
-}
-
 async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: string) {
-  if (config.provider === 'anthropic-compatible') {
-    const baseUrl = ensureApiBase(config.baseUrl)
-    const res = await fetch(`${baseUrl}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        system: systemPrompt,
-        temperature: config.temperature,
-        max_tokens: ANTHROPIC_MARKET_RESPONSE_TOKEN_LIMIT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-    }
-
-    const payload = await res.json()
-    const contentBlocks = payload?.content
-    if (!Array.isArray(contentBlocks)) {
-      throw new Error('Anthropic 响应格式无效')
-    }
-    const text = contentBlocks
-      .map((block) => (block?.type === 'text' ? block.text : ''))
-      .filter(Boolean)
-      .join('\n')
-      .trim()
-
-    if (!text) {
-      throw new Error('LLM 未返回有效内容')
-    }
-    return text
-  }
-
-  const baseUrl = ensureApiBase(config.baseUrl)
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: config.temperature,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`LLM 请求失败 (${res.status}): ${text.slice(0, 200)}`)
-  }
-
-  const payload = await res.json()
-  const content = payload?.choices?.[0]?.message?.content
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('LLM 未返回有效内容')
-  }
-  return content
+  return callJsonCompletion(config, systemPrompt, userPrompt)
 }
 
 function extractJsonBlock(content: string) {
@@ -355,12 +263,7 @@ function toAiNewsDrivers(news: NewsItem[]): AiNewsDriver[] {
 
 function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
   return {
-    system: [
-      config.promptTemplates.baseSystem,
-      config.promptTemplates.marketAnalysis,
-      AI_MAX_STRENGTH_PROMPT,
-      `当前输出语言：${config.analysisLanguage}`,
-    ].join('\n\n'),
+    system: buildAnalysisSystemPrompt(config.analysisLanguage, MARKET_ANALYSIS_PROMPT),
     user: JSON.stringify({
       task: '请对当前 A 股、港股和美股大盘做短中期分析，结合指数涨跌结构、技术指标和近期新闻，输出更有指导性的结构化观察建议。',
       intensity: 'high',
@@ -397,103 +300,6 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
         disclaimer: 'string',
       },
     }),
-  }
-}
-
-function parseDateString(date: string, market: Market) {
-  if (market === 'US') {
-    return `${date}T00:00:00Z`
-  }
-  return `${date}T00:00:00+08:00`
-}
-
-function parseCandleRows(rows: string[][], market: Market): CandlePoint[] {
-  return rows
-    .map((row) => {
-      const date = row?.[0]
-      const open = Number(row?.[1])
-      const close = Number(row?.[2])
-      const high = Number(row?.[3])
-      const low = Number(row?.[4])
-      const volume = Number(row?.[5])
-      if (!date || !Number.isFinite(open) || !Number.isFinite(close) || !Number.isFinite(high) || !Number.isFinite(low)) {
-        return null
-      }
-      return {
-        date,
-        time: Math.floor(Date.parse(parseDateString(date, market)) / 1000),
-        open,
-        high,
-        low,
-        close,
-        volume: Number.isFinite(volume) ? volume : 0,
-      }
-    })
-    .filter((item): item is CandlePoint => item !== null)
-}
-
-async function fetchIndexRawPayload(definition: MarketIndexDefinition, limit = 120) {
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${definition.tencentCode},day,,,${limit},qfq`
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(7000),
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    throw new Error(`获取 ${definition.name} 数据失败`)
-  }
-  const data = await res.json()
-  return data?.data?.[definition.tencentCode] ?? null
-}
-
-async function fetchMarketIndexSnapshot(definition: MarketIndexDefinition, options: { includeIndicators?: boolean } = {}): Promise<MarketIndexSnapshot | null> {
-  try {
-    const raw = await fetchIndexRawPayload(definition, options.includeIndicators ? 240 : 2)
-    if (!raw) return null
-
-    const rows = (raw.qfqday ?? raw.day ?? []) as string[][]
-    const candles = parseCandleRows(rows, definition.market)
-    const latest = candles[candles.length - 1]
-    const previous = candles[candles.length - 2] ?? null
-    const qt = (raw.qt?.[definition.tencentCode] ?? null) as string[] | null
-
-    const price = Number(qt?.[3] ?? latest?.close)
-    const previousClose = Number(qt?.[4] ?? previous?.close ?? 0)
-    const open = Number(qt?.[5] ?? latest?.open ?? 0)
-    const high = Number(qt?.[34] ?? latest?.high ?? 0)
-    const low = Number(qt?.[35] ?? latest?.low ?? 0)
-    const volume = Number(qt?.[6] ?? latest?.volume ?? 0)
-    const change = Number.isFinite(Number(qt?.[32])) ? Number(qt?.[32]) : price - previousClose
-    const changePercent = Number.isFinite(Number(qt?.[33])) ? Number(qt?.[33]) : (previousClose > 0 ? (change / previousClose) * 100 : 0)
-    const timestamp = qt?.[30] && qt?.[31]
-      ? `${String(qt[30]).replace(/\//g, '-')}T${String(qt[31]).slice(0, 2)}:${String(qt[31]).slice(2, 4)}:${String(qt[31]).slice(4, 6)}${definition.market === 'US' ? 'Z' : '+08:00'}`
-      : new Date().toISOString()
-
-    if (!Number.isFinite(price) || price <= 0) {
-      return null
-    }
-
-    return {
-      id: definition.id,
-      code: definition.code,
-      name: String(qt?.[1] ?? definition.name),
-      region: definition.region,
-      market: definition.market,
-      price,
-      change,
-      changePercent,
-      previousClose: Number.isFinite(previousClose) && previousClose > 0 ? previousClose : null,
-      open: Number.isFinite(open) && open > 0 ? open : null,
-      high: Number.isFinite(high) && high > 0 ? high : null,
-      low: Number.isFinite(low) && low > 0 ? low : null,
-      volume: Number.isFinite(volume) && volume > 0 ? volume : null,
-      timestamp,
-      currency: definition.market === 'US' ? 'USD' : definition.market === 'HK' ? 'HKD' : 'CNY',
-      source: 'tencent',
-      indicators: options.includeIndicators ? buildTechnicalIndicatorSnapshot(candles) : undefined,
-    }
-  } catch (error) {
-    console.error(`[marketOverview] Failed to fetch ${definition.name}:`, error)
-    return null
   }
 }
 
@@ -576,6 +382,27 @@ export async function fetchMarketOverview(): Promise<MarketOverview> {
   }
 }
 
+export async function buildMarketAnalysisContextFromSources(aiConfig: AiConfig): Promise<{ context: MarketAnalysisContext; indices: MarketIndexSnapshot[]; news: NewsItem[] }> {
+  const indices = (await Promise.all(
+    MARKET_INDEX_DEFINITIONS.map((definition) => fetchMarketIndexSnapshot(definition, { includeIndicators: true })),
+  )).filter((item): item is MarketIndexSnapshot => item !== null)
+
+  const benchmarkDefs = MARKET_INDEX_DEFINITIONS.filter((item) =>
+    ['shanghai-composite', 'hang-seng', 'dow-jones'].includes(item.id),
+  )
+  const news = aiConfig.newsEnabled
+    ? (await Promise.all(
+        benchmarkDefs.map((definition) => fetchStockNews(definition.code, definition.name, definition.market, 3)),
+      )).flat()
+    : []
+
+  return {
+    context: buildMarketAnalysisContext(indices, news),
+    indices,
+    news,
+  }
+}
+
 function buildMarketAnalysisContext(indices: MarketIndexSnapshot[], news: NewsItem[]): MarketAnalysisContext {
   const groups = (['A', 'HK', 'US'] as const).map((region) => {
     const regionIndices = indices.filter((item) => item.region === region)
@@ -631,20 +458,8 @@ export async function generateMarketAnalysis(aiConfig: AiConfig, forceRefresh = 
     if (cached) return cached
   }
 
-  const indices = (await Promise.all(
-    MARKET_INDEX_DEFINITIONS.map((definition) => fetchMarketIndexSnapshot(definition, { includeIndicators: true })),
-  )).filter((item): item is MarketIndexSnapshot => item !== null)
-
-  const benchmarkDefs = MARKET_INDEX_DEFINITIONS.filter((item) =>
-    ['shanghai-composite', 'hang-seng', 'dow-jones'].includes(item.id),
-  )
-  const news = aiConfig.newsEnabled
-    ? (await Promise.all(
-        benchmarkDefs.map((definition) => fetchStockNews(definition.code, definition.name, definition.market, 3)),
-      )).flat()
-    : []
-
-  const context = buildMarketAnalysisContext(indices, news)
+  const task = await runMarketAnalysisAgentTask(aiConfig)
+  const { context, indices, news } = task.context
   const { system, user } = marketPrompt(context, aiConfig)
   const raw = await callProvider(aiConfig, system, user)
   const parsed = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)

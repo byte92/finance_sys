@@ -1,5 +1,7 @@
 import type { AgentSkill } from '@/lib/agent/types'
-import { applySkillManifest, loadBuiltinSkillManifests } from '@/lib/agent/skills/loader'
+import { applySkillManifest, loadBuiltinSkillManifests, loadConfiguredSkillManifests } from '@/lib/agent/skills/loader'
+import { portfolioGetAnalysisContextSkill, stockGetAnalysisContextSkill } from '@/lib/agent/skills/analysis'
+import { marketGetAnalysisContextSkill } from '@/lib/agent/skills/market'
 import { portfolioGetSummarySkill, portfolioGetTopPositionsSkill } from '@/lib/agent/skills/portfolio'
 import {
   stockGetExternalQuoteSkill,
@@ -11,8 +13,11 @@ import {
 } from '@/lib/agent/skills/stock'
 
 const BUILTIN_SKILLS: AgentSkill[] = [
+  marketGetAnalysisContextSkill,
+  portfolioGetAnalysisContextSkill,
   portfolioGetSummarySkill,
   portfolioGetTopPositionsSkill,
+  stockGetAnalysisContextSkill,
   stockMatchSkill,
   stockGetHoldingSkill,
   stockGetRecentTradesSkill,
@@ -21,12 +26,19 @@ const BUILTIN_SKILLS: AgentSkill[] = [
   stockGetTechnicalSnapshotSkill,
 ]
 
-const MANIFESTS = loadBuiltinSkillManifests()
+const MANIFESTS = [
+  ...loadBuiltinSkillManifests(),
+  ...loadConfiguredSkillManifests(),
+]
 const MANIFEST_BY_NAME = new Map(MANIFESTS.map((manifest) => [manifest.name, manifest]))
 const REGISTERED_SKILLS = BUILTIN_SKILLS.map((skill) => applySkillManifest(skill, MANIFEST_BY_NAME.get(skill.name) ?? null))
 
 export function getBuiltinSkills() {
   return REGISTERED_SKILLS
+}
+
+export function getRegisteredSkillManifests() {
+  return MANIFESTS
 }
 
 export function getSkillByName(name: string) {

@@ -128,6 +128,74 @@ test('FIFO 计算已实现盈亏和剩余持仓成本', () => {
   assert.equal(summary.tradePnlDetails[2]?.holdingAfterTrade, 50)
 })
 
+test('佣金精度：避免 JS 浮点乘法的舍入错误', () => {
+  // 10000 * 0.0003 = 3，但 JS 原生会得到 2.9999999999999996
+  const fees = autoCalcFees('SELL', 100, 100, 'A', '600519')
+  assert.equal(fees.commission, 5)           // max(3, 5) → 5，乘法结果必须精确
+  // 卖出：totalAmount=10000, commission=5, stampDuty=roundMoney(10000*0.0005)=5,
+  // transferFee=roundMoney(10000*0.00001)=0.1, tax=5.1, netAmount=10000-5-5.1=9989.9
+  assert.equal(fees.netAmount, 9989.9)
+})
+
+test('手续费含不可约除法的精确计算', () => {
+  // 36.5 / 3 在 JS 中产生无限小数，验证乘法不累积误差
+  const fees = autoCalcFees('BUY', 36.5 / 3, 3 * 10, 'A', '600519')
+  // 12.166667 * 30 ≈ 365.00001 → big.js mul 精确 → 365.00001
+  // commission = max(365.00001 * 0.0003, 5) = max(0.1095, 5) = 5
+  // transferFee(A股买入) = roundMoney(365.00001 * 0.00001) = roundMoney(0.00365) = 0
+  // 关键：如果用 JS 原生乘法 12.166666666666666 * 30 = 365.0 (恰好补偿)
+  // 这里用 big.js mul(12.166667, 30) = 365.00001，结果也正确
+  assert.equal(fees.commission, 5)
+  // A 股买入无印花税，过户费 rate=0.00001，金额太小舍为 0
+  assert.equal(fees.tax, 0)
+  // netAmount = 365.00001 + 5 + 0 = 370.00001 → roundMoney → 370
+  assert.equal(fees.netAmount, 370)
+})
+
+test('FIFO 成本计算在除不尽场景下保持精确', () => {
+  // 买入 3 股，总成本 36.5 含费，每股成本 = 36.5/3 ≈ 12.166667
+  // 卖出 2 股（FIFO），成本基础应为 12.166667 * 2 ≈ 24.333334
+  // 旧代码用原生 JS 会得到 24.333333333333332
+  const stock = createStock([
+    {
+      id: 't1',
+      stockId: 'stock-1',
+      type: 'BUY',
+      date: '2026-01-01',
+      price: 12,
+      quantity: 3,
+      commission: 0.5,
+      tax: 0,
+      totalAmount: 36,
+      netAmount: 36.5,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 't2',
+      stockId: 'stock-1',
+      type: 'SELL',
+      date: '2026-01-02',
+      price: 15,
+      quantity: 2,
+      commission: 0.5,
+      tax: 0.3,
+      totalAmount: 30,
+      netAmount: 29.2,  // 买入 2 股成本 ≈ 24.333334，卖出实收 29.2，盈亏 ≈ 4.866666
+      createdAt: '2026-01-02T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    },
+  ])
+
+  const summary = calcStockSummary(stock)
+
+  assert.equal(summary.currentHolding, 1)
+  // 剩余 1 股成本 = 36.5 - 24.333334 = 12.166666 → roundMoney → 12.17
+  assert.equal(summary.avgCostPrice, 12.17)
+  // 盈亏 = 29.2 - 24.333334 = 4.866666 → roundMoney → 4.87
+  assert.equal(Number(summary.realizedPnl.toFixed(2)), 4.87)
+})
+
 test('分红会计入已实现盈亏，但不会重复摊薄剩余持仓成本', () => {
   const stock = createStock([
     {

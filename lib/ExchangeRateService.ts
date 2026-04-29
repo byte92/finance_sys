@@ -1,5 +1,6 @@
 // 汇率服务 - 获取实时汇率
 // 使用免费的汇率API (exchangerate-api.com)
+import { mul, div, roundTo } from './money'
 
 export type Currency = 'CNY' | 'HKD' | 'USD' | 'USDT'
 
@@ -58,7 +59,7 @@ class ExchangeRateService {
       // 统一使用“1 单位外币 = ? CNY”
       const result: ExchangeRates & Record<string, number> = {
         CNY: 1,
-        HKD: rates.CNY && rates.HKD ? rates.CNY / rates.HKD : 0.92,
+        HKD: rates.CNY && rates.HKD ? div(rates.CNY, rates.HKD) : 0.92,
         USD: rates.CNY ?? 7.2,
         USDT: rates.CNY ?? 7.2
       }
@@ -93,8 +94,8 @@ class ExchangeRateService {
     const toRate = rates[toCurrency]
 
     // 先转换为CNY，再转换为目标货币
-    const cnyAmount = amount * fromRate
-    return cnyAmount / toRate
+    const cnyAmount = mul(amount, fromRate)
+    return div(cnyAmount, toRate)
   }
 
   clearCache() {

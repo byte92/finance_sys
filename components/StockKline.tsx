@@ -12,6 +12,7 @@ import {
   type MouseEventParams,
 } from 'lightweight-charts'
 import type { Market, Trade } from '@/types'
+import { calcPerShareCost, add, mul } from '@/lib/money'
 
 type KlineItem = {
   time: number
@@ -29,19 +30,32 @@ type MappedTrade = Trade & {
 }
 
 const RANGES = [
-  { label: '1M', value: '1mo' },
-  { label: '3M', value: '3mo' },
-  { label: '6M', value: '6mo' },
-  { label: '1Y', value: '1y' },
-  { label: '3Y', value: '3y' },
+  { label: '1个月', value: '1mo' },
+  { label: '3个月', value: '3mo' },
+  { label: '6个月', value: '6mo' },
+  { label: '1年', value: '1y' },
+  { label: '3年', value: '3y' },
 ]
 
 const INTERVALS = [
-  { label: '1D', value: '1d' },
-  { label: '5m', value: '5m' },
-  { label: '15m', value: '15m' },
-  { label: '30m', value: '30m' },
-  { label: '60m', value: '60m' },
+  { label: '日K', value: '1d' },
+  { label: '5分', value: '5m' },
+  { label: '15分', value: '15m' },
+  { label: '30分', value: '30m' },
+  { label: '60分', value: '60m' },
+]
+
+type LegendKey = 'buy' | 'sell' | 'dividend' | 'ma5' | 'ma10' | 'ma20' | 'cost' | 'holding'
+
+const LEGEND_ITEMS: Array<{ key: LegendKey; label: string; color: string; type: 'marker' | 'line' | 'histogram' }> = [
+  { key: 'buy', label: '买点', color: '#ef4444', type: 'marker' },
+  { key: 'sell', label: '卖点', color: '#22c55e', type: 'marker' },
+  { key: 'dividend', label: '分红', color: '#f97316', type: 'marker' },
+  { key: 'ma5', label: 'MA5', color: '#f59e0b', type: 'line' },
+  { key: 'ma10', label: 'MA10', color: '#3b82f6', type: 'line' },
+  { key: 'ma20', label: 'MA20', color: '#a855f7', type: 'line' },
+  { key: 'cost', label: '成本线', color: '#06b6d4', type: 'line' },
+  { key: 'holding', label: '持仓区间', color: '#93c5fd', type: 'histogram' },
 ]
 
 export default function StockKline({
@@ -61,10 +75,13 @@ export default function StockKline({
   const ma10Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const ma20Ref = useRef<ISeriesApi<'Line'> | null>(null)
   const tradeLineRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const costLineRef = useRef<ISeriesApi<'Line'> | null>(null)
   const holdingRef = useRef<ISeriesApi<'Histogram'> | null>(null)
 
   const dataRef = useRef<KlineItem[]>([])
   const mappedTradesRef = useRef<MappedTrade[]>([])
+  const markersRef = useRef<SeriesMarker<any>[]>([])
+  const maDataRef = useRef<{ ma5: LineData[]; ma10: LineData[]; ma20: LineData[] }>({ ma5: [], ma10: [], ma20: [] })
 
   const [range, setRange] = useState('6mo')
   const [interval, setInterval] = useState('1d')
@@ -77,8 +94,25 @@ export default function StockKline({
     y: number
     date: string
     candle?: KlineItem
+    ma5?: number
+    ma10?: number
+    ma20?: number
     trades: MappedTrade[]
   } | null>(null)
+
+  const [visibility, setVisibility] = useState<Record<LegendKey, boolean>>({
+    buy: true, sell: true, dividend: true,
+    ma5: true, ma10: true, ma20: true,
+    cost: true, holding: true,
+  })
+
+  const seriesRefMap: Record<string, React.RefObject<any>> = {
+    ma5: ma5Ref,
+    ma10: ma10Ref,
+    ma20: ma20Ref,
+    cost: costLineRef,
+    holding: holdingRef,
+  }
 
   const minuteSupported = market === 'A' || market === 'FUND'
 
@@ -97,12 +131,18 @@ export default function StockKline({
       if (!firstTimeByDate.has(d.date)) firstTimeByDate.set(d.date, d.time)
     }
 
+    const earliestDate = dateList[0]
+    const latestDate = dateList[dateList.length - 1]
+
     return trades
-      .filter((t) => t.type === 'BUY' || t.type === 'SELL')
+      .filter((t) => t.type === 'BUY' || t.type === 'SELL' || t.type === 'DIVIDEND')
       .map((t) => {
         let mappedDate = t.date
         if (!dateSet.has(mappedDate)) {
-          mappedDate = dateList.find((d) => d >= t.date) || dateList[dateList.length - 1]
+          // 交易日期不在 K 线范围内 → 不展示
+          if (t.date < earliestDate || t.date > latestDate) return null
+          // 日期在范围内但无精确匹配（如周末）→ 映射到下一个交易日
+          mappedDate = dateList.find((d) => d >= t.date) || ''
         }
         if (!mappedDate) return null
         const mappedTime = firstTimeByDate.get(mappedDate)
@@ -118,13 +158,23 @@ export default function StockKline({
     const markers: SeriesMarker<any>[] = []
 
     for (const t of mappedTrades) {
-      markers.push({
-        time: t.mappedTime as any,
-        position: t.type === 'BUY' ? 'belowBar' : 'aboveBar',
-        color: t.type === 'BUY' ? '#ef4444' : '#22c55e',
-        shape: t.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-        text: `${t.type === 'BUY' ? '买' : '卖'} ${t.quantity}`,
-      })
+      if (t.type === 'DIVIDEND') {
+        markers.push({
+          time: t.mappedTime as any,
+          position: 'aboveBar',
+          color: '#f97316',
+          shape: 'circle',
+          text: `分红 ${t.netAmount.toFixed(2)}`,
+        })
+      } else {
+        markers.push({
+          time: t.mappedTime as any,
+          position: t.type === 'BUY' ? 'belowBar' : 'aboveBar',
+          color: t.type === 'BUY' ? '#ef4444' : '#22c55e',
+          shape: t.type === 'BUY' ? 'arrowUp' : 'arrowDown',
+          text: `${t.type === 'BUY' ? '买' : '卖'} ${t.quantity}`,
+        })
+      }
     }
 
     return markers
@@ -137,6 +187,7 @@ export default function StockKline({
   const tradeLineData = useMemo<LineData<any>[]>(() => {
     const byTime = new Map<number, number>()
     for (const t of mappedTrades) {
+      if (t.type === 'DIVIDEND') continue
       byTime.set(t.mappedTime, t.price)
     }
     return Array.from(byTime.entries())
@@ -144,11 +195,50 @@ export default function StockKline({
       .map(([time, value]) => ({ time: time as any, value }))
   }, [mappedTrades])
 
+  // 动态成本线（FIFO 均价随时间变化）
+  const costLineData = useMemo<LineData<any>[]>(() => {
+    if (!data.length) return []
+    const sortedTrades = [...trades]
+      .filter((t) => t.type === 'BUY' || t.type === 'SELL')
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    const costQueue: Array<{ price: number; quantity: number }> = []
+    const result: LineData<any>[] = []
+    let tradeIdx = 0
+
+    for (const d of data) {
+      while (tradeIdx < sortedTrades.length && sortedTrades[tradeIdx].date <= d.date) {
+        const t = sortedTrades[tradeIdx]
+        if (t.type === 'BUY') {
+          costQueue.push({ price: calcPerShareCost(t.netAmount, t.quantity), quantity: t.quantity })
+        } else {
+          let remaining = t.quantity
+          while (remaining > 0 && costQueue.length > 0) {
+            if (costQueue[0].quantity <= remaining) {
+              remaining -= costQueue[0].quantity
+              costQueue.shift()
+            } else {
+              costQueue[0].quantity -= remaining
+              remaining = 0
+            }
+          }
+        }
+        tradeIdx++
+      }
+      const totalCost = costQueue.reduce((sum, item) => add(sum, mul(item.price, item.quantity)), 0)
+      const totalQty = costQueue.reduce((sum, item) => sum + item.quantity, 0)
+      if (totalQty > 0) {
+        result.push({ time: d.time as any, value: calcPerShareCost(totalCost, totalQty) })
+      }
+    }
+    return result
+  }, [data, trades])
+
   const holdingData = useMemo<HistogramData<any>[]>(() => {
     if (!data.length) return []
     const deltaByDate = new Map<string, number>()
     for (const t of mappedTrades) {
-      const delta = t.type === 'BUY' ? t.quantity : -t.quantity
+      const delta = t.type === 'BUY' ? t.quantity : t.type === 'SELL' ? -t.quantity : 0
       deltaByDate.set(t.mappedDate, (deltaByDate.get(t.mappedDate) || 0) + delta)
     }
     let holding = 0
@@ -261,6 +351,13 @@ export default function StockKline({
       priceFormat: { type: 'price', precision: 0, minMove: 1 },
       base: 0,
     })
+    const costLine = chart.addLineSeries({
+      color: '#06b6d4',
+      lineWidth: 2,
+      lineStyle: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+    })
 
     chart.priceScale('').applyOptions({
       scaleMargins: { top: 0.75, bottom: 0 },
@@ -278,6 +375,7 @@ export default function StockKline({
     ma10Ref.current = ma10
     ma20Ref.current = ma20
     tradeLineRef.current = tradeLine
+    costLineRef.current = costLine
     holdingRef.current = holdingBand
 
     const onCrosshairMove = (param: MouseEventParams<any>) => {
@@ -298,11 +396,18 @@ export default function StockKline({
         return
       }
       const tradesAt = mappedTradesRef.current.filter((t) => t.mappedDate === date)
+      const { ma5: ma5DataArr, ma10: ma10DataArr, ma20: ma20DataArr } = maDataRef.current
+      const ma5Val = ma5DataArr.find((d) => String(d.time) === key)?.value
+      const ma10Val = ma10DataArr.find((d) => String(d.time) === key)?.value
+      const ma20Val = ma20DataArr.find((d) => String(d.time) === key)?.value
       setHover({
         x: param.point.x,
         y: param.point.y,
         date,
         candle,
+        ma5: ma5Val,
+        ma10: ma10Val,
+        ma20: ma20Val,
         trades: tradesAt,
       })
     }
@@ -326,15 +431,17 @@ export default function StockKline({
       ma10Ref.current = null
       ma20Ref.current = null
       tradeLineRef.current = null
+      costLineRef.current = null
       holdingRef.current = null
     }
   }, [])
 
   useEffect(() => {
-    if (!candleRef.current || !volumeRef.current || !ma5Ref.current || !ma10Ref.current || !ma20Ref.current || !tradeLineRef.current || !holdingRef.current) return
+    if (!candleRef.current || !volumeRef.current || !ma5Ref.current || !ma10Ref.current || !ma20Ref.current || !tradeLineRef.current || !costLineRef.current || !holdingRef.current) return
 
     dataRef.current = data
     mappedTradesRef.current = mappedTrades
+    maDataRef.current = { ma5: ma5Data, ma10: ma10Data, ma20: ma20Data }
 
     const candleData: CandlestickData<any>[] = data.map((d) => ({
       time: d.time as any,
@@ -356,51 +463,89 @@ export default function StockKline({
     ma20Ref.current.setData(ma20Data)
     tradeLineRef.current.setData(tradeLineData)
     holdingRef.current.setData(holdingData)
+    costLineRef.current.setData(costLineData)
+    markersRef.current = tradeMarkers
     candleRef.current.setMarkers(tradeMarkers)
     chartRef.current?.timeScale().fitContent()
-  }, [data, mappedTrades, ma5Data, ma10Data, ma20Data, tradeLineData, holdingData, tradeMarkers])
+  }, [data, mappedTrades, ma5Data, ma10Data, ma20Data, tradeLineData, costLineData, holdingData, tradeMarkers])
+
+  // 同步各系列的可见性
+  useEffect(() => {
+    for (const item of LEGEND_ITEMS) {
+      if (item.type !== 'marker') {
+        seriesRefMap[item.key]?.current?.applyOptions({ visible: visibility[item.key] })
+      }
+    }
+    const markerColors = new Set(
+      LEGEND_ITEMS.filter((item) => item.type === 'marker' && visibility[item.key]).map((item) => item.color)
+    )
+    candleRef.current?.setMarkers(markersRef.current.filter((m) => markerColors.has(m.color as string)))
+  }, [visibility])
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+      <div className="mb-3 space-y-2">
         <div className="text-sm text-foreground font-medium">K 线图</div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {RANGES.map((r) => (
-            <button
-              key={r.value}
-              onClick={() => setRange(r.value)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${
-                range === r.value
-                  ? 'border-primary bg-primary/15 text-primary'
-                  : 'border-border text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {INTERVALS.map((i) => {
-            const disabled = !minuteSupported && i.value !== '1d'
-            return (
+        <div className="flex items-center justify-start gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">范围</span>
+            {RANGES.map((r) => (
               <button
-                key={i.value}
-                onClick={() => !disabled && setInterval(i.value)}
-                disabled={disabled}
+                key={r.value}
+                onClick={() => setRange(r.value)}
                 className={`text-xs px-2 py-1 rounded border transition-colors ${
-                  interval === i.value
+                  range === r.value
                     ? 'border-primary bg-primary/15 text-primary'
-                    : disabled
-                    ? 'border-border text-muted-foreground/40 cursor-not-allowed'
                     : 'border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {i.label}
+                {r.label}
               </button>
-            )
-          })}
+            ))}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">粒度</span>
+            {INTERVALS.map((i) => {
+              const disabled = !minuteSupported && i.value !== '1d'
+              return (
+                <button
+                  key={i.value}
+                  onClick={() => !disabled && setInterval(i.value)}
+                  disabled={disabled}
+                  className={`text-xs px-2 py-1 rounded border transition-colors ${
+                    interval === i.value
+                      ? 'border-primary bg-primary/15 text-primary'
+                      : disabled
+                      ? 'border-border text-muted-foreground/40 cursor-not-allowed'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {i.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
+
+      {(ma5Data.length > 0 || ma10Data.length > 0 || ma20Data.length > 0) && (
+        <div className="mb-2 flex items-center gap-3 text-xs font-mono">
+          {(['ma5', 'ma10', 'ma20'] as const).map((key) => {
+            const arr = key === 'ma5' ? ma5Data : key === 'ma10' ? ma10Data : ma20Data
+            const color = key === 'ma5' ? '#f59e0b' : key === 'ma10' ? '#3b82f6' : '#a855f7'
+            const label = key.toUpperCase()
+            const hoverVal = hover?.[key]
+            const latestVal = arr.length ? arr[arr.length - 1].value : undefined
+            const val = hoverVal ?? latestVal
+            return val !== undefined ? (
+              <span key={key}>
+                <span style={{ color }}>{label}</span>{' '}
+                <span className="text-foreground">{val.toFixed(2)}</span>
+              </span>
+            ) : null
+          })}
+        </div>
+      )}
 
       {!minuteSupported && (
         <div className="mb-2 text-xs text-muted-foreground">当前市场暂仅支持日 K，分钟级将自动使用 1D。</div>
@@ -417,23 +562,55 @@ export default function StockKline({
             }}
           >
             <div className="font-medium text-foreground">{hover.date}</div>
-            {hover.candle && (
-              <div className="mt-1 text-muted-foreground font-mono">
-                O {hover.candle.open.toFixed(2)} · H {hover.candle.high.toFixed(2)} · L {hover.candle.low.toFixed(2)} · C {hover.candle.close.toFixed(2)}
-              </div>
-            )}
+            {hover.candle && (() => {
+              const c = hover.candle
+              const up = c.close >= c.open
+              const closeColor = up ? '#ef4444' : '#22c55e'
+              return (
+                <div className="mt-1 font-mono text-xs space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span><span style={{ color: '#94a3b8' }}>开</span> <span className="text-foreground">{c.open.toFixed(2)}</span></span>
+                    <span><span style={{ color: '#ef4444' }}>高</span> <span className="text-foreground">{c.high.toFixed(2)}</span></span>
+                    <span><span style={{ color: '#22c55e' }}>低</span> <span className="text-foreground">{c.low.toFixed(2)}</span></span>
+                    <span><span style={{ color: closeColor }}>收</span> <span className="text-foreground">{c.close.toFixed(2)}</span></span>
+                  </div>
+                  {(hover.ma5 !== undefined || hover.ma10 !== undefined || hover.ma20 !== undefined) && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {hover.ma5 !== undefined && <span><span style={{ color: '#f59e0b' }}>MA5</span> <span className="text-foreground">{hover.ma5.toFixed(2)}</span></span>}
+                      {hover.ma10 !== undefined && <span><span style={{ color: '#3b82f6' }}>MA10</span> <span className="text-foreground">{hover.ma10.toFixed(2)}</span></span>}
+                      {hover.ma20 !== undefined && <span><span style={{ color: '#a855f7' }}>MA20</span> <span className="text-foreground">{hover.ma20.toFixed(2)}</span></span>}
+                    </div>
+                  )}
+                  <div><span style={{ color: '#64748b' }}>成交量</span> <span className="text-foreground">{c.volume.toLocaleString('zh-CN')} 股</span></div>
+                </div>
+              )
+            })()}
             {hover.trades.length > 0 && (
               <div className="mt-2 space-y-1">
-                {hover.trades.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between gap-2">
-                    <span className={t.type === 'BUY' ? 'profit-text' : 'loss-text'}>
-                      {t.type === 'BUY' ? '买入' : '卖出'} {t.quantity}
-                    </span>
-                    <span className="text-muted-foreground font-mono">
-                      @{t.price} 费{(t.commission + t.tax).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                {hover.trades.map((t) => {
+                  if (t.type === 'DIVIDEND') {
+                    const perShare = t.price || (t.quantity > 0 ? t.totalAmount / t.quantity : 0)
+                    return (
+                      <div key={t.id} className="flex items-center justify-between gap-2">
+                        <span className="text-[#f97316]">分红</span>
+                        <span className="text-muted-foreground font-mono text-right">
+                          每股{fmtNum(perShare)} · {t.quantity}股<br />
+                          税前{t.totalAmount.toFixed(2)} 税{t.tax.toFixed(2)} 实收{t.netAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <div key={t.id} className="flex items-center justify-between gap-2">
+                      <span className={t.type === 'BUY' ? 'profit-text' : 'loss-text'}>
+                        {t.type === 'BUY' ? '买入' : '卖出'} {t.quantity}
+                      </span>
+                      <span className="text-muted-foreground font-mono">
+                        @{t.price} 费{(t.commission + t.tax).toFixed(2)}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -441,17 +618,39 @@ export default function StockKline({
       </div>
 
       <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#ef4444]" />买点</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#22c55e]" />卖点</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#f59e0b]" />MA5</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#3b82f6]" />MA10</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#a855f7]" />MA20</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#93c5fd]" />持仓区间</span>
+        <div className="flex items-center gap-1 flex-wrap">
+          {LEGEND_ITEMS.map((item) => (
+            <LegendDot
+              key={item.key}
+              label={item.label}
+              color={item.color}
+              active={visibility[item.key]}
+              onClick={() => setVisibility((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
+            />
+          ))}
         </div>
         <span>{loading ? '加载中...' : error ? error : `数据源: ${source || '-'} · 级别: ${interval.toUpperCase()}`}</span>
       </div>
     </div>
+  )
+}
+
+function fmtNum(v: number): string {
+  return v.toFixed(8).replace(/\.?0+$/, '').replace(/\.$/, '') || '0'
+}
+
+function LegendDot({ label, color, active, onClick }: { label: string; color: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 px-1 py-0.5 rounded transition-all ${
+        active ? 'opacity-100' : 'opacity-30 line-through'
+      } hover:opacity-80`}
+    >
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </button>
   )
 }
 

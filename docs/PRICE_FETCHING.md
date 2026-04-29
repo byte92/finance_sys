@@ -1,93 +1,107 @@
-# StockTracker - 股价自动获取功能说明
+# 行情获取说明
 
-## 功能特性
+本文档说明 StockTracker 当前的报价、K 线、估值和外部数据源策略。
 
-✅ **自动股价获取**：支持多数据源自动获取实时股价  
-✅ **智能降级**：获取失败时自动切换到备用数据源  
-✅ **缓存机制**：避免频繁请求，提升性能  
-✅ **手动兜底**：自动获取失败时可手动输入价格  
-✅ **可插拔架构**：轻松切换不同的数据提供商  
+## 当前能力
 
-## 支持的数据源
+- 多数据源报价聚合。
+- 按市场选择 fallback 链路。
+- 短期缓存，减少重复请求。
+- 估值字段归一化，例如 `PE(TTM)`、`EPS(TTM)`、`PB`、`总市值`。
+- K 线和技术指标数据通过统一外部接口入口获取。
+- 外部接口 smoke test，用于发现上游接口变化。
 
-### 1. Alpha Vantage (默认MVP方案) ⭐
-- **类型**: 免费API
-- **额度**: 5次/分钟, 500次/天
-- **优势**: 全球市场支持好，稳定性高
-- **劣势**: 请求频率限制较严格
-- **注册**: https://www.alphavantage.co/support/#api-key
+## 报价数据源
 
-### 2. Yahoo Finance (备选)
-- **类型**: 无需API Key
-- **额度**: 较宽松
-- **优势**: 完全免费，无配额限制
-- **劣势**: 非官方API，可能不稳定
+| 数据源 | 主要用途 | 是否需要 Key | 代码入口 |
+| --- | --- | --- | --- |
+| Tencent Finance | A 股、港股、基金、美股兜底报价和部分估值字段 | 否 | `lib/dataSources/TencentFinanceSource.ts` |
+| Nasdaq | 美股报价 | 否 | `lib/dataSources/NasdaqSource.ts` |
+| Yahoo Finance | 美股及部分市场报价兜底，quote 不可用时 fallback 到 chart | 否 | `lib/dataSources/YahooFinanceSource.ts` |
+| Stooq | 美股 CSV 报价兜底 | 否 | `lib/dataSources/StooqSource.ts` |
+| Alpha Vantage | 备用报价源 | 是 | `lib/dataSources/AlphaVantageSource.ts` |
+| Manual | 手动兜底占位 | 否 | `lib/dataSources/ManualSource.ts` |
 
-### 3. FinnHub (高级备选)
-- **类型**: 免费额度较高
-- **额度**: 60次/分钟
-- **优势**: 请求限制宽松
-- **劣势**: 需要注册
+报价聚合入口：
 
-### 4. 手动输入 (Fallback)
-- **类型**: 本地输入
-- **优势**: 100%可靠
-- **劣势**: 需要手动维护
+- `lib/StockPriceService.ts`
 
-## 快速开始
+内部 API Route：
 
-1. **获取API Key**：
-   ```bash
-   # 复制环境变量模板
-   cp .env.example .env.local
-   
-   # 编辑文件，填入你的Alpha Vantage API Key
-   ALPHA_VANTAGE_API_KEY=YOUR_KEY_HERE
-   ```
+- `app/api/stock/quote/route.ts`
 
-2. **重启开发服务器**：
-   ```bash
-   npm run dev
-   ```
+## K 线、新闻和大盘数据
 
-3. **使用**：
-   - 进入个股详情页
-   - 系统会自动获取当前股价
-   - 显示实时涨跌和浮动盈亏
-   - 5分钟自动刷新一次
+这些外部接口已经收敛到 `lib/external`：
 
-## 架构设计
+| 类型 | 代码入口 |
+| --- | --- |
+| K 线 | `lib/external/kline.ts` |
+| 新闻 | `lib/external/news.ts` |
+| 大盘指数 | `lib/external/marketIndices.ts` |
+| LLM Provider | `lib/external/llmProvider.ts` |
 
-```
-hooks/useStockQuote.ts          # React Hook封装
-app/api/stock/quote/route.ts    # Next.js API 代理
-lib/StockPriceService.ts        # 核心服务类
-lib/dataSources/                # 各数据源实现
-  ├── AlphaVantageSource.ts
-  ├── YahooFinanceSource.ts
-  └── ManualSource.ts
-config/dataSources.ts           # 数据源配置
-types/stockApi.ts               # 类型定义
+完整清单见 [数据接口清单](./DATA_API_INVENTORY.md)。
+
+## Fallback 策略
+
+美股报价优先链路：
+
+```text
+Nasdaq -> Tencent -> Yahoo Finance -> Stooq -> Alpha Vantage -> Manual
 ```
 
-## 故障转移机制
+其他市场默认链路：
 
-1. 首先尝试默认数据源 (Alpha Vantage)
-2. 失败则按顺序尝试备选源 (FinnHub → Yahoo → Manual)
-3. 所有自动源失败后降级为手动输入模式
-4. 支持缓存避免重复请求相同数据
+```text
+Tencent -> Nasdaq -> Yahoo Finance -> Stooq -> Alpha Vantage -> Manual
+```
 
-## 自定义配置
+实际可用性还会受市场、标的、上游限制和 API Key 配置影响。
 
-在 `config/dataSources.ts` 中可以：
-- 修改各数据源的请求频率限制
-- 调整缓存时间
-- 添加新的数据源实现
-- 修改故障转移链顺序
+## 缓存策略
 
-## 未来扩展
+`StockPriceService` 会按标的和市场缓存短期报价。不同数据源可以配置不同 TTL。缓存只用于减少重复请求，不用于长期历史行情存储。
 
-- [ ] 接入付费数据源 (如Wind、同花顺等)
-- [ ] 支持K线图数据获取
-- [ ] 添加股价预警通知
-- [ ] 实现WebSocket实时推送
+## Alpha Vantage
+
+Alpha Vantage 是备用源，需要配置 API Key：
+
+```bash
+ALPHA_VANTAGE_API_KEY=YOUR_KEY_HERE
+```
+
+兼容旧配置：
+
+```bash
+NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY=YOUR_KEY_HERE
+```
+
+不推荐使用 `NEXT_PUBLIC_` 存放真实 Key，因为它会暴露到前端构建产物中。
+
+## 外部接口测试
+
+默认测试不请求真实外部网络：
+
+```bash
+npm test
+```
+
+检查外部接口是否仍可用：
+
+```bash
+npm run test:external
+```
+
+该测试覆盖报价、K 线、大盘指数、新闻和汇率。Alpha Vantage 未配置 Key 时会自动跳过。
+
+## 新增数据源建议
+
+新增数据源时建议：
+
+1. 在 `types/stockApi.ts` 扩展 provider 类型。
+2. 在 `lib/dataSources` 新增数据源实现。
+3. 在 `lib/StockPriceService.ts` 注册数据源和 fallback 顺序。
+4. 在 `docs/DATA_API_INVENTORY.md` 补充接口说明。
+5. 在 `tests/external-apis.test.ts` 补充 smoke test。
+6. 如果影响用户配置，同步更新 `.env.example` 和 `docs/DEVELOPMENT.md`。

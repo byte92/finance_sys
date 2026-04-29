@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { testAiConnection } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
 import type { AiConfig } from '@/types'
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     if (!body.aiConfig) {
       return NextResponse.json({ error: '缺少 AI 配置' }, { status: 400 })
     }
-    const result = await testAiConnection(body.aiConfig)
+    const result = await testAiConnection(resolveEffectiveAiConfig(body.aiConfig))
     return NextResponse.json({ result })
   } catch (error) {
     const message = error instanceof Error ? error.message : '模型连通测试失败'

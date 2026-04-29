@@ -67,13 +67,6 @@ export type AiConfidence = 'low' | 'medium' | 'high'
 export type AiAnalysisStrength = 'high' | 'medium' | 'weak'
 export type MarketRegion = 'A' | 'HK' | 'US'
 
-export interface AiPromptTemplates {
-  baseSystem: string
-  portfolioAnalysis: string
-  stockAnalysis: string
-  marketAnalysis: string
-}
-
 export interface AiConfig {
   enabled: boolean
   provider: AiProvider
@@ -81,10 +74,9 @@ export interface AiConfig {
   model: string
   apiKey: string
   temperature: number
-  maxTokens: number
+  maxContextTokens: number
   newsEnabled: boolean
   analysisLanguage: AiAnalysisLanguage
-  promptTemplates: AiPromptTemplates
 }
 
 // 应用配置
@@ -256,4 +248,50 @@ export interface AiAnalysisHistoryRecord {
   generatedAt: string
   createdAt: string
   result: AiAnalysisResult
+}
+
+export type AiChatRole = 'system' | 'user' | 'assistant'
+export type AiContextLevel = 'short' | 'medium' | 'long' | 'near-limit'
+
+export interface AiChatSession {
+  id: string
+  userId: string
+  title: string
+  scope: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+  latestMessageAt?: string | null
+}
+
+export interface AiChatMessage {
+  id: string
+  sessionId: string
+  userId: string
+  role: AiChatRole
+  content: string
+  contextSnapshot?: Record<string, unknown> | null
+  tokenEstimate: number
+  createdAt: string
+}
+
+export interface AiAgentRun {
+  id: string
+  sessionId: string
+  userId: string
+  messageId?: string | null
+  intent: string
+  responseMode: string
+  plan: Record<string, unknown>
+  skillCalls: unknown[]
+  skillResults: unknown[]
+  contextStats: Record<string, unknown>
+  error?: string | null
+  createdAt: string
+}
+
+export interface AiChatContextStats {
+  tokenEstimate: number
+  maxContextTokens: number
+  level: AiContextLevel
 }

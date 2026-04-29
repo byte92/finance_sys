@@ -1,35 +1,51 @@
 {
-  "name": "finance_sys",
+  "name": "stocktracker",
   "version": "1.0.0",
-  "description": "",
+  "description": "Local-first portfolio tracker and AI investing copilot.",
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/**/*.test.ts"
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:external": "tsx --test tests/external-apis.test.ts"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "portfolio",
+    "stock",
+    "finance",
+    "investment",
+    "ai-agent",
+    "nextjs",
+    "sqlite"
+  ],
+  "author": "StockTracker contributors",
   "license": "ISC",
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-select": "^2.2.6",
     "better-sqlite3": "^12.9.0",
+    "big.js": "^7.0.1",
     "date-fns": "^4.1.0",
     "iconv-lite": "^0.7.2",
     "lightweight-charts": "^4.2.3",
-    "next": "^16.1.6",
+    "next": "^16.2.4",
     "react": "^19.2.4",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1",
     "zustand": "^5.0.11"
+  },
+  "overrides": {
+    "postcss": "$postcss"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/big.js": "^6.2.2",
     "@types/node": "^25.3.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -37,7 +53,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.577.0",
-    "postcss": "^8.5.8",
+    "postcss": "^8.5.12",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",

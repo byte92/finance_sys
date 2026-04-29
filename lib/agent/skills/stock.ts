@@ -1,0 +1,166 @@
+import { buildTechnicalIndicatorSnapshot } from '@/lib/technicalIndicators'
+import { calcStockSummary } from '@/lib/finance'
+import { stockPriceService } from '@/lib/StockPriceService'
+import { matchStocks } from '@/lib/agent/entity/stockMatcher'
+import { fetchDailyCandles } from '@/lib/external/kline'
+import type { AgentSkill } from '@/lib/agent/types'
+import type { Market, Stock } from '@/types'
+import type { StockQuote } from '@/types/stockApi'
+
+function findStock(stocks: Stock[], args: Record<string, unknown>) {
+  const stockId = typeof args.stockId === 'string' ? args.stockId : ''
+  const code = typeof args.code === 'string' ? args.code.toUpperCase() : ''
+  const name = typeof args.name === 'string' ? args.name : ''
+  return stocks.find((stock) => stock.id === stockId)
+    ?? (code ? stocks.find((stock) => stock.code.toUpperCase() === code) : undefined)
+    ?? (name ? matchStocks(name, stocks, 1)[0]?.stock : undefined)
+    ?? null
+}
+
+function quoteToContext(quote: StockQuote | null) {
+  if (!quote) return null
+  return {
+    symbol: quote.symbol,
+    name: quote.name,
+    price: quote.price,
+    change: quote.change,
+    changePercent: quote.changePercent,
+    peTtm: quote.peTtm ?? null,
+    epsTtm: quote.epsTtm ?? null,
+    pb: quote.pb ?? null,
+    marketCap: quote.marketCap ?? null,
+    currency: quote.currency,
+    source: quote.source,
+    valuationSource: quote.valuationSource ?? null,
+    timestamp: quote.timestamp,
+  }
+}
+
+export const stockMatchSkill: AgentSkill<{ query?: string }> = {
+  name: 'stock.match',
+  description: '根据用户输入匹配本地持仓中的股票。',
+  inputSchema: { query: 'string' },
+  requiredScopes: ['stock.read'],
+  async execute(args, ctx) {
+    const matches = matchStocks(args.query ?? '', ctx.stocks, 5).map((match) => ({
+      id: match.stock.id,
+      code: match.stock.code,
+      name: match.stock.name,
+      market: match.stock.market,
+      confidence: match.confidence,
+      reason: match.reason,
+    }))
+    return { skillName: 'stock.match', ok: true, data: { matches } }
+  },
+}
+
+export const stockGetHoldingSkill: AgentSkill<Record<string, unknown>> = {
+  name: 'stock.getHolding',
+  description: '读取单只股票的本地持仓、成本、盈亏和备注。',
+  inputSchema: { stockId: 'string' },
+  requiredScopes: ['stock.read'],
+  async execute(args, ctx) {
+    const stock = findStock(ctx.stocks, args)
+    if (!stock) return { skillName: 'stock.getHolding', ok: false, error: '未找到对应持仓' }
+    const summary = calcStockSummary(stock)
+    return {
+      skillName: 'stock.getHolding',
+      ok: true,
+      data: {
+        stock: {
+          id: stock.id,
+          code: stock.code,
+          name: stock.name,
+          market: stock.market,
+          note: stock.note ?? '',
+        },
+        summary: {
+          currentHolding: summary.currentHolding,
+          avgCostPrice: summary.avgCostPrice,
+          realizedPnl: summary.realizedPnl,
+          unrealizedPnl: summary.unrealizedPnl,
+          totalPnl: summary.totalPnl,
+          totalPnlPercent: summary.totalPnlPercent,
+          totalCommission: summary.totalCommission,
+          totalDividend: summary.totalDividend,
+          tradeCount: summary.tradeCount,
+        },
+      },
+    }
+  },
+}
+
+export const stockGetRecentTradesSkill: AgentSkill<Record<string, unknown>> = {
+  name: 'stock.getRecentTrades',
+  description: '读取单只股票最近交易记录。',
+  inputSchema: { stockId: 'string', limit: 'number' },
+  requiredScopes: ['trade.read'],
+  async execute(args, ctx) {
+    const stock = findStock(ctx.stocks, args)
+    if (!stock) return { skillName: 'stock.getRecentTrades', ok: false, error: '未找到对应持仓' }
+    const limit = Math.max(1, Math.min(Number(args.limit ?? 8), 30))
+    return {
+      skillName: 'stock.getRecentTrades',
+      ok: true,
+      data: {
+        stockId: stock.id,
+        trades: stock.trades.slice(-limit).map((trade) => ({
+          type: trade.type,
+          date: trade.date,
+          price: trade.price,
+          quantity: trade.quantity,
+          commission: trade.commission,
+          tax: trade.tax,
+          netAmount: trade.netAmount,
+          note: trade.note ?? '',
+        })),
+      },
+    }
+  },
+}
+
+export const stockGetQuoteSkill: AgentSkill<Record<string, unknown>> = {
+  name: 'stock.getQuote',
+  description: '读取单只本地持仓股票的行情和估值数据。',
+  inputSchema: { stockId: 'string' },
+  requiredScopes: ['quote.read'],
+  async execute(args, ctx) {
+    const stock = findStock(ctx.stocks, args)
+    if (!stock) return { skillName: 'stock.getQuote', ok: false, error: '未找到对应持仓' }
+    const quote = await stockPriceService.getQuote(stock.code, stock.market).catch(() => null)
+    return { skillName: 'stock.getQuote', ok: true, data: { stockId: stock.id, quote: quoteToContext(quote) } }
+  },
+}
+
+export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: Market }> = {
+  name: 'stock.getExternalQuote',
+  description: '读取未持仓股票的行情和估值数据。',
+  inputSchema: { symbol: 'string', market: 'Market' },
+  requiredScopes: ['quote.read'],
+  async execute(args) {
+    if (!args.symbol || !args.market) return { skillName: 'stock.getExternalQuote', ok: false, error: '缺少标的代码或市场' }
+    const quote = await stockPriceService.getQuote(args.symbol, args.market).catch(() => null)
+    return { skillName: 'stock.getExternalQuote', ok: true, data: { symbol: args.symbol, market: args.market, inPortfolio: false, quote: quoteToContext(quote) } }
+  },
+}
+
+export const stockGetTechnicalSnapshotSkill: AgentSkill<Record<string, unknown>> = {
+  name: 'stock.getTechnicalSnapshot',
+  description: '读取单只股票的技术指标摘要。',
+  inputSchema: { stockId: 'string' },
+  requiredScopes: ['quote.read'],
+  async execute(args, ctx) {
+    const stock = findStock(ctx.stocks, args)
+    if (!stock) return { skillName: 'stock.getTechnicalSnapshot', ok: false, error: '未找到对应持仓' }
+    const candles = await fetchDailyCandles(stock.code, stock.market)
+    return {
+      skillName: 'stock.getTechnicalSnapshot',
+      ok: true,
+      data: {
+        stockId: stock.id,
+        indicators: buildTechnicalIndicatorSnapshot(candles),
+        candleCount: candles.length,
+      },
+    }
+  },
+}

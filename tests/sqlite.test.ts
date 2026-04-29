@@ -52,6 +52,39 @@ test('sqlite store persists and reloads portfolio payload', () => {
   }
 })
 
+test('sqlite store can recover latest non-empty local portfolio', () => {
+  const store = createPortfolioStore(createTempDbPath())
+
+  try {
+    const emptyPayload = { stocks: [], config: DEFAULT_APP_CONFIG }
+    const filledPayload = {
+      stocks: [
+        {
+          id: 'stock-1',
+          code: '601838',
+          name: '成都银行',
+          market: 'A' as const,
+          trades: [],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      config: DEFAULT_APP_CONFIG,
+    }
+
+    store.savePortfolioByUserId('local:empty-device', emptyPayload)
+    store.savePortfolioByUserId('local:filled-device', filledPayload)
+
+    const recovered = store.getLatestNonEmptyLocalPortfolio()
+
+    assert.equal(recovered?.userId, 'local:filled-device')
+    assert.equal(recovered?.recovered, true)
+    assert.deepEqual(recovered?.stocks, filledPayload.stocks)
+  } finally {
+    store.close()
+  }
+})
+
 test('sqlite store falls back to default config when payload is invalid json', () => {
   const store = createPortfolioStore(createTempDbPath())
   const originalConsoleError = console.error
@@ -140,6 +173,36 @@ test('sqlite ai history filters latest stock analysis by stock id', () => {
     assert.equal(records.length, 1)
     assert.equal(records[0]?.id, 'record-3')
     assert.equal(records[0]?.result.summary, '成都银行最新分析')
+  } finally {
+    store.close()
+  }
+})
+
+test('sqlite persists and lists ai agent runs', () => {
+  const store = createPortfolioStore(createTempDbPath())
+
+  try {
+    store.saveAiAgentRun({
+      id: 'run-1',
+      sessionId: 'session-1',
+      userId: 'local:test-user',
+      messageId: 'message-1',
+      intent: 'stock_analysis',
+      responseMode: 'answer',
+      plan: { intent: 'stock_analysis', requiredSkills: [{ name: 'stock.getHolding' }] },
+      skillCalls: [{ name: 'stock.getHolding', args: { stockId: 'stock-1' } }],
+      skillResults: [{ skillName: 'stock.getHolding', ok: true }],
+      contextStats: { tokenEstimate: 1200, maxContextTokens: 128000, level: 'short' },
+    })
+
+    const runs = store.listAiAgentRuns('local:test-user', 'session-1')
+
+    assert.equal(runs.length, 1)
+    assert.equal(runs[0].id, 'run-1')
+    assert.equal(runs[0].intent, 'stock_analysis')
+    assert.equal(runs[0].responseMode, 'answer')
+    assert.deepEqual(runs[0].skillCalls, [{ name: 'stock.getHolding', args: { stockId: 'stock-1' } }])
+    assert.equal(runs[0].contextStats.tokenEstimate, 1200)
   } finally {
     store.close()
   }

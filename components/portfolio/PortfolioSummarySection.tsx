@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
@@ -24,6 +26,7 @@ type TodayPnlSnapshot = {
 export default function PortfolioSummarySection() {
   const { stocks } = useStockStore()
   const { displayCurrency, convertAmountSync, formatWithCurrency, rates } = useCurrency()
+  const [expanded, setExpanded] = useState(false)
   const [todayPnl, setTodayPnl] = useState<TodayPnlSnapshot>({
     amount: 0,
     rate: 0,
@@ -180,12 +183,24 @@ export default function PortfolioSummarySection() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">资产概览</h2>
-          <div className="mt-1 text-xs text-muted-foreground">组合概览默认按已实现收益统计，并额外展示当日持仓涨跌</div>
+          <div className="mt-1 text-xs text-muted-foreground">默认展示核心资产状态，展开可查看费用、分红和持仓数量</div>
         </div>
-        <div className="text-xs text-muted-foreground">共 {portfolio.stockCount} 只资产</div>
+        <div className="flex items-center gap-2">
+          <div className="hidden text-xs text-muted-foreground sm:block">共 {portfolio.stockCount} 只资产</div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {expanded ? '收起详情' : '展开详情'}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="stat-card border-border">
           <div className="text-xs text-muted-foreground mb-1">今日盈亏</div>
           <div className={`stat-value ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
@@ -235,31 +250,35 @@ export default function PortfolioSummarySection() {
             {formatPercent(portfolio.totalRealizedPnlPercent)}
           </div>
         </Card>
-
-        <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">总手续费</div>
-          <div className="stat-value text-foreground">
-            {formatWithCurrency(portfolio.totalCommission)}
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">累计手续费</div>
-        </Card>
-
-        <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">累计分红</div>
-          <div className="stat-value text-foreground">
-            {formatWithCurrency(portfolio.totalDividend)}
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">税后到账</div>
-        </Card>
-
-        <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">持仓股数</div>
-          <div className="stat-value text-foreground">
-            {portfolio.totalHolding.toLocaleString()}
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">全部市场</div>
-        </Card>
       </div>
+
+      {expanded && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Card className="stat-card border-border">
+            <div className="text-xs text-muted-foreground mb-1">总手续费</div>
+            <div className="stat-value text-foreground">
+              {formatWithCurrency(portfolio.totalCommission)}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">累计手续费</div>
+          </Card>
+
+          <Card className="stat-card border-border">
+            <div className="text-xs text-muted-foreground mb-1">累计分红</div>
+            <div className="stat-value text-foreground">
+              {formatWithCurrency(portfolio.totalDividend)}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">税后到账</div>
+          </Card>
+
+          <Card className="stat-card border-border">
+            <div className="text-xs text-muted-foreground mb-1">持仓股数</div>
+            <div className="stat-value text-foreground">
+              {portfolio.totalHolding.toLocaleString()}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">全部市场</div>
+          </Card>
+        </div>
+      )}
     </section>
   )
 }

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { BriefcaseBusiness, ChartNoAxesCombined, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, Settings, Sparkles, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import FloatingAiChat from '@/components/ai/FloatingAiChat'
 import { useTheme } from '@/hooks/useTheme'
 import { useStockStore } from '@/store/useStockStore'
 
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
 ] as const
 
 const AI_SUB_ITEMS = [
+  { href: '/ai/chat', label: 'AI 对话', match: (pathname: string) => pathname.startsWith('/ai/chat') },
   { href: '/ai', label: '分析中心', match: (pathname: string) => pathname === '/ai' },
   { href: '/ai/history', label: '分析历史', match: (pathname: string) => pathname.startsWith('/ai/history') },
 ] as const
@@ -122,6 +124,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+      {!pathname.startsWith('/ai/chat') && <FloatingAiChat />}
     </div>
   )
 }

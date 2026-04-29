@@ -1,4 +1,5 @@
 const DEVICE_ID_KEY = 'finance-sys-device-id'
+const LOCAL_SQLITE_USER_PREFIX = 'local:'
 
 /**
  * Get or generate a unique device ID for this browser.
@@ -17,6 +18,21 @@ export function getDeviceId(): string {
   }
 
   return deviceId
+}
+
+/**
+ * 将浏览器 device id 对齐到已经存在的本地 SQLite userId。
+ * 这用于浏览器 localStorage 丢失后，从 SQLite 中恢复原本的本机数据命名空间。
+ */
+export function adoptDeviceIdFromLocalUserId(userId: string) {
+  if (typeof window === 'undefined' || !userId.startsWith(LOCAL_SQLITE_USER_PREFIX)) {
+    return
+  }
+
+  const deviceId = userId.slice(LOCAL_SQLITE_USER_PREFIX.length)
+  if (deviceId) {
+    localStorage.setItem(DEVICE_ID_KEY, deviceId)
+  }
 }
 
 /**

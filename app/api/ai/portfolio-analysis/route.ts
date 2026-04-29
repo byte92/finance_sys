@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildAnalysisTags, generatePortfolioAnalysis } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { saveAiAnalysis } from '@/lib/sqlite/db'
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     if (!body.aiConfig) {
       return NextResponse.json({ error: '缺少 AI 配置' }, { status: 400 })
     }
-    const result = await generatePortfolioAnalysis(body.stocks, body.aiConfig, body.forceRefresh === true)
+    const result = await generatePortfolioAnalysis(body.stocks, resolveEffectiveAiConfig(body.aiConfig), body.forceRefresh === true)
     saveAiAnalysis({
       id: randomUUID(),
       userId: body.userId,

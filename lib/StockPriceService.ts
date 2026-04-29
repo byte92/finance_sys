@@ -28,6 +28,9 @@ const DEFAULT_CONFIG: StockServiceConfig = {
   fallbackChain: ['tencent', 'nasdaq', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'],
 }
 
+/**
+ * 股票报价聚合服务，负责管理多个行情数据源、按市场选择 fallback 链路，并对报价结果做短期缓存。
+ */
 export class StockPriceService {
   private config: StockServiceConfig
   private sources: Map<DataSourceProvider, StockDataSource> = new Map()

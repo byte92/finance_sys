@@ -1,8 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
-import { getDeviceId } from "@/lib/device-id";
+import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { adoptDeviceIdFromLocalUserId, getDeviceId } from "@/lib/device-id";
 import { generateId } from "@/lib/finance";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
 
@@ -38,6 +38,23 @@ type StoredPayload = {
   config: AppConfig;
 };
 
+type RemoteStoredPayload = StoredPayload & {
+  userId?: string;
+  recovered?: boolean;
+};
+
+type LegacyAiConfig = Partial<AppConfig["aiConfig"]> & {
+  promptTemplates?: unknown;
+};
+
+function normalizeAiConfig(aiConfig?: LegacyAiConfig): AppConfig["aiConfig"] {
+  const { promptTemplates: _legacyPromptTemplates, ...rest } = aiConfig ?? {};
+  return {
+    ...DEFAULT_APP_CONFIG.aiConfig,
+    ...rest,
+  };
+}
+
 function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
   return {
     ...DEFAULT_APP_CONFIG,
@@ -46,14 +63,7 @@ function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
       ...DEFAULT_APP_CONFIG.feeConfigs,
       ...(config?.feeConfigs ?? {}),
     },
-    aiConfig: {
-      ...DEFAULT_APP_CONFIG.aiConfig,
-      ...(config?.aiConfig ?? {}),
-      promptTemplates: {
-        ...DEFAULT_AI_PROMPT_TEMPLATES,
-        ...(config?.aiConfig?.promptTemplates ?? {}),
-      },
-    },
+    aiConfig: normalizeAiConfig(config?.aiConfig as LegacyAiConfig | undefined),
     currency: {
       ...DEFAULT_APP_CONFIG.currency,
       ...(config?.currency ?? {}),
@@ -98,7 +108,7 @@ function hasStoredData(payload: StoredPayload) {
   );
 }
 
-async function fetchRemote(userId: string): Promise<StoredPayload> {
+async function fetchRemote(userId: string): Promise<RemoteStoredPayload> {
   const res = await fetch(`/api/storage?userId=${encodeURIComponent(userId)}`, {
     method: "GET",
     cache: "no-store",
@@ -108,6 +118,8 @@ async function fetchRemote(userId: string): Promise<StoredPayload> {
   return {
     stocks: payload.stocks ?? [],
     config: mergeAppConfig(payload.config),
+    userId: (payload as RemoteStoredPayload).userId,
+    recovered: (payload as RemoteStoredPayload).recovered,
   };
 }
 
@@ -118,6 +130,15 @@ async function persistRemote(userId: string, stocks: Stock[], config: AppConfig)
     body: JSON.stringify({ userId, stocks, config }),
   });
   if (!res.ok) throw new Error(`Failed to persist remote data (${res.status})`);
+}
+
+async function clearRemoteAiChat(userId: string) {
+  const res = await fetch("/api/ai/chat/sessions", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, all: true }),
+  });
+  if (!res.ok) throw new Error(`Failed to clear AI chat (${res.status})`);
 }
 
 function sortTrades(stocks: Stock[]) {
@@ -135,8 +156,12 @@ export const useStockStore = create<StockStore>()((set, get) => ({
   init: async () => {
     try {
       const local = loadFromLocalStorage();
-      const userId = createLocalSqliteUserId();
-      const sqlitePayload = await fetchRemote(userId);
+      const requestedUserId = createLocalSqliteUserId();
+      const sqlitePayload = await fetchRemote(requestedUserId);
+      const userId = sqlitePayload.userId ?? requestedUserId;
+      if (sqlitePayload.recovered) {
+        adoptDeviceIdFromLocalUserId(userId);
+      }
       const nextPayload = hasStoredData(sqlitePayload) ? sqlitePayload : local;
       const normalized = sortTrades(nextPayload.stocks);
 
@@ -320,10 +345,6 @@ export const useStockStore = create<StockStore>()((set, get) => ({
       aiConfig: {
         ...get().config.aiConfig,
         ...(configPatch.aiConfig ?? {}),
-        promptTemplates: {
-          ...get().config.aiConfig.promptTemplates,
-          ...(configPatch.aiConfig?.promptTemplates ?? {}),
-        },
       },
       currency: {
         ...get().config.currency,
@@ -346,13 +367,20 @@ export const useStockStore = create<StockStore>()((set, get) => ({
 
   exportData: () => {
     const { stocks, config } = get();
+    const exportConfig = {
+      ...config,
+      aiConfig: {
+        ...config.aiConfig,
+        apiKey: "",
+      },
+    };
     return {
       meta: {
         version: config.version,
         exportedAt: new Date().toISOString(),
         appName: "StockTracker",
       },
-      config,
+      config: exportConfig,
       stocks,
     };
   },
@@ -382,6 +410,9 @@ export const useStockStore = create<StockStore>()((set, get) => ({
     if (userId) {
       void persistRemote(userId, next.stocks, next.config).catch((error) => {
         console.error("Clear data failed:", error);
+      });
+      void clearRemoteAiChat(userId).catch((error) => {
+        console.error("Clear AI chat failed:", error);
       });
     }
   },

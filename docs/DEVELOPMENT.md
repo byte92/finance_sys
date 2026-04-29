@@ -1,0 +1,169 @@
+# 开发指南
+
+本文档记录 StockTracker 的本地开发、环境变量、数据库和验证流程。面向项目维护者和贡献者。
+
+## 环境要求
+
+- Node.js 18+
+- npm
+- macOS / Linux / Windows
+
+首次拉取项目后请使用 npm 安装依赖，确保 lockfile 与依赖树保持一致：
+
+```bash
+npm install
+```
+
+## 常用命令
+
+```bash
+# 启动开发环境
+npm run dev
+
+# 运行默认测试
+npm test
+
+# 真实外部接口 smoke test
+npm run test:external
+
+# 生产构建
+npm run build
+
+# 生产启动
+npm run start
+```
+
+开发服务器启动后访问：
+
+- [http://localhost:3000](http://localhost:3000)
+
+## 本地数据库
+
+项目默认使用本地 SQLite 存储交易记录、配置、AI 历史和 Agent 调试记录。
+
+默认数据库文件路径：
+
+```bash
+data/finance.sqlite
+```
+
+应用第一次启动并访问存储接口时，会自动创建数据库目录、SQLite 文件和必要的数据表，不需要手动执行建表脚本。
+
+相关代码：
+
+- `lib/sqlite/db.ts`
+- `app/api/storage/route.ts`
+
+可以通过环境变量自定义数据库路径：
+
+```bash
+FINANCE_SQLITE_PATH=/absolute/path/to/finance.sqlite
+```
+
+例如：
+
+```bash
+FINANCE_SQLITE_PATH=./data/dev-finance.sqlite npm run dev
+```
+
+## AI 模型配置
+
+推荐把模型连接信息放在 `.env.local`，避免 API Key 写入 SQLite 配置或 JSON 备份。
+
+```bash
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4.1-mini
+AI_API_KEY=sk-...
+```
+
+如果这些环境变量配置完整，服务端会优先使用 `.env.local` 中的 Provider、Base URL、Model 和 API Key。设置页中的连接配置会作为本地兜底；Temperature、Max Context Tokens、新闻增强和分析语言仍由设置页控制。
+
+AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
+
+## 环境变量说明
+
+| 变量 | 必填 | 示例 | 说明 |
+| --- | --- | --- | --- |
+| `AI_PROVIDER` | 是 | `openai-compatible` | AI provider 类型。可选 `openai-compatible` 或 `anthropic-compatible`。 |
+| `AI_BASE_URL` | 是 | `https://api.openai.com/v1` | AI 服务地址。OpenAI 兼容接口通常以 `/v1` 结尾；本地或第三方兼容网关也可以填写自己的地址。 |
+| `AI_MODEL` | 是 | `gpt-4.1-mini` | 模型名称，由服务商决定，例如 `gpt-4.1-mini`、`deepseek-chat`、`qwen-plus`。 |
+| `AI_API_KEY` | 是 | `sk-...` | AI 服务密钥。只在服务端读取，不会发送到浏览器；真实值建议只放 `.env.local`。 |
+| `AGENT_SKILL_PATHS` | 否 | `/path/a:/path/b` | 额外 Agent Skill manifest 目录。系统默认读取 `skills/custom`；该变量可追加外部目录。 |
+| `ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | Alpha Vantage 行情备用源密钥，服务端读取。 |
+| `NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | 兼容旧配置，不推荐。`NEXT_PUBLIC_` 变量会暴露到前端。 |
+| `FINANCE_SQLITE_PATH` | 否 | `./data/dev-finance.sqlite` | 自定义 SQLite 数据库文件路径。未设置时默认使用 `data/finance.sqlite`。 |
+
+`.env` 与 `.env.local` 都会被 Next.js 加载；同名变量通常 `.env.local` 优先。建议把示例和非敏感默认值放 `.env`，把真实 API Key 放 `.env.local`。
+
+## 数据迁移与备份
+
+如果浏览器里还有历史 `localStorage` 数据，而 SQLite 里还没有内容，应用会自动把旧数据迁移到 SQLite。
+
+建议长期使用时：
+
+- 定期导出 JSON 备份。
+- 在升级、迁移设备或清理数据前备份 SQLite 文件。
+- 不要把真实 `data/*.sqlite` 文件提交到仓库。
+
+## 行情与估值数据
+
+当前报价链路由 `StockPriceService` 聚合多个数据源：
+
+- Tencent Finance
+- Nasdaq
+- Yahoo Finance
+- Stooq
+- Alpha Vantage
+- Manual fallback
+
+外部 API 统一入口和测试说明见 [数据接口清单](./DATA_API_INVENTORY.md)。
+
+## 手续费与收益计算
+
+当前收益模型：
+
+- 已实现收益：基于 FIFO 计算。
+- 浮动盈亏：基于当前持仓与实时价格。
+- 总收益：已实现收益 + 浮动盈亏。
+
+当前手续费逻辑：
+
+- 普通 A 股股票：佣金 + 过户费；卖出再加印花税。
+- A 股 ETF：默认不收印花税，自动手续费逻辑已单独处理。
+- 港股：佣金 + 印花税 + 结算费。
+
+敏感文件：
+
+- `config/defaults.ts`
+- `lib/finance.ts`
+- `tests/finance.test.ts`
+
+如果修改财务计算逻辑，请务必补充或更新测试，并进行人工复核。
+
+## 测试策略
+
+默认测试不依赖真实外部网络：
+
+```bash
+npm test
+```
+
+外部接口 smoke test 会真实请求行情、K 线、新闻和汇率接口，适合发布前或排查数据源问题时运行：
+
+```bash
+npm run test:external
+```
+
+Alpha Vantage 测试需要配置 `ALPHA_VANTAGE_API_KEY`，否则会跳过。
+
+## 目录维护
+
+目录边界和清理规则见 [项目目录结构说明](./PROJECT_STRUCTURE.md)。
+
+原则：
+
+- 不保留空目录。
+- 不提交本地调试产物。
+- 不保留一次性接口调试脚本。
+- 外部 API 请求优先放入 `lib/external` 或 `lib/dataSources`。

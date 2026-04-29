@@ -7,6 +7,7 @@ import type {
   Trade,
   TradePnlDetail,
 } from "@/types";
+import { roundMoney, calcCommission, calcAmount, calcPerShareCost, calcPnl, calcPnlPercent, add, sub, mul } from "./money";
 
 type FeeBreakdown = {
   commission: number;
@@ -16,16 +17,6 @@ type FeeBreakdown = {
 };
 
 type MainlandFeeProfile = "A_STOCK" | "A_ETF_OR_FUND";
-
-function roundMoney(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function calcCommission(totalAmount: number, config: FeeConfig): number {
-  return roundMoney(
-    Math.max(totalAmount * config.commissionRate, config.minCommission),
-  );
-}
 
 function getMainlandFeeProfile(
   market: Market,
@@ -48,7 +39,7 @@ function calcBuyCharges(
   market: Market,
   stockCode?: string,
 ): FeeBreakdown {
-  const commission = calcCommission(totalAmount, config);
+  const commission = calcCommission(totalAmount, config.commissionRate, config.minCommission);
   const mainlandProfile = getMainlandFeeProfile(market, stockCode);
 
   let stampDuty = 0;
@@ -56,14 +47,14 @@ function calcBuyCharges(
   let settlementFee = 0;
 
   if (market === "HK") {
-    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
-    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+    stampDuty = roundMoney(mul(totalAmount, config.stampDutyRate));
+    settlementFee = roundMoney(mul(totalAmount, config.settlementFeeRate ?? 0));
   } else if (mainlandProfile === "A_STOCK") {
-    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+    transferFee = roundMoney(mul(totalAmount, config.transferFeeRate));
   }
 
-  const tax = roundMoney(stampDuty + transferFee + settlementFee);
-  const netAmount = roundMoney(totalAmount + commission + tax);
+  const tax = roundMoney(add(stampDuty, add(transferFee, settlementFee)));
+  const netAmount = roundMoney(add(totalAmount, add(commission, tax)));
   return { commission, tax, transferFee, netAmount };
 }
 
@@ -73,7 +64,7 @@ function calcSellCharges(
   market: Market,
   stockCode?: string,
 ): FeeBreakdown {
-  const commission = calcCommission(totalAmount, config);
+  const commission = calcCommission(totalAmount, config.commissionRate, config.minCommission);
   const mainlandProfile = getMainlandFeeProfile(market, stockCode);
 
   let stampDuty = 0;
@@ -81,15 +72,15 @@ function calcSellCharges(
   let settlementFee = 0;
 
   if (market === "HK") {
-    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
-    settlementFee = roundMoney(totalAmount * (config.settlementFeeRate ?? 0));
+    stampDuty = roundMoney(mul(totalAmount, config.stampDutyRate));
+    settlementFee = roundMoney(mul(totalAmount, config.settlementFeeRate ?? 0));
   } else if (mainlandProfile === "A_STOCK") {
-    stampDuty = roundMoney(totalAmount * config.stampDutyRate);
-    transferFee = roundMoney(totalAmount * config.transferFeeRate);
+    stampDuty = roundMoney(mul(totalAmount, config.stampDutyRate));
+    transferFee = roundMoney(mul(totalAmount, config.transferFeeRate));
   }
 
-  const tax = roundMoney(stampDuty + transferFee + settlementFee);
-  const netAmount = roundMoney(totalAmount - commission - tax);
+  const tax = roundMoney(add(stampDuty, add(transferFee, settlementFee)));
+  const netAmount = roundMoney(sub(sub(totalAmount, commission), tax));
   return { commission, tax, transferFee, netAmount };
 }
 
@@ -101,7 +92,7 @@ export function calcBuyNetAmount(
   market?: Market,
   stockCode?: string,
 ): FeeBreakdown {
-  const totalAmount = price * quantity;
+  const totalAmount = calcAmount(price, quantity);
   return calcBuyCharges(totalAmount, config, market ?? config.market, stockCode);
 }
 
@@ -112,7 +103,7 @@ export function calcSellNetAmount(
   config: FeeConfig,
   stockCode?: string,
 ): FeeBreakdown {
-  const totalAmount = price * quantity;
+  const totalAmount = calcAmount(price, quantity);
   return calcSellCharges(totalAmount, config, config.market, stockCode);
 }
 
@@ -171,13 +162,12 @@ export function calcStockSummary(
   for (const trade of trades) {
     if (trade.type === "BUY") {
       tradeCount++;
-      totalCommission += trade.commission + trade.tax;
-      totalBuyAmount += trade.netAmount;
+      totalCommission = add(totalCommission, add(trade.commission, trade.tax));
+      totalBuyAmount = add(totalBuyAmount, trade.netAmount);
       currentHolding += trade.quantity;
-      // 每股均摊成本（含手续费）
       costQueue.push({
         tradeId: trade.id,
-        price: trade.netAmount / trade.quantity,
+        price: calcPerShareCost(trade.netAmount, trade.quantity),
         quantity: trade.quantity,
       });
 
@@ -185,7 +175,7 @@ export function calcStockSummary(
         tradeId: trade.id,
         type: "BUY",
         date: trade.date,
-        pnl: 0, // 买入本身无盈亏
+        pnl: 0,
         pnlPercent: 0,
         costBasis: trade.netAmount,
         proceeds: 0,
@@ -193,28 +183,27 @@ export function calcStockSummary(
       });
     } else if (trade.type === "SELL") {
       tradeCount++;
-      totalCommission += trade.commission + trade.tax;
-      totalSellAmount += trade.netAmount;
+      totalCommission = add(totalCommission, add(trade.commission, trade.tax));
+      totalSellAmount = add(totalSellAmount, trade.netAmount);
 
-      // FIFO 出队，计算本次卖出的成本基础
       let remaining = trade.quantity;
       let costBasis = 0;
       while (remaining > 0 && costQueue.length > 0) {
         const head = costQueue[0];
         if (head.quantity <= remaining) {
-          costBasis += head.price * head.quantity;
+          costBasis = add(costBasis, mul(head.price, head.quantity));
           remaining -= head.quantity;
           costQueue.shift();
         } else {
-          costBasis += head.price * remaining;
+          costBasis = add(costBasis, mul(head.price, remaining));
           head.quantity -= remaining;
           remaining = 0;
         }
       }
 
-      const pnl = trade.netAmount - costBasis;
-      const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
-      realizedPnl += pnl;
+      const pnl = calcPnl(trade.netAmount, costBasis);
+      const pnlPercent = calcPnlPercent(pnl, costBasis);
+      realizedPnl = add(realizedPnl, pnl);
       currentHolding -= trade.quantity;
 
       tradePnlDetails.push({
@@ -228,11 +217,9 @@ export function calcStockSummary(
         holdingAfterTrade: currentHolding,
       });
     } else if (trade.type === "DIVIDEND") {
-      // 分红：计入已实现盈亏，但不再二次摊薄持仓成本。
-      // 否则会同时把分红算作收益、又降低未来卖出成本，导致收益被双重放大。
-      const dividendAmount = trade.netAmount; // 税后到手
-      totalDividend += dividendAmount;
-      realizedPnl += dividendAmount;
+      const dividendAmount = trade.netAmount;
+      totalDividend = add(totalDividend, dividendAmount);
+      realizedPnl = add(realizedPnl, dividendAmount);
 
       tradePnlDetails.push({
         tradeId: trade.id,
@@ -270,19 +257,19 @@ export function calcStockSummary(
 
   // 剩余持仓成本
   const remainingCost = costQueue.reduce(
-    (sum, item) => sum + item.price * item.quantity,
+    (sum, item) => add(sum, mul(item.price, item.quantity)),
     0,
   );
-  const avgCostPrice = currentHolding > 0 ? remainingCost / currentHolding : 0;
+  const avgCostPrice = currentHolding > 0 ? roundMoney(calcPerShareCost(remainingCost, currentHolding)) : 0;
   const unrealizedPnl =
     currentHolding > 0 && currentPrice
-      ? currentPrice * currentHolding - remainingCost
+      ? sub(mul(currentPrice, currentHolding), remainingCost)
       : 0;
 
-  const totalPnl = realizedPnl + unrealizedPnl;
+  const totalPnl = add(realizedPnl, unrealizedPnl);
   const totalInvested = totalBuyAmount;
   const totalPnlPercent =
-    totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+    totalInvested > 0 ? calcPnlPercent(totalPnl, totalInvested) : 0;
 
   return {
     stock,
@@ -315,7 +302,7 @@ export function formatPnl(
   currency = "CNY",
   decimals = 2,
 ): string {
-  const sign = value >= 0 ? "+" : "";
+  const sign = value >= 0 ? "+" : "-";
   const symbols: Record<string, string> = {
     CNY: "¥",
     HKD: "HK$",
@@ -323,7 +310,7 @@ export function formatPnl(
     USDT: "$",
   };
   const symbol = symbols[currency] || "¥";
-  return `${sign}${symbol}${formatAmount(value, decimals)}`;
+  return `${sign}${symbol}${formatAmount(Math.abs(value), decimals)}`;
 }
 
 // 格式化百分比

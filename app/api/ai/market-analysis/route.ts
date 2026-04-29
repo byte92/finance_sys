@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { generateId } from '@/lib/finance'
 import { generateMarketAnalysis, buildAnalysisTags } from '@/lib/marketOverview'
 import { safeReadJsonBody } from '@/lib/api/request'
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少 aiConfig' }, { status: 400 })
     }
 
-    const result = await generateMarketAnalysis(body.aiConfig, body.forceRefresh)
+    const result = await generateMarketAnalysis(resolveEffectiveAiConfig(body.aiConfig), body.forceRefresh)
 
     saveAiAnalysis({
       id: generateId(),

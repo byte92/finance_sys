@@ -6,7 +6,27 @@ const API_BASES = [
   'https://query1.finance.yahoo.com/v7/finance/quote',
   'https://query2.finance.yahoo.com/v7/finance/quote',
 ]
+const CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
 
+type YahooChartResponse = {
+  chart?: {
+    result?: Array<{
+      meta?: {
+        currency?: string
+        symbol?: string
+        regularMarketPrice?: number
+        previousClose?: number
+        chartPreviousClose?: number
+        regularMarketVolume?: number
+        regularMarketTime?: number
+      }
+    }>
+  }
+}
+
+/**
+ * Yahoo Finance 行情数据源，负责获取 Yahoo 报价数据，并在 quote 接口不可用时回退到 chart 接口。
+ */
 export class YahooFinanceSource implements StockDataSource {
   provider = 'yahoo-finance' as const
   config: DataSourceConfig
@@ -16,13 +36,7 @@ export class YahooFinanceSource implements StockDataSource {
   requiresApiKey() { return false }
 
   async healthCheck(): Promise<boolean> {
-    try {
-      const res = await fetch(`${API_BASES[0]}?symbols=AAPL`, {
-        signal: AbortSignal.timeout(5000),
-        cache: 'no-store',
-      })
-      return res.ok
-    } catch { return false }
+    return (await this.getQuote('AAPL', 'US')) !== null
   }
 
   async getQuote(symbol: string, market: Market): Promise<StockQuote | null> {
@@ -31,7 +45,7 @@ export class YahooFinanceSource implements StockDataSource {
       const query = `symbols=${encodeURIComponent(std)}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const result = await this.fetchFirstQuoteResult(query)
       if (!result) {
-        return null
+        return this.fetchChartQuote(symbol, market, std)
       }
 
       const price = result.regularMarketPrice
@@ -71,7 +85,14 @@ export class YahooFinanceSource implements StockDataSource {
       const stdSymbols = symbols.map(s => toYahooSymbol(s, market))
       const query = `symbols=${encodeURIComponent(stdSymbols.join(','))}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const results = await this.fetchQuoteResults(query)
-      if (!results.length) return []
+      if (!results.length) {
+        const fallbackResults: StockQuote[] = []
+        for (const symbol of symbols) {
+          const quote = await this.getQuote(symbol, market)
+          if (quote) fallbackResults.push(quote)
+        }
+        return fallbackResults
+      }
       
       return results
         .filter((r: any) => r.regularMarketPrice !== null && r.regularMarketPrice !== undefined)
@@ -125,6 +146,46 @@ export class YahooFinanceSource implements StockDataSource {
       }
     }
     return []
+  }
+
+  private async fetchChartQuote(symbol: string, market: Market, yahooSymbol: string): Promise<StockQuote | null> {
+    try {
+      const res = await fetch(`${CHART_BASE}/${encodeURIComponent(yahooSymbol)}?range=1d&interval=1d`, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0',
+        },
+        signal: AbortSignal.timeout(6000),
+        cache: 'no-store',
+      })
+      if (!res.ok) return null
+
+      const payload = await res.json() as YahooChartResponse
+      const meta = payload?.chart?.result?.[0]?.meta
+      const price = meta?.regularMarketPrice
+      const previousClose = meta?.previousClose ?? meta?.chartPreviousClose
+      if (!Number.isFinite(price) || !price || price <= 0) return null
+
+      const change = Number.isFinite(previousClose) && previousClose ? price - previousClose : 0
+      const changePercent = previousClose ? (change / previousClose) * 100 : 0
+      const timestamp = meta?.regularMarketTime
+        ? new Date(meta.regularMarketTime * 1000).toISOString()
+        : new Date().toISOString()
+
+      return {
+        symbol,
+        name: meta?.symbol || symbol,
+        price,
+        change,
+        changePercent,
+        volume: meta?.regularMarketVolume ?? 0,
+        timestamp,
+        currency: meta?.currency || getCurrency(market),
+        source: 'yahoo-finance-chart',
+      }
+    } catch {
+      return null
+    }
   }
 }
 

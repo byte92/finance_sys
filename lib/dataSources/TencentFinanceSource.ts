@@ -55,6 +55,9 @@ function toTencentCode(code: string, market: Market): string {
   return code
 }
 
+/**
+ * 腾讯财经行情数据源，负责获取 A 股、港股、基金等报价和估值字段，并处理 GBK 文本响应解析。
+ */
 export class TencentFinanceSource implements StockDataSource {
   provider = 'tencent' as const
   config: DataSourceConfig
@@ -83,6 +86,8 @@ export class TencentFinanceSource implements StockDataSource {
       const url = `${API_BASE}/q=${code}&r=${Date.now()}`
       const res = await fetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
       })
       if (!res.ok) return null
 
@@ -101,6 +106,8 @@ export class TencentFinanceSource implements StockDataSource {
       const url = `${API_BASE}/q=${codes}&r=${Date.now()}`
       const res = await fetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
       })
       if (!res.ok) return []
       const text = await decodeGBK(res)

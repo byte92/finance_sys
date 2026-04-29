@@ -152,6 +152,46 @@
   .neutral-badge {
     @apply text-xs px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground;
   }
+  .markdown-message {
+    @apply whitespace-normal break-words;
+  }
+  .markdown-message > *:first-child {
+    @apply mt-0;
+  }
+  .markdown-message > *:last-child {
+    @apply mb-0;
+  }
+  .markdown-message p {
+    @apply my-2;
+  }
+  .markdown-message ul,
+  .markdown-message ol {
+    @apply my-2 pl-5;
+  }
+  .markdown-message ul {
+    @apply list-disc;
+  }
+  .markdown-message ol {
+    @apply list-decimal;
+  }
+  .markdown-message li {
+    @apply my-1;
+  }
+  .markdown-message blockquote {
+    @apply my-2 border-l-2 border-primary/50 pl-3 text-muted-foreground;
+  }
+  .markdown-message h1,
+  .markdown-message h2,
+  .markdown-message h3 {
+    @apply mb-2 mt-3 font-semibold leading-tight;
+  }
+  .markdown-message h1 {
+    @apply text-base;
+  }
+  .markdown-message h2,
+  .markdown-message h3 {
+    @apply text-sm;
+  }
   .rates-marquee {
     @apply relative overflow-hidden rounded-lg border border-border/70 bg-card/60;
   }

@@ -64,7 +64,9 @@ export function planAgentResponse({
         market: match.stock.market,
         confidence: match.confidence,
       })),
-      requiredSkills: [],
+      requiredSkills: [
+        { name: 'market.resolveCandidate', args: { query: content }, reason: '存在多只可能标的，需要明确候选列表供澄清' },
+      ],
       responseMode: 'clarify',
       clarifyQuestion: `你想分析的是 ${matches.map((match) => formatStockCandidate(match.stock)).join('，')} 中的哪一只？`,
     }
@@ -87,7 +89,9 @@ export function planAgentResponse({
     return {
       intent: 'stock_analysis',
       entities: [{ type: 'stock', raw: code, code, confidence: 0.55 }],
-      requiredSkills: [],
+      requiredSkills: [
+        { name: 'market.resolveCandidate', args: { query: code }, reason: '代码未在持仓中找到，需推断候选市场' },
+      ],
       responseMode: 'clarify',
       clarifyQuestion: `没有在当前持仓中找到 ${code}。请选择市场后继续：${MARKET_OPTIONS.join(' / ')}。`,
     }

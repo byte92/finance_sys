@@ -57,6 +57,10 @@ export type AgentSkillResult<TResult = unknown> = {
   data?: TResult
   error?: string
   tokenEstimate?: number
+  /** V2: 是否需要追加 Skill 调用 */
+  needsFollowUp?: boolean
+  /** V2: 建议的后续 Skill（当 needsFollowUp 为 true 时） */
+  suggestedSkills?: AgentSkillCall[]
 }
 
 export type AgentSkill<TArgs = Record<string, unknown>, TResult = unknown> = {

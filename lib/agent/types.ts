@@ -18,6 +18,7 @@ export type AgentDataScope =
   | 'quote.read'
   | 'chat.read'
   | 'market.read'
+  | 'network.fetch'
 
 export type AgentEntity = {
   type: 'stock' | 'market' | 'portfolio'

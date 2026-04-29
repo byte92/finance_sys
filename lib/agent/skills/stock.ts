@@ -164,3 +164,116 @@ export const stockGetTechnicalSnapshotSkill: AgentSkill<Record<string, unknown>>
     }
   },
 }
+
+export type FinancialsInput = { symbol: string; market: Market }
+
+export type FinancialsData = {
+  symbol: string
+  market: Market
+  earningsDate: string | null
+  epsActual: number | null
+  epsEstimate: number | null
+  epsSurprise: number | null
+  revenueGrowth: number | null
+  earningsGrowth: number | null
+  source: string
+  note?: string
+}
+
+const FINANCIAL_FIELDS = [
+  'earningsQuarterlyGrowth',
+  'revenueGrowth',
+  'earningsDate',
+  'forwardEps',
+  'trailingEps',
+].join(',')
+
+export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData> = {
+  name: 'stock.getFinancials',
+  description: '获取股票最近财报数据（EPS、营收增长等），首版仅支持美股。',
+  inputSchema: { symbol: 'string', market: 'Market' },
+  requiredScopes: ['quote.read', 'network.fetch'],
+  async execute(args) {
+    const { symbol, market } = args
+    if (!symbol) return { skillName: 'stock.getFinancials', ok: false, error: '缺少标的代码' }
+
+    // 首版仅支持美股（Yahoo Finance）
+    if (market === 'US') {
+      try {
+        const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=${FINANCIAL_FIELDS}`
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'StockTracker/2.0', Accept: 'application/json' },
+        })
+
+        if (!res.ok) {
+          return {
+            skillName: 'stock.getFinancials',
+            ok: false,
+            error: `Yahoo Finance 请求失败 (${res.status})`,
+            needsFollowUp: true,
+            suggestedSkills: [
+              { name: 'web.fetch', args: { url, extractPrompt: '提取财报关键数据：EPS、营收同比增长、盈利同比增长' }, reason: 'Yahoo Finance 直接请求失败，用 web.fetch 兜底' },
+            ],
+          }
+        }
+
+        const payload = await res.json()
+        const result = payload?.quoteResponse?.result?.[0]
+        if (!result) {
+          return {
+            skillName: 'stock.getFinancials',
+            ok: false,
+            error: '未找到该股票的数据',
+            needsFollowUp: true,
+            suggestedSkills: [
+              { name: 'web.fetch', args: { url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '提取最新财报关键指标' }, reason: 'Yahoo Finance API 无数据，尝试网页抓取' },
+            ],
+          }
+        }
+
+        const epsActual = result.trailingEps ?? null
+        const epsEstimate = result.forwardEps ?? null
+        const epsSurprise = epsActual != null && epsEstimate != null
+          ? Number((((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100).toFixed(2))
+          : null
+
+        return {
+          skillName: 'stock.getFinancials',
+          ok: true,
+          data: {
+            symbol,
+            market,
+            earningsDate: Array.isArray(result.earningsDate) ? result.earningsDate[0]?.fmt ?? null : null,
+            epsActual,
+            epsEstimate,
+            epsSurprise,
+            revenueGrowth: result.revenueGrowth != null ? Number((result.revenueGrowth * 100).toFixed(2)) : null,
+            earningsGrowth: result.earningsQuarterlyGrowth != null ? Number((result.earningsQuarterlyGrowth * 100).toFixed(2)) : null,
+            source: 'yahoo-finance',
+          },
+        }
+      } catch {
+        return {
+          skillName: 'stock.getFinancials',
+          ok: false,
+          error: '获取财报数据失败',
+          needsFollowUp: true,
+          suggestedSkills: [
+            { name: 'web.fetch', args: { url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '提取最新财报关键指标：EPS、营收、同比增长' }, reason: '财报数据抓取失败，使用 web.fetch 兜底' },
+          ],
+        }
+      }
+    }
+
+    // A 股 / 港股 / 其他市场：通过 web.fetch 兜底
+    return {
+      skillName: 'stock.getFinancials',
+      ok: false,
+      error: `当前市场 ${market} 的财报数据暂不支持内置抓取`,
+      needsFollowUp: true,
+      suggestedSkills: [
+        { name: 'web.fetch', args: { url: market === 'A' ? `https://push2.eastmoney.com/api/qt/stock/get?secid=1.${encodeURIComponent(symbol)}&fields=f183,f184,f185,f186,f187,f188` : `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '提取最新财报关键指标：EPS、营收、同比增长、下季度指引' }, reason: market === 'A' ? '使用东方财富接口抓取 A 股财报' : '使用 Yahoo Finance 网页抓取财报' },
+      ],
+    }
+  },
+}

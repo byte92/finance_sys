@@ -42,6 +42,8 @@ const PLANNER_SYSTEM_PROMPT = [
   '- portfolio.getSummary: 读取组合总览',
   '- portfolio.getTopPositions: 读取最大仓位/盈亏',
   '- market.resolveCandidate: 解析名称/代码对应的候选标的',
+  '- stock.getFinancials: 获取最近财报数据（EPS、营收增长等），美股通过 Yahoo Finance，其他市场自动兜底',
+  '- web.fetch: 抓取外部金融数据（仅限白名单域名），仅在数据必须从网络获取时使用',
   '',
   '规则：',
   '- 如果用户问题与股票投资无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',

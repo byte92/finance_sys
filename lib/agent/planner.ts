@@ -1,5 +1,5 @@
 import { detectStockCode, formatStockCandidate, matchStocks } from '@/lib/agent/entity/stockMatcher'
-import type { AgentPlan } from '@/lib/agent/types'
+import type { AgentPlan, AgentSkillCall } from '@/lib/agent/types'
 import type { AiConfig, Market, Stock } from '@/types'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
 
@@ -12,13 +12,22 @@ function includesAny(content: string, keywords: string[]) {
   return keywords.some((keyword) => content.includes(keyword))
 }
 
-function buildStockSkillCalls(stockId: string) {
-  return [
-    { name: 'stock.getHolding', args: { stockId }, reason: '用户询问单只股票，需要读取本地持仓摘要' },
-    { name: 'stock.getRecentTrades', args: { stockId, limit: 8 }, reason: '单只股票分析需要结合最近交易节奏' },
-    { name: 'stock.getQuote', args: { stockId }, reason: '单只股票分析需要读取最新行情和估值数据' },
-    { name: 'stock.getTechnicalSnapshot', args: { stockId }, reason: '走势健康度需要技术指标摘要' },
+const FINANCIAL_KEYWORDS = ['财报', '业绩', '营收', '利润', '盈利', '净利润', 'EPS', '每股收益', '分红', '派息', '增长', '同比', '环比']
+
+function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
+  const skills: AgentSkillCall[] = [
+    { name: 'stock.getHolding', args: { stockId: stock.id }, reason: '用户询问单只股票，需要读取本地持仓摘要' },
+    { name: 'stock.getRecentTrades', args: { stockId: stock.id, limit: 8 }, reason: '单只股票分析需要结合最近交易节奏' },
+    { name: 'stock.getQuote', args: { stockId: stock.id }, reason: '单只股票分析需要读取最新行情和估值数据' },
+    { name: 'stock.getTechnicalSnapshot', args: { stockId: stock.id }, reason: '走势健康度需要技术指标摘要' },
   ]
+  // 检测财报/业绩关键词，追加财务分析 Skill
+  if (includesAny(userMessage, FINANCIAL_KEYWORDS)) {
+    skills.push(
+      { name: 'stock.getFinancials', args: { symbol: stock.code, market: stock.market }, reason: '用户询问财报或业绩数据，需要获取最新财务指标' },
+    )
+  }
+  return skills
 }
 
 const PLANNER_SYSTEM_PROMPT = [
@@ -120,7 +129,7 @@ export async function planAgentResponse({
     return {
       intent: includesAny(content, TRADE_KEYWORDS) ? 'trade_review' : 'stock_analysis',
       entities: [{ type: 'stock', raw: content, stockId: stock.id, code: stock.code, name: stock.name, market: stock.market, confidence: matches[0].confidence }],
-      requiredSkills: buildStockSkillCalls(stock.id),
+      requiredSkills: buildStockSkillCalls(stock, content),
       responseMode: 'answer',
     }
   }
@@ -146,14 +155,21 @@ export async function planAgentResponse({
   }
 
   if (externalStocks.length) {
+    const skills: AgentSkillCall[] = externalStocks.flatMap((item) => {
+      const base: AgentSkillCall[] = [
+        { name: 'stock.getExternalQuote', args: { symbol: item.symbol, market: item.market }, reason: '用户询问未持仓标的，需按用户选择的市场抓取行情数据' },
+      ]
+      if (includesAny(content, FINANCIAL_KEYWORDS)) {
+        base.push(
+          { name: 'stock.getFinancials', args: { symbol: item.symbol, market: item.market }, reason: '用户询问财报或业绩数据，需要获取最新财务指标' },
+        )
+      }
+      return base
+    })
     return {
       intent: 'stock_analysis',
       entities: externalStocks.map((item) => ({ type: 'stock', raw: item.symbol, code: item.symbol, market: item.market, confidence: 0.8 })),
-      requiredSkills: externalStocks.map((item) => ({
-        name: 'stock.getExternalQuote',
-        args: { symbol: item.symbol, market: item.market },
-        reason: '用户询问未持仓标的，需按用户选择的市场抓取行情数据',
-      })),
+      requiredSkills: skills,
       responseMode: 'answer',
     }
   }

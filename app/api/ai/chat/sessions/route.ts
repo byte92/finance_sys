@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { safeReadJsonBody } from '@/lib/api/request'
-import { clearAiChatByUserId, deleteAiChatSession, listAiChatSessions, saveAiChatSession } from '@/lib/sqlite/db'
+import { normalizeChatTitle } from '@/lib/ai/chat'
+import { clearAiChatByUserId, deleteAiChatSession, getAiChatSession, listAiChatSessions, saveAiChatSession, updateAiChatSessionTitle } from '@/lib/sqlite/db'
 
 type CreateBody = {
   userId?: string
@@ -12,6 +13,12 @@ type DeleteBody = {
   userId?: string
   sessionId?: string
   all?: boolean
+}
+
+type PatchBody = {
+  userId?: string
+  sessionId?: string
+  title?: string
 }
 
 export async function GET(request: NextRequest) {
@@ -38,13 +45,37 @@ export async function POST(request: Request) {
     saveAiChatSession({
       id,
       userId: body.userId,
-      title: body.title?.trim() || '新对话',
+      title: normalizeChatTitle(body.title ?? ''),
       scope: 'portfolio',
     })
 
     return NextResponse.json({ session: listAiChatSessions(body.userId).find((session) => session.id === id) })
   } catch (error) {
     const message = error instanceof Error ? error.message : '创建 AI 对话失败'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const payload = await safeReadJsonBody<PatchBody>(request)
+    if (!payload.ok) {
+      return NextResponse.json({ error: payload.error }, { status: payload.status })
+    }
+    const body = payload.body
+    if (!body.userId || !body.sessionId) {
+      return NextResponse.json({ error: '缺少用户 ID 或会话 ID' }, { status: 400 })
+    }
+
+    const title = normalizeChatTitle(body.title ?? '')
+    updateAiChatSessionTitle(body.userId, body.sessionId, title)
+    const session = getAiChatSession(body.userId, body.sessionId)
+    if (!session) {
+      return NextResponse.json({ error: '未找到对应的 AI 对话' }, { status: 404 })
+    }
+    return NextResponse.json({ session })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '更新 AI 对话失败'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

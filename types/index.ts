@@ -283,6 +283,21 @@ export interface AiChatMessage {
   createdAt: string
 }
 
+export interface AiAgentRun {
+  id: string
+  sessionId: string
+  userId: string
+  messageId?: string | null
+  intent: string
+  responseMode: string
+  plan: Record<string, unknown>
+  skillCalls: unknown[]
+  skillResults: unknown[]
+  contextStats: Record<string, unknown>
+  error?: string | null
+  createdAt: string
+}
+
 export interface AiChatContextStats {
   tokenEstimate: number
   maxContextTokens: number

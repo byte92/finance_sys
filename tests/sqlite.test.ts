@@ -144,3 +144,33 @@ test('sqlite ai history filters latest stock analysis by stock id', () => {
     store.close()
   }
 })
+
+test('sqlite persists and lists ai agent runs', () => {
+  const store = createPortfolioStore(createTempDbPath())
+
+  try {
+    store.saveAiAgentRun({
+      id: 'run-1',
+      sessionId: 'session-1',
+      userId: 'local:test-user',
+      messageId: 'message-1',
+      intent: 'stock_analysis',
+      responseMode: 'answer',
+      plan: { intent: 'stock_analysis', requiredSkills: [{ name: 'stock.getHolding' }] },
+      skillCalls: [{ name: 'stock.getHolding', args: { stockId: 'stock-1' } }],
+      skillResults: [{ skillName: 'stock.getHolding', ok: true }],
+      contextStats: { tokenEstimate: 1200, maxContextTokens: 128000, level: 'short' },
+    })
+
+    const runs = store.listAiAgentRuns('local:test-user', 'session-1')
+
+    assert.equal(runs.length, 1)
+    assert.equal(runs[0].id, 'run-1')
+    assert.equal(runs[0].intent, 'stock_analysis')
+    assert.equal(runs[0].responseMode, 'answer')
+    assert.deepEqual(runs[0].skillCalls, [{ name: 'stock.getHolding', args: { stockId: 'stock-1' } }])
+    assert.equal(runs[0].contextStats.tokenEstimate, 1200)
+  } finally {
+    store.close()
+  }
+})

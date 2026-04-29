@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
-import { buildChatContext, buildChatTitle, estimateTokens, streamChatCompletion, validateAiChatConfig, type ExternalStockRequest } from '@/lib/ai/chat'
-import { getAiChatSession, listAiChatMessages, saveAiChatMessage, saveAiChatSession, updateAiChatSessionTitle } from '@/lib/sqlite/db'
-import type { AiConfig, Stock } from '@/types'
+import { buildChatTitle, estimateTokens, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
+import { runAgent } from '@/lib/agent/runtime'
+import { getAiChatSession, listAiChatMessages, saveAiAgentRun, saveAiChatMessage, saveAiChatSession, updateAiChatSessionTitle } from '@/lib/sqlite/db'
+import type { AiConfig, Market, Stock } from '@/types'
 
 type Body = {
   userId?: string
@@ -12,7 +13,7 @@ type Body = {
   message?: string
   stocks?: Stock[]
   aiConfig?: AiConfig
-  externalStocks?: ExternalStockRequest[]
+  externalStocks?: Array<{ symbol: string; market: Market }>
 }
 
 export async function POST(request: Request) {
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
       let assistantContent = ''
       let contextMs = 0
       let firstTokenMs: number | null = null
+      let agentRunId: string | null = null
       try {
         const existingSession = getAiChatSession(body.userId!, sessionId)
         if (!existingSession) {
@@ -58,13 +60,12 @@ export async function POST(request: Request) {
         }
 
         const history = listAiChatMessages(body.userId!, sessionId)
-        const needsExternalData = (body.externalStocks?.length ?? 0) > 0
-        controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({
-          phase: needsExternalData ? 'external-data' : 'local-context',
-        })}\n\n`))
+        controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'planning' })}\n\n`))
 
         const contextStartedAt = Date.now()
-        const context = await buildChatContext({
+        const agent = await runAgent({
+          userId: body.userId!,
+          sessionId,
           aiConfig: effectiveAiConfig,
           stocks: body.stocks!,
           history,
@@ -72,25 +73,49 @@ export async function POST(request: Request) {
           externalStocks: body.externalStocks ?? [],
         })
         contextMs = Date.now() - contextStartedAt
+        agentRunId = randomUUID()
 
+        const userMessageId = randomUUID()
         saveAiChatMessage({
-          id: randomUUID(),
+          id: userMessageId,
           sessionId,
           userId: body.userId!,
           role: 'user',
           content: userMessage,
-          contextSnapshot: context.contextSnapshot,
+          contextSnapshot: agent.contextSnapshot,
           tokenEstimate: estimateTokens(userMessage),
+        })
+        saveAiAgentRun({
+          id: agentRunId,
+          sessionId,
+          userId: body.userId!,
+          messageId: userMessageId,
+          intent: agent.plan.intent,
+          responseMode: agent.plan.responseMode,
+          plan: agent.plan as unknown as Record<string, unknown>,
+          skillCalls: agent.plan.requiredSkills,
+          skillResults: agent.skillResults,
+          contextStats: agent.stats as unknown as Record<string, unknown>,
         })
 
         if (existingSession && existingSession.title === '新对话') {
           updateAiChatSessionTitle(body.userId!, sessionId, buildChatTitle(userMessage))
         }
 
-        controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({ sessionId, stats: context.stats, timings: { contextMs } })}\n\n`))
+        controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
+          sessionId,
+          stats: agent.stats,
+          timings: { contextMs },
+          agent: {
+            runId: agentRunId,
+            intent: agent.plan.intent,
+            responseMode: agent.plan.responseMode,
+            skillCount: agent.skillResults.length,
+          },
+        })}\n\n`))
         controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'generating' })}\n\n`))
 
-        await streamChatCompletion(effectiveAiConfig, context.messages, (chunk) => {
+        await streamChatCompletion(effectiveAiConfig, agent.messages, (chunk) => {
           if (firstTokenMs === null) {
             firstTokenMs = Date.now() - startedAt
           }
@@ -108,7 +133,7 @@ export async function POST(request: Request) {
           userId: body.userId!,
           role: 'assistant',
           content: assistantContent,
-          contextSnapshot: context.contextSnapshot,
+          contextSnapshot: agent.contextSnapshot,
           tokenEstimate: estimateTokens(assistantContent),
         })
 
@@ -120,10 +145,12 @@ export async function POST(request: Request) {
           totalMs,
           holdings: body.stocks?.length ?? 0,
           externalStocks: body.externalStocks?.length ?? 0,
+          intent: agent.plan.intent,
+          skillCount: agent.skillResults.length,
           provider: effectiveAiConfig.provider,
           model: effectiveAiConfig.model,
         })
-        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ sessionId, timings: { contextMs, firstTokenMs, totalMs } })}\n\n`))
+        controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ sessionId, runId: agentRunId, timings: { contextMs, firstTokenMs, totalMs } })}\n\n`))
         controller.close()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'AI 对话失败'

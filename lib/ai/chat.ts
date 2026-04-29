@@ -3,7 +3,7 @@ import { stockPriceService } from '@/lib/StockPriceService'
 import type { AiChatContextStats, AiChatMessage, AiConfig, Market, Stock } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
-type ProviderMessage = {
+export type ProviderMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
 }
@@ -21,6 +21,7 @@ export type ChatContextBuildResult = {
 
 const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 const ANTHROPIC_CHAT_RESPONSE_TOKEN_LIMIT = 4096
+export const AI_CHAT_TITLE_MAX_LENGTH = 24
 
 export function validateAiChatConfig(config: AiConfig) {
   if (!config.enabled) throw new Error('AI 功能尚未启用')
@@ -57,7 +58,13 @@ export function getContextLevelLabel(level: AiChatContextStats['level']) {
 export function buildChatTitle(content: string) {
   const normalized = content.replace(/\s+/g, ' ').trim()
   if (!normalized) return '新对话'
-  return normalized.length > 20 ? `${normalized.slice(0, 20)}...` : normalized
+  return normalized.length > AI_CHAT_TITLE_MAX_LENGTH ? `${normalized.slice(0, AI_CHAT_TITLE_MAX_LENGTH - 1)}…` : normalized
+}
+
+export function normalizeChatTitle(content: string) {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  if (!normalized) return '新对话'
+  return normalized.length > AI_CHAT_TITLE_MAX_LENGTH ? normalized.slice(0, AI_CHAT_TITLE_MAX_LENGTH) : normalized
 }
 
 function ensureApiBase(baseUrl: string, provider: AiConfig['provider']) {

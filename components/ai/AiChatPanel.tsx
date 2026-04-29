@@ -1,14 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Bot, Clock, Eraser, Info, Maximize2, Plus, Send, Trash2, X } from 'lucide-react'
+import { Bot, Bug, Clock, Eraser, Info, Maximize2, Pencil, Plus, Send, Trash2, X } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
-import type { AiChatContextStats, AiChatMessage, AiChatSession, Market } from '@/types'
+import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession, Market } from '@/types'
 
 type AiChatPanelProps = {
   mode: 'floating' | 'full'
@@ -23,19 +24,14 @@ const MARKET_OPTIONS: Array<{ market: Market; label: string }> = [
   { market: 'CRYPTO', label: '加密资产' },
 ]
 
-const CONTEXT_LEVEL_LABEL: Record<AiChatContextStats['level'], string> = {
-  short: '短',
-  medium: '中',
-  long: '长',
-  'near-limit': '接近上限',
-}
-
 const SUGGESTIONS = [
   '当前组合最大的风险是什么？',
   '帮我复盘最近交易最多的股票。',
   '我当前持仓里哪只股票需要重点关注？',
   '按成本和盈亏帮我总结一下仓位结构。',
 ]
+
+const CHAT_TITLE_MAX_LENGTH = 24
 
 type PendingCandidate = {
   symbol: string
@@ -45,6 +41,23 @@ type PendingCandidate = {
 type AiEnvStatus = {
   configured: boolean
   model?: string
+}
+
+function getContextLevelLabel(value: unknown) {
+  if (value === 'near-limit') return '接近上限'
+  if (value === 'long') return '长'
+  if (value === 'medium') return '中'
+  return '短'
+}
+
+function getSkillName(result: unknown) {
+  if (!result || typeof result !== 'object') return 'unknown'
+  const item = result as Record<string, unknown>
+  return typeof item.skillName === 'string' ? item.skillName : 'unknown'
+}
+
+function isSkillOk(result: unknown) {
+  return Boolean(result && typeof result === 'object' && (result as Record<string, unknown>).ok === true)
 }
 
 export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
@@ -62,10 +75,16 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const [pendingCandidate, setPendingCandidate] = useState<PendingCandidate | null>(null)
   const [aiEnvStatus, setAiEnvStatus] = useState<AiEnvStatus | null>(null)
   const [streamStatus, setStreamStatus] = useState('')
+  const [debugEnabled, setDebugEnabled] = useState(false)
+  const [agentRuns, setAgentRuns] = useState<AiAgentRun[]>([])
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const aiReady = Boolean(aiEnvStatus?.configured) || (config.aiConfig.enabled && config.aiConfig.baseUrl.trim() && config.aiConfig.model.trim() && config.aiConfig.apiKey.trim())
+  const currentModelName = aiEnvStatus?.configured ? aiEnvStatus.model : config.aiConfig.model
+  const currentTitle = activeSession?.title ?? (activeSessionId ? 'AI 对话' : '新对话')
 
   useEffect(() => {
     if (mode !== 'full') return
@@ -90,14 +109,14 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
   }, [])
 
-  const refreshSessions = useCallback(async () => {
+  const refreshSessions = useCallback(async (options: { autoSelect?: boolean } = {}) => {
     if (!userId) return
     const res = await fetch(`/api/ai/chat/sessions?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
     const data = await res.json()
     if (!res.ok) throw new Error(data?.error ?? '获取 AI 对话失败')
     const nextSessions = (data.sessions ?? []) as AiChatSession[]
     setSessions(nextSessions)
-    if (!activeSessionId && nextSessions[0]) {
+    if (options.autoSelect && !activeSessionId && nextSessions[0]) {
       setActiveSessionId(nextSessions[0].id)
     }
   }, [activeSessionId, userId])
@@ -113,22 +132,35 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     setMessages((data.messages ?? []) as AiChatMessage[])
   }, [userId])
 
-  useEffect(() => {
-    void refreshSessions().catch((err) => setError(err instanceof Error ? err.message : '获取 AI 对话失败'))
-  }, [refreshSessions])
+  const refreshAgentRuns = useCallback(async (sessionId: string | null) => {
+    if (!userId || !sessionId || !debugEnabled) {
+      setAgentRuns([])
+      return
+    }
+    const res = await fetch(`/api/ai/chat/runs?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error ?? '获取 Agent Debug 信息失败')
+    setAgentRuns((data.runs ?? []) as AiAgentRun[])
+  }, [debugEnabled, userId])
 
   useEffect(() => {
+    if (mode !== 'full') return
+    void refreshSessions({ autoSelect: true }).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 对话失败'))
+  }, [mode, refreshSessions])
+
+  useEffect(() => {
+    if (mode !== 'full' && !activeSessionId) return
     void refreshMessages(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 消息失败'))
-  }, [activeSessionId, refreshMessages])
+  }, [activeSessionId, mode, refreshMessages])
+
+  useEffect(() => {
+    if (mode !== 'full') return
+    void refreshAgentRuns(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : '获取 Agent Debug 信息失败'))
+  }, [activeSessionId, mode, refreshAgentRuns])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, loading])
-
-  const contextLabel = useMemo(() => {
-    if (!contextStats) return '上下文：短'
-    return `上下文：${CONTEXT_LEVEL_LABEL[contextStats.level]}`
-  }, [contextStats])
 
   const createSession = async () => {
     if (!userId) return
@@ -248,8 +280,26 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
         for (const chunk of chunks) handleEvent(chunk)
       }
 
-      await refreshSessions()
-      await refreshMessages(nextSessionId)
+      if (mode === 'full') {
+        await refreshSessions()
+        await refreshMessages(nextSessionId)
+        await refreshAgentRuns(nextSessionId)
+      } else if (nextSessionId) {
+        const resolvedSessionId = nextSessionId
+        setSessions((current) => {
+          if (current.some((session) => session.id === resolvedSessionId)) return current
+          return [{
+            id: resolvedSessionId,
+            userId,
+            title: content.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || '新对话',
+            scope: 'portfolio',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messageCount: messages.length + 2,
+            latestMessageAt: new Date().toISOString(),
+          }, ...current]
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 对话失败')
       setMessages((current) => current.filter((message) => message.id !== optimisticAssistant.id))
@@ -277,7 +327,8 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
     setClearOpen(false)
     setMessages([])
-    await refreshSessions()
+    setAgentRuns([])
+    if (mode === 'full') await refreshSessions({ autoSelect: true })
   }
 
   const deleteSession = async () => {
@@ -294,14 +345,47 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
     setDeleteOpen(false)
     setMessages([])
+    setAgentRuns([])
     setActiveSessionId(null)
-    await refreshSessions()
+    if (mode === 'full') await refreshSessions({ autoSelect: true })
+  }
+
+  const startEditTitle = () => {
+    setTitleDraft(currentTitle)
+    setEditingTitle(true)
+  }
+
+  const saveTitle = async () => {
+    if (!userId || !activeSessionId) {
+      setEditingTitle(false)
+      return
+    }
+    const nextTitle = titleDraft.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || '新对话'
+    setEditingTitle(false)
+    if (nextTitle === activeSession?.title) return
+
+    const res = await fetch('/api/ai/chat/sessions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, sessionId: activeSessionId, title: nextTitle }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) {
+      setError(data?.error ?? '更新对话名称失败')
+      return
+    }
+    if (mode === 'full') await refreshSessions()
   }
 
   const goFull = () => {
     const suffix = activeSessionId ? `?sessionId=${encodeURIComponent(activeSessionId)}` : ''
     router.push(`/ai/chat${suffix}`)
     onClose?.()
+  }
+
+  const getDebugRunForAssistant = (messageIndex: number) => {
+    const assistantIndex = messages.slice(0, messageIndex + 1).filter((message) => message.role === 'assistant').length - 1
+    return assistantIndex >= 0 ? agentRuns[assistantIndex] : null
   }
 
   return (
@@ -345,14 +429,68 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
             <Bot className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{activeSession?.title ?? 'AI 对话'}</div>
-            <div className="text-xs text-muted-foreground" title={contextStats ? `估算 ${contextStats.tokenEstimate} / ${contextStats.maxContextTokens} tokens` : undefined}>
-              {contextLabel}{aiEnvStatus?.configured ? ` · .env${aiEnvStatus.model ? ` / ${aiEnvStatus.model}` : ''}` : ''}
+            <div className="flex min-w-0 items-center gap-1.5">
+              {editingTitle ? (
+                <Input
+                  value={titleDraft}
+                  maxLength={CHAT_TITLE_MAX_LENGTH}
+                  autoFocus
+                  onChange={(event) => setTitleDraft(event.target.value.slice(0, CHAT_TITLE_MAX_LENGTH))}
+                  onBlur={() => void saveTitle()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      event.currentTarget.blur()
+                    }
+                    if (event.key === 'Escape') {
+                      setEditingTitle(false)
+                      setTitleDraft(currentTitle)
+                    }
+                  }}
+                  className="h-7 max-w-[260px] px-2 text-sm font-semibold"
+                />
+              ) : (
+                <>
+                  <div className="truncate text-sm font-semibold" title={currentTitle}>{currentTitle}</div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-muted-foreground"
+                    onClick={startEditTitle}
+                    disabled={!activeSessionId}
+                    title="修改对话名称"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
             </div>
+            <Link
+              href="/settings#ai-settings"
+              onClick={onClose}
+              className="block truncate text-xs text-muted-foreground transition-colors hover:text-primary hover:underline"
+              title={currentModelName || '前往 AI 设置'}
+            >
+              {currentModelName || '配置 AI 模型'}
+            </Link>
           </div>
           {mode === 'floating' && (
             <Button type="button" variant="ghost" size="icon" onClick={goFull} title="放大">
               <Maximize2 className="h-4 w-4" />
+            </Button>
+          )}
+          {mode === 'full' && (
+            <Button
+              type="button"
+              variant={debugEnabled ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setDebugEnabled((current) => !current)}
+              title="Agent Debug"
+              className="gap-2"
+            >
+              <Bug className="h-4 w-4" />
+              Debug
             </Button>
           )}
           <Button type="button" variant="ghost" size="icon" onClick={() => setClearOpen(true)} disabled={!activeSessionId || !messages.length} title="清空对话">
@@ -401,26 +539,87 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           )}
 
           <div className="space-y-4">
-            {messages.map((message) => (
+            {messages.map((message, index) => {
+              const debugRun = debugEnabled && mode === 'full' && message.role === 'assistant'
+                ? getDebugRunForAssistant(index)
+                : null
+              return (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[82%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-6 ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-border bg-secondary/60 text-foreground'
-                }`}>
-                  {message.content || (message.role === 'assistant' && loading ? (
-                    <span className="inline-flex items-center gap-2 text-muted-foreground">
-                      {streamStatus && <span>{streamStatus}</span>}
-                      <span className="inline-flex items-center gap-1" aria-label={streamStatus || 'AI 正在生成'}>
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:120ms]" />
-                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:240ms]" />
+                <div className={`max-w-[82%] ${message.role === 'assistant' ? 'space-y-2' : ''}`}>
+                  <div className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-6 ${
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border border-border bg-secondary/60 text-foreground'
+                  }`}>
+                    {message.content || (message.role === 'assistant' && loading ? (
+                      <span className="inline-flex items-center gap-2 text-muted-foreground">
+                        {streamStatus && <span>{streamStatus}</span>}
+                        <span className="inline-flex items-center gap-1" aria-label={streamStatus || 'AI 正在生成'}>
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:120ms]" />
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:240ms]" />
+                        </span>
                       </span>
-                    </span>
-                  ) : '')}
+                    ) : '')}
+                  </div>
+                  {debugRun && (
+                    <details className="rounded-lg border border-dashed border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                      <summary className="cursor-pointer select-none font-medium text-foreground">Agent Debug</summary>
+                      <div className="mt-2 grid gap-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-muted-foreground">Intent：</span>
+                            <span className="font-mono text-foreground">{debugRun.intent}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Mode：</span>
+                            <span className="font-mono text-foreground">{debugRun.responseMode}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Context：</span>
+                            <span className="font-mono text-foreground">
+                              {getContextLevelLabel(debugRun.contextStats.level)}
+                              {typeof debugRun.contextStats.tokenEstimate === 'number' ? ` / ${debugRun.contextStats.tokenEstimate}` : ''}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Run：</span>
+                            <span className="font-mono text-foreground">{debugRun.id.slice(0, 8)}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-foreground">Skills</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {debugRun.skillResults.map((result, skillIndex) => (
+                              <span
+                                key={`${debugRun.id}-${skillIndex}`}
+                                className={`rounded border px-2 py-0.5 font-mono ${isSkillOk(result) ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-destructive/30 bg-destructive/10 text-destructive'}`}
+                              >
+                                {getSkillName(result)}
+                              </span>
+                            ))}
+                            {!debugRun.skillResults.length && <span>无 Skill 调用</span>}
+                          </div>
+                        </div>
+                        <details>
+                          <summary className="cursor-pointer select-none">Raw trace</summary>
+                          <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-secondary p-2 text-[11px] leading-5 text-foreground">
+                            {JSON.stringify({
+                              plan: debugRun.plan,
+                              skillCalls: debugRun.skillCalls,
+                              skillResults: debugRun.skillResults,
+                              contextStats: debugRun.contextStats,
+                              error: debugRun.error,
+                            }, null, 2)}
+                          </pre>
+                        </details>
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
           <div ref={bottomRef} />
         </div>

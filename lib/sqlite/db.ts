@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { DEFAULT_AI_PROMPT_TEMPLATES, DEFAULT_APP_CONFIG } from "@/config/defaults";
-import type { AiAnalysisHistoryRecord, AiAnalysisResult, AiChatMessage, AiChatSession, AiChatRole, AppConfig, Market, Stock } from "@/types";
+import type { AiAgentRun, AiAnalysisHistoryRecord, AiAnalysisResult, AiChatMessage, AiChatSession, AiChatRole, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
   stocks: Stock[];
@@ -91,6 +91,24 @@ function initSchema(db: Database.Database) {
 
   CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_session_created
     ON ai_chat_messages(session_id, created_at ASC);
+
+  CREATE TABLE IF NOT EXISTS ai_agent_runs (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    message_id TEXT,
+    intent TEXT NOT NULL,
+    response_mode TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    skill_calls_json TEXT NOT NULL,
+    skill_results_json TEXT NOT NULL,
+    context_stats_json TEXT NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ai_agent_runs_session_created
+    ON ai_agent_runs(session_id, created_at DESC);
   `);
 }
 
@@ -122,6 +140,20 @@ type SaveAiChatMessageInput = {
   content: string;
   contextSnapshot?: Record<string, unknown> | null;
   tokenEstimate?: number;
+};
+
+type SaveAiAgentRunInput = {
+  id: string;
+  sessionId: string;
+  userId: string;
+  messageId?: string | null;
+  intent: string;
+  responseMode: string;
+  plan: Record<string, unknown>;
+  skillCalls: unknown[];
+  skillResults: unknown[];
+  contextStats: Record<string, unknown>;
+  error?: string | null;
 };
 
 function parseAnalysisRow(row: Record<string, unknown>): AiAnalysisHistoryRecord {
@@ -198,6 +230,31 @@ function parseChatMessageRow(row: Record<string, unknown>): AiChatMessage {
     content: String(row.content),
     contextSnapshot,
     tokenEstimate: Number(row.token_estimate ?? 0),
+    createdAt: String(row.created_at),
+  };
+}
+
+function safeJsonParse<T>(raw: unknown, fallback: T): T {
+  try {
+    return JSON.parse(String(raw)) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function parseAiAgentRunRow(row: Record<string, unknown>): AiAgentRun {
+  return {
+    id: String(row.id),
+    sessionId: String(row.session_id),
+    userId: String(row.user_id),
+    messageId: row.message_id ? String(row.message_id) : null,
+    intent: String(row.intent),
+    responseMode: String(row.response_mode),
+    plan: safeJsonParse<Record<string, unknown>>(row.plan_json, {}),
+    skillCalls: safeJsonParse<unknown[]>(row.skill_calls_json, []),
+    skillResults: safeJsonParse<unknown[]>(row.skill_results_json, []),
+    contextStats: safeJsonParse<Record<string, unknown>>(row.context_stats_json, {}),
+    error: row.error ? String(row.error) : null,
     createdAt: String(row.created_at),
   };
 }
@@ -452,20 +509,62 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
 
   function deleteAiChatSession(userId: string, sessionId: string) {
     db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
+    db.prepare("DELETE FROM ai_agent_runs WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
     const result = db.prepare("DELETE FROM ai_chat_sessions WHERE user_id = ? AND id = ?").run(userId, sessionId);
     return result.changes > 0;
   }
 
   function clearAiChatMessages(userId: string, sessionId: string) {
     const result = db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
+    db.prepare("DELETE FROM ai_agent_runs WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
     touchAiChatSession(userId, sessionId);
     return result.changes;
   }
 
   function clearAiChatByUserId(userId: string) {
     db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ?").run(userId);
+    db.prepare("DELETE FROM ai_agent_runs WHERE user_id = ?").run(userId);
     const result = db.prepare("DELETE FROM ai_chat_sessions WHERE user_id = ?").run(userId);
     return result.changes;
+  }
+
+  function saveAiAgentRun(input: SaveAiAgentRunInput) {
+    db.prepare(
+      `
+      INSERT INTO ai_agent_runs (
+        id, session_id, user_id, message_id, intent, response_mode,
+        plan_json, skill_calls_json, skill_results_json, context_stats_json, error, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      input.id,
+      input.sessionId,
+      input.userId,
+      input.messageId ?? null,
+      input.intent,
+      input.responseMode,
+      JSON.stringify(input.plan),
+      JSON.stringify(input.skillCalls),
+      JSON.stringify(input.skillResults),
+      JSON.stringify(input.contextStats),
+      input.error ?? null,
+      new Date().toISOString(),
+    );
+  }
+
+  function listAiAgentRuns(userId: string, sessionId: string, limit?: number) {
+    const cappedLimit = limit && Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : null;
+    const rows = db.prepare(
+      `
+      SELECT *
+      FROM ai_agent_runs
+      WHERE user_id = ? AND session_id = ?
+      ORDER BY created_at ASC
+      ${cappedLimit ? "LIMIT ?" : ""}
+      `,
+    ).all(...(cappedLimit ? [userId, sessionId, String(cappedLimit)] : [userId, sessionId])) as Array<Record<string, unknown>>;
+
+    return rows.map(parseAiAgentRunRow);
   }
 
   return {
@@ -484,6 +583,8 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     deleteAiChatSession,
     clearAiChatMessages,
     clearAiChatByUserId,
+    saveAiAgentRun,
+    listAiAgentRuns,
     rawInsert,
     close,
   };
@@ -545,4 +646,12 @@ export function clearAiChatMessages(userId: string, sessionId: string) {
 
 export function clearAiChatByUserId(userId: string) {
   return portfolioStore.clearAiChatByUserId(userId);
+}
+
+export function saveAiAgentRun(input: SaveAiAgentRunInput) {
+  portfolioStore.saveAiAgentRun(input);
+}
+
+export function listAiAgentRuns(userId: string, sessionId: string, limit?: number) {
+  return portfolioStore.listAiAgentRuns(userId, sessionId, limit);
 }

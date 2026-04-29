@@ -60,6 +60,7 @@ export default function SettingsContent({
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [aiEnvStatus, setAiEnvStatus] = useState<AiEnvStatus | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const aiSectionRef = useRef<HTMLDivElement | null>(null)
   const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>({
     basic: true,
     ai: true,
@@ -94,6 +95,14 @@ export default function SettingsContent({
   useEffect(() => {
     localStorage.setItem(SETTINGS_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
   }, [openSections])
+
+  useEffect(() => {
+    if (window.location.hash !== '#ai-settings') return
+    setOpenSections((current) => ({ ...current, ai: true }))
+    window.setTimeout(() => {
+      aiSectionRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    }, 80)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -279,6 +288,7 @@ export default function SettingsContent({
     description,
     content,
     dirty = false,
+    sectionRef,
   }: {
     id: SectionId
     icon: ReactNode
@@ -286,8 +296,9 @@ export default function SettingsContent({
     description: string
     content: ReactNode
     dirty?: boolean
+    sectionRef?: React.RefObject<HTMLDivElement | null>
   }) => (
-    <Card className="border-border">
+    <Card ref={sectionRef} className="scroll-mt-24 border-border">
       <button
         type="button"
         onClick={() => toggleSection(id)}
@@ -423,6 +434,7 @@ export default function SettingsContent({
         title: 'AI 设置',
         description: '管理 provider、模型、密钥和默认分析强度。',
         dirty: aiDirty,
+        sectionRef: aiSectionRef,
         content: (
           <div className="rounded-lg border border-border p-4 space-y-4">
           {aiEnvStatus?.configured && (

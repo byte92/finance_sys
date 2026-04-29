@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bot, MessageCircle } from 'lucide-react'
+import { Bot, Sparkles } from 'lucide-react'
 import AiChatPanel from '@/components/ai/AiChatPanel'
-import { Button } from '@/components/ui/button'
 
 export default function FloatingAiChat() {
   const [open, setOpen] = useState(false)
@@ -69,18 +68,29 @@ export default function FloatingAiChat() {
         </div>
       )}
 
-      <Button
+      <button
         ref={buttonRef}
         type="button"
-        size="icon"
         onClick={() => setOpen((current) => !current)}
-        className={`fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full shadow-2xl transition-all duration-300 ${
+        className={`group fixed bottom-6 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full transition-all duration-300 ${
           scrolling && !open ? 'translate-x-9 scale-75 opacity-45' : 'translate-x-0 scale-100 opacity-100'
         }`}
-        title="AI 对话"
       >
-        {open ? <Bot className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
-      </Button>
+        {/* 外圈光晕 */}
+        <span className="absolute inset-[-3px] rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400 opacity-60 blur-sm animate-pulse" />
+        {/* 按钮主体 */}
+        <span className="relative flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-purple-600 to-violet-700 shadow-lg shadow-purple-500/30 transition-shadow group-hover:shadow-purple-500/60">
+          {open ? (
+            <Bot className="h-5 w-5 text-white" />
+          ) : (
+            <Sparkles className="h-5 w-5 text-white" />
+          )}
+        </span>
+        {/* hover 文案提示 */}
+        <span className="pointer-events-none absolute right-16 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-foreground shadow-lg opacity-0 translate-x-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-x-0">
+          AI 智能助手
+        </span>
+      </button>
     </>
   )
 }

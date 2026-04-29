@@ -8,7 +8,6 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import MarkdownMessage from '@/components/ai/MarkdownMessage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession, Market } from '@/types'
@@ -75,7 +74,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const [agentRuns, setAgentRuns] = useState<AiAgentRun[]>([])
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const messagesRef = useRef<HTMLDivElement | null>(null)
 
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const aiReady = Boolean(aiEnvStatus?.configured) || (config.aiConfig.enabled && config.aiConfig.baseUrl.trim() && config.aiConfig.model.trim() && config.aiConfig.apiKey.trim())
@@ -161,7 +160,11 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   }, [activeSessionId, mode, refreshAgentRuns])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
+    const el = messagesRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
   }, [messages, loading])
 
   const createSession = async () => {
@@ -404,7 +407,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent" style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--border)) transparent' } as React.CSSProperties}>
             {sessions.map((session) => (
               <button
                 key={session.id}
@@ -518,7 +521,11 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div
+          ref={messagesRef}
+          className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'hsl(var(--border)) transparent' } as React.CSSProperties}
+        >
           {!messages.length && (
             <div className="space-y-3">
               <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-200">
@@ -629,7 +636,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               )
             })}
           </div>
-          <div ref={bottomRef} />
         </div>
 
         {error && <div className="border-t border-border px-4 py-2 text-xs text-destructive">{error}</div>}
@@ -653,12 +659,12 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           </div>
         )}
 
-        <footer className="mt-auto shrink-0 border-t border-border p-4">
-          <div className="flex items-end gap-2">
-            <Textarea
+        <footer className="mt-auto shrink-0 border-t border-border p-3">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/40 px-3 py-2 transition-colors focus-within:border-primary/40 focus-within:bg-secondary/60">
+            <textarea
               value={input}
               disabled={!aiReady || loading}
-              rows={mode === 'full' ? 3 : 2}
+              rows={mode === 'full' ? 2 : 1}
               placeholder={aiReady ? '输入与股票、持仓或交易相关的问题...' : '请先配置 AI'}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
@@ -667,11 +673,16 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                   void handleSend()
                 }
               }}
-              className="min-h-0 resize-none text-sm"
+              className="min-h-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
-            <Button type="button" size="icon" disabled={!aiReady || loading || !input.trim()} onClick={() => void handleSend()}>
+            <button
+              type="button"
+              disabled={!aiReady || loading || !input.trim()}
+              onClick={() => void handleSend()}
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-primary disabled:opacity-30"
+            >
               <Send className="h-4 w-4" />
-            </Button>
+            </button>
           </div>
         </footer>
       </section>

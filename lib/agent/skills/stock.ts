@@ -180,93 +180,6 @@ export type FinancialsData = {
   note?: string
 }
 
-const FINANCIAL_FIELDS = [
-  'earningsQuarterlyGrowth',
-  'revenueGrowth',
-  'earningsDate',
-  'forwardEps',
-  'trailingEps',
-].join(',')
-
-function toYahooSymbol(symbol: string, market: Market): string {
-  switch (market) {
-    case 'US': return symbol
-    case 'A':
-      return symbol.startsWith('6') ? `${symbol}.SS` : `${symbol}.SZ`
-    case 'HK':
-      return `${symbol.replace(/^0+/, '')}.HK`
-    default:
-      return symbol
-  }
-}
-
-async function fetchYahooFinancials(symbol: string, market: Market): Promise<{ ok: boolean; data?: FinancialsData; error?: string; followUpUrl?: string }> {
-  const ySymbol = toYahooSymbol(symbol, market)
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ySymbol)}&fields=${FINANCIAL_FIELDS}`
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'StockTracker/2.0', Accept: 'application/json' },
-    })
-    if (!res.ok) return { ok: false, error: `Yahoo Finance 请求失败 (${res.status})`, followUpUrl: url }
-    const payload = await res.json()
-    const result = payload?.quoteResponse?.result?.[0]
-    if (!result) return { ok: false, error: '未找到该股票的财报数据', followUpUrl: url }
-
-    const epsActual = result.trailingEps ?? null
-    const epsEstimate = result.forwardEps ?? null
-    return {
-      ok: true,
-      data: {
-        symbol,
-        market,
-        earningsDate: Array.isArray(result.earningsDate) ? result.earningsDate[0]?.fmt ?? null : null,
-        epsActual,
-        epsEstimate,
-        epsSurprise: epsActual != null && epsEstimate != null
-          ? Number((((epsActual - epsEstimate) / Math.abs(epsEstimate)) * 100).toFixed(2))
-          : null,
-        revenueGrowth: result.revenueGrowth != null ? Number((result.revenueGrowth * 100).toFixed(2)) : null,
-        earningsGrowth: result.earningsQuarterlyGrowth != null ? Number((result.earningsQuarterlyGrowth * 100).toFixed(2)) : null,
-        source: 'yahoo-finance',
-      },
-    }
-  } catch {
-    return { ok: false, error: '获取财报数据失败', followUpUrl: url }
-  }
-}
-
-async function fetchAEastmoneyFinancials(symbol: string): Promise<{ ok: boolean; data?: FinancialsData; error?: string }> {
-  const secid = symbol.startsWith('6') ? `1.${symbol}` : `0.${symbol}`
-  const url = `https://datacenter.eastmoney.com/api/data/v1/get?reportName=RPT_DMSK_FN_MAIN&columns=SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,REPORT_DATE,BASIC_EPS,TOTAL_OPERATE_INCOME,TOTAL_OPERATE_INCOME_YOY,NETPROFIT_PARENT_YOY,WEIGHTAVG_ROE&filter=(SECURITY_TYPE_CODE="058001001")(SECURITY_CODE="${symbol}")&pageNumber=1&pageSize=1&sortName=REPORT_DATE&sortType=-1&source=HSF10&client=PC`
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'StockTracker/2.0', Accept: 'application/json' },
-    })
-    if (!res.ok) return { ok: false, error: `东方财富请求失败 (${res.status})` }
-    const payload = await res.json()
-    const rows = payload?.result?.data
-    if (!rows?.length) return { ok: false, error: '东方财富未返回财报数据' }
-    const row = rows[0]
-    return {
-      ok: true,
-      data: {
-        symbol,
-        market: 'A',
-        earningsDate: row.NOTICE_DATE ?? null,
-        epsActual: row.BASIC_EPS != null ? Number(row.BASIC_EPS) : null,
-        epsEstimate: null,
-        epsSurprise: null,
-        revenueGrowth: row.TOTAL_OPERATE_INCOME_YOY != null ? Number(row.TOTAL_OPERATE_INCOME_YOY) : null,
-        earningsGrowth: row.NETPROFIT_PARENT_YOY != null ? Number(row.NETPROFIT_PARENT_YOY) : null,
-        source: 'eastmoney',
-        note: `报告期：${row.REPORT_DATE ?? '-'}`,
-      },
-    }
-  } catch {
-    return { ok: false, error: '东方财富财报请求异常' }
-  }
-}
-
 export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData> = {
   name: 'stock.getFinancials',
   description: '获取股票最近财报数据（EPS、营收增长等），支持美股/A股/港股。',
@@ -276,32 +189,28 @@ export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData
     const { symbol, market } = args
     if (!symbol) return { skillName: 'stock.getFinancials', ok: false, error: '缺少标的代码' }
 
-    // A 股：优先东方财富（数据更全），再 Yahoo Finance 兜底
+    // A 股：直接走新浪财经财报页面（东方财富 API 不稳定，Yahoo Finance 限制访问）
     if (market === 'A') {
-      const em = await fetchAEastmoneyFinancials(symbol)
-      if (em.ok && em.data) return { skillName: 'stock.getFinancials', ok: true, data: em.data }
-      // 东方财富失败，尝试 Yahoo Finance
-      const yf = await fetchYahooFinancials(symbol, market)
-      if (yf.ok && yf.data) return { skillName: 'stock.getFinancials', ok: true, data: yf.data }
-      // 全部失败，web.fetch 兜底
-      const fallbackUrl = `https://emweb.securities.eastmoney.com/PC_HSF10/FinanceSummary/Index?type=web&code=${symbol.startsWith('6') ? 'SH' : 'SZ'}${symbol}`
+      const sinaUrl = `https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/${symbol}.phtml`
       return {
-        skillName: 'stock.getFinancials', ok: false, error: em.error || yf.error,
+        skillName: 'stock.getFinancials',
+        ok: false,
+        error: 'A 股财报需通过新浪财经抓取',
         needsFollowUp: true,
         suggestedSkills: [
-          { name: 'web.fetch', args: { url: fallbackUrl, extractPrompt: '从页面中提取最新财报关键数据：每股收益(EPS)、营业收入同比增长率(%)、归母净利润同比增长率(%)、加权ROE(%)' }, reason: '所有内置财报接口均失败，使用网页抓取兜底' },
+          { name: 'web.fetch', args: { url: sinaUrl, extractPrompt: '从新浪财经财报页面提取最新报告期的关键数据：基本每股收益(元)、营业收入(亿元)、营业收入同比增长率(%)、归母净利润(亿元)、归母净利润同比增长率(%)、加权平均净资产收益率(%)。页面中表格有三列分别对应不同报告期，取最新一列（通常是第一列数据列）' }, reason: '抓取新浪财经财报摘要页面' },
         ],
       }
     }
 
-    // 美股 / 港股：Yahoo Finance
-    const yf = await fetchYahooFinancials(symbol, market)
-    if (yf.ok && yf.data) return { skillName: 'stock.getFinancials', ok: true, data: yf.data }
+    // 美股 / 港股：Yahoo Finance 网页版抓取
     return {
-      skillName: 'stock.getFinancials', ok: false, error: yf.error,
+      skillName: 'stock.getFinancials',
+      ok: false,
+      error: '美股/港股财报需通过网页抓取',
       needsFollowUp: true,
       suggestedSkills: [
-        { name: 'web.fetch', args: { url: yf.followUpUrl || `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '提取最新财报关键指标：EPS、营收、同比增长' }, reason: '财报数据抓取失败，使用 web.fetch 兜底' },
+        { name: 'web.fetch', args: { url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`, extractPrompt: '从 Yahoo Finance 页面提取最新财报关键指标：EPS (Earnings Per Share)、Revenue Growth (YoY)、Earnings Growth (YoY)' }, reason: '抓取 Yahoo Finance 股票页面获取财报摘要' },
       ],
     }
   },

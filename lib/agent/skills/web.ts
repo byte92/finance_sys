@@ -28,9 +28,13 @@ const ALLOWED_HOSTS = [
   'push2.eastmoney.com',
   'data.eastmoney.com',
   'emweb.securities.eastmoney.com',
+  'datacenter.eastmoney.com',
   'www.cninfo.com.cn',
   'api.exchangerate-api.com',
   'news.google.com',
+  'vip.stock.finance.sina.com.cn',
+  'hq.sinajs.cn',
+  'money.finance.sina.com.cn',
 ]
 
 const BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1']

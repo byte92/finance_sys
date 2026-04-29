@@ -16,6 +16,8 @@
 | `store/` | Zustand store，负责前端状态和本地持久化协调。 |
 | `tests/` | Node test runner 测试。默认测试不依赖真实外部网络；外部接口 smoke test 使用 `npm run test:external`。 |
 | `types/` | 跨模块共享类型。 |
+| `Dockerfile` | 生产容器镜像构建入口，使用 Next.js standalone 输出。 |
+| `docker-compose.yml` | 本地 Docker 服务编排，默认挂载持久化 SQLite 数据卷。 |
 
 ## `lib/` 目录边界
 

@@ -12,6 +12,7 @@
 - [ ] 确认 `CONTRIBUTING.md`、`SECURITY.md`、`LICENSE` 已存在。
 - [ ] 确认 `CODE_OF_CONDUCT.md`、Issue template、PR template 已存在。
 - [ ] 确认 `.env.example` 中没有真实密钥。
+- [ ] 确认 `docker compose up -d --build` 可以启动服务。
 - [ ] 运行 `npm test`。
 - [ ] 运行 `npm run build`。
 
@@ -22,6 +23,7 @@
 - [ ] 在 GitHub 仓库中开启 Security Advisories。
 - [ ] 配置 Issue template 和 PR template。
 - [ ] 配置 CI，至少运行 `npm test` 和 `npm run build`。
+- [ ] 发布 Docker Hub 镜像，并补充 `latest` 与语义化版本标签。
 - [ ] 添加 release notes 或 changelog。
 - [ ] 明确 roadmap 中哪些能力已经完成，哪些仍在设计中。
 

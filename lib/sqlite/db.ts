@@ -32,6 +32,7 @@ function normalizePayload(payload: Partial<StoredPayload> | null | undefined): S
     config: {
       ...DEFAULT_APP_CONFIG,
       ...(payload?.config ?? {}),
+      tradeMatchMode: payload?.config?.tradeMatchMode ?? DEFAULT_APP_CONFIG.tradeMatchMode,
       feeConfigs: {
         ...DEFAULT_APP_CONFIG.feeConfigs,
         ...(payload?.config?.feeConfigs ?? {}),
@@ -80,6 +81,7 @@ function initSchema(db: Database.Database) {
     user_id TEXT NOT NULL,
     title TEXT NOT NULL,
     scope TEXT NOT NULL,
+    context_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -278,6 +280,9 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
   const db = new Database(dbPath);
   initSchema(db);
 
+  // V2 迁移：为已有的 ai_chat_sessions 表补充 context_json 列
+  try { db.exec('ALTER TABLE ai_chat_sessions ADD COLUMN context_json TEXT'); } catch { /* 列已存在 */ }
+
   function getPortfolioByUserId(userId: string): StoredPayload {
     const row = db
       .prepare("SELECT payload FROM portfolios WHERE user_id = ?")
@@ -465,6 +470,24 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     ).run(title, new Date().toISOString(), userId, sessionId);
   }
 
+  function setSessionContext(userId: string, sessionId: string, context: Record<string, unknown> | null) {
+    if (context) {
+      const json = JSON.stringify(context)
+      db.prepare('UPDATE ai_chat_sessions SET context_json = ?, updated_at = ? WHERE user_id = ? AND id = ?')
+        .run(json, new Date().toISOString(), userId, sessionId)
+    } else {
+      db.prepare('UPDATE ai_chat_sessions SET context_json = NULL, updated_at = ? WHERE user_id = ? AND id = ?')
+        .run(new Date().toISOString(), userId, sessionId)
+    }
+  }
+
+  function getSessionContext(userId: string, sessionId: string): Record<string, unknown> | null {
+    const row = db.prepare('SELECT context_json FROM ai_chat_sessions WHERE user_id = ? AND id = ?')
+      .get(userId, sessionId) as { context_json: string | null } | undefined
+    if (!row?.context_json) return null
+    try { return JSON.parse(row.context_json) } catch { return null }
+  }
+
   function touchAiChatSession(userId: string, sessionId: string) {
     db.prepare(
       `
@@ -546,6 +569,18 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return rows.map(parseChatMessageRow);
   }
 
+  function getAiChatMessage(userId: string, messageId: string) {
+    const row = db.prepare(
+      `
+      SELECT *
+      FROM ai_chat_messages
+      WHERE user_id = ? AND id = ?
+      `,
+    ).get(userId, messageId) as Record<string, unknown> | undefined;
+
+    return row ? parseChatMessageRow(row) : null;
+  }
+
   function deleteAiChatSession(userId: string, sessionId: string) {
     db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
     db.prepare("DELETE FROM ai_agent_runs WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
@@ -606,6 +641,18 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return rows.map(parseAiAgentRunRow);
   }
 
+  function getAiAgentRun(userId: string, runId: string) {
+    const row = db.prepare(
+      `
+      SELECT *
+      FROM ai_agent_runs
+      WHERE user_id = ? AND id = ?
+      `,
+    ).get(userId, runId) as Record<string, unknown> | undefined;
+
+    return row ? parseAiAgentRunRow(row) : null;
+  }
+
   return {
     dbPath,
     getPortfolioByUserId,
@@ -619,12 +666,16 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     getAiChatSession,
     listAiChatSessions,
     saveAiChatMessage,
+    getAiChatMessage,
     listAiChatMessages,
     deleteAiChatSession,
     clearAiChatMessages,
     clearAiChatByUserId,
     saveAiAgentRun,
+    getAiAgentRun,
     listAiAgentRuns,
+    setSessionContext,
+    getSessionContext,
     rawInsert,
     close,
   };
@@ -674,6 +725,14 @@ export function updateAiChatSessionTitle(userId: string, sessionId: string, titl
   portfolioStore.updateAiChatSessionTitle(userId, sessionId, title);
 }
 
+export function setSessionContext(userId: string, sessionId: string, context: Record<string, unknown> | null) {
+  portfolioStore.setSessionContext(userId, sessionId, context);
+}
+
+export function getSessionContext(userId: string, sessionId: string) {
+  return portfolioStore.getSessionContext(userId, sessionId);
+}
+
 export function getAiChatSession(userId: string, sessionId: string) {
   return portfolioStore.getAiChatSession(userId, sessionId);
 }
@@ -684,6 +743,10 @@ export function listAiChatSessions(userId: string) {
 
 export function saveAiChatMessage(input: SaveAiChatMessageInput) {
   portfolioStore.saveAiChatMessage(input);
+}
+
+export function getAiChatMessage(userId: string, messageId: string) {
+  return portfolioStore.getAiChatMessage(userId, messageId);
 }
 
 export function listAiChatMessages(userId: string, sessionId: string, limit?: number) {
@@ -704,6 +767,10 @@ export function clearAiChatByUserId(userId: string) {
 
 export function saveAiAgentRun(input: SaveAiAgentRunInput) {
   portfolioStore.saveAiAgentRun(input);
+}
+
+export function getAiAgentRun(userId: string, runId: string) {
+  return portfolioStore.getAiAgentRun(userId, runId);
 }
 
 export function listAiAgentRuns(userId: string, sessionId: string, limit?: number) {

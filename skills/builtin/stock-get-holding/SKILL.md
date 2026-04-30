@@ -4,6 +4,7 @@ description: 读取单只股票的本地持仓、成本、盈亏和备注。
 version: 1
 scopes:
   - stock.read
+  - quote.read
 inputs:
   stockId: string
 dependencies:

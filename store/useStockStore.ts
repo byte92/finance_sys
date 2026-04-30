@@ -59,6 +59,7 @@ function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
   return {
     ...DEFAULT_APP_CONFIG,
     ...config,
+    tradeMatchMode: config?.tradeMatchMode ?? DEFAULT_APP_CONFIG.tradeMatchMode,
     feeConfigs: {
       ...DEFAULT_APP_CONFIG.feeConfigs,
       ...(config?.feeConfigs ?? {}),

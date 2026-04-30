@@ -11,7 +11,7 @@ import {
   type SeriesMarker,
   type MouseEventParams,
 } from 'lightweight-charts'
-import type { Market, Trade } from '@/types'
+import type { Market, Trade, TradeMatchMode } from '@/types'
 import { calcPerShareCost, add, mul } from '@/lib/money'
 
 type KlineItem = {
@@ -62,10 +62,12 @@ export default function StockKline({
   symbol,
   market,
   trades,
+  matchMode = 'FIFO',
 }: {
   symbol: string
   market: Market
   trades: Trade[]
+  matchMode?: TradeMatchMode
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -195,7 +197,7 @@ export default function StockKline({
       .map(([time, value]) => ({ time: time as any, value }))
   }, [mappedTrades])
 
-  // 动态成本线（FIFO 均价随时间变化）
+  // 动态成本线（按设置的卖出成本匹配口径随时间变化）
   const costLineData = useMemo<LineData<any>[]>(() => {
     if (!data.length) return []
     const sortedTrades = [...trades]
@@ -214,11 +216,12 @@ export default function StockKline({
         } else {
           let remaining = t.quantity
           while (remaining > 0 && costQueue.length > 0) {
-            if (costQueue[0].quantity <= remaining) {
-              remaining -= costQueue[0].quantity
-              costQueue.shift()
+            const lotIndex = matchMode === 'RECENT_LOTS' ? costQueue.length - 1 : 0
+            if (costQueue[lotIndex].quantity <= remaining) {
+              remaining -= costQueue[lotIndex].quantity
+              costQueue.splice(lotIndex, 1)
             } else {
-              costQueue[0].quantity -= remaining
+              costQueue[lotIndex].quantity -= remaining
               remaining = 0
             }
           }
@@ -232,7 +235,7 @@ export default function StockKline({
       }
     }
     return result
-  }, [data, trades])
+  }, [data, matchMode, trades])
 
   const holdingData = useMemo<HistogramData<any>[]>(() => {
     if (!data.length) return []

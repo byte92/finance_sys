@@ -24,7 +24,7 @@ type TodayPnlSnapshot = {
 }
 
 export default function PortfolioSummarySection() {
-  const { stocks } = useStockStore()
+  const { stocks, config } = useStockStore()
   const { displayCurrency, convertAmountSync, formatWithCurrency, rates } = useCurrency()
   const [expanded, setExpanded] = useState(false)
   const [todayPnl, setTodayPnl] = useState<TodayPnlSnapshot>({
@@ -49,7 +49,7 @@ export default function PortfolioSummarySection() {
     let totalHolding = 0
 
     for (const stock of stocks) {
-      const summary = calcStockSummary(stock)
+      const summary = calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode })
       totalRealizedPnl += convertAmountSync(summary.realizedPnl, stock.market)
       totalInvested += convertAmountSync(summary.totalBuyAmount, stock.market)
       totalCommission += convertAmountSync(summary.totalCommission, stock.market)
@@ -68,7 +68,7 @@ export default function PortfolioSummarySection() {
       totalHolding,
       stockCount: stocks.length,
     }
-  }, [stocks, convertAmountSync])
+  }, [stocks, convertAmountSync, config.tradeMatchMode])
 
   useEffect(() => {
     let cancelled = false
@@ -85,7 +85,7 @@ export default function PortfolioSummarySection() {
 
     async function loadTodayPnl() {
       const activeHoldings = stocks
-        .map((stock) => ({ stock, summary: calcStockSummary(stock) }))
+        .map((stock) => ({ stock, summary: calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode }) }))
         .filter(({ summary }) => summary.currentHolding > 0)
 
       if (activeHoldings.length === 0) {
@@ -108,7 +108,7 @@ export default function PortfolioSummarySection() {
               return null
             }
 
-            const quotedSummary = calcStockSummary(stock, quote.price)
+            const quotedSummary = calcStockSummary(stock, quote.price, { matchMode: config.tradeMatchMode })
             const rawTodayPnl = summary.currentHolding * quote.change
             const rawPreviousValue = summary.currentHolding * Math.max(quote.price - quote.change, 0)
             const rawMarketValue = summary.currentHolding * quote.price
@@ -176,7 +176,7 @@ export default function PortfolioSummarySection() {
     return () => {
       cancelled = true
     }
-  }, [stocks, displayCurrency, rates])
+  }, [stocks, displayCurrency, rates, config.tradeMatchMode])
 
   return (
     <section className="space-y-3">

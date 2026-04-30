@@ -152,6 +152,7 @@ types/        共享类型
 - [项目目录结构](./docs/PROJECT_STRUCTURE.md)
 - [数据接口清单](./docs/DATA_API_INVENTORY.md)
 - [Agent 架构设计](./docs/AGENT_ARCHITECTURE.md)
+- [Skill 标准](./docs/SKILL_STANDARD.md)
 - [AI 对话需求](./docs/AI_CHAT_REQUIREMENTS.md)
 - [行情获取说明](./docs/PRICE_FETCHING.md)
 - [开源发布检查清单](./docs/OPEN_SOURCE_CHECKLIST.md)

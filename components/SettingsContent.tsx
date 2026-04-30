@@ -11,7 +11,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { AiAnalysisLanguage, AiProvider, ExportData, Market } from '@/types'
+import type { AiAnalysisLanguage, AiProvider, ExportData, Market, TradeMatchMode } from '@/types'
 
 const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
@@ -40,6 +40,7 @@ export default function SettingsContent({
   const { config, updateConfig, exportData, importData, clearAll } = useStockStore()
   const { displayCurrency, setDisplayCurrency } = useCurrency()
   const [defaultMarket, setDefaultMarket] = useState<Market>(config.defaultMarket)
+  const [tradeMatchMode, setTradeMatchMode] = useState<TradeMatchMode>(config.tradeMatchMode)
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
   const [aiConfig, setAiConfig] = useState(config.aiConfig)
   const [draftDisplayCurrency, setDraftDisplayCurrency] = useState(displayCurrency)
@@ -60,6 +61,7 @@ export default function SettingsContent({
 
   useEffect(() => {
     setDefaultMarket(config.defaultMarket)
+    setTradeMatchMode(config.tradeMatchMode)
     setFeeConfigs(config.feeConfigs)
     setAiConfig(config.aiConfig)
     setDraftDisplayCurrency(displayCurrency)
@@ -148,6 +150,7 @@ export default function SettingsContent({
   }, [aiConfig, config.aiConfig])
 
   const preferencesDirty = draftDisplayCurrency !== displayCurrency
+    || tradeMatchMode !== config.tradeMatchMode
   const envAiConfigured = aiEnvStatus?.configured === true
   const displayedAiEnabled = envAiConfigured ? true : aiConfig.enabled
   const displayedAiProvider = envAiConfigured && aiEnvStatus?.provider ? aiEnvStatus.provider : aiConfig.provider
@@ -177,13 +180,14 @@ export default function SettingsContent({
     try {
       await updateConfig({
         defaultMarket,
+        tradeMatchMode,
         feeConfigs,
         aiConfig,
       })
       if (draftDisplayCurrency !== displayCurrency) {
         setDisplayCurrency(draftDisplayCurrency)
       }
-      setSuccessMessage('设置已成功保存到本地 SQLite')
+      setSuccessMessage('保存成功')
       setTimeout(() => setSuccessMessage(''), 2500)
       onSaved?.()
     } catch (err) {
@@ -562,6 +566,20 @@ export default function SettingsContent({
               </Select>
               <div className="text-xs text-muted-foreground">
                 主题模式已迁回侧边栏底部，方便随时切换。
+              </div>
+            </div>
+            <div className="space-y-1.5 max-w-80">
+              <Label htmlFor="trade-match-mode">卖出成本匹配口径</Label>
+              <Select
+                id="trade-match-mode"
+                value={tradeMatchMode}
+                onChange={(e) => setTradeMatchMode(e.target.value as TradeMatchMode)}
+              >
+                <option value="FIFO">FIFO（先进先出）</option>
+                <option value="RECENT_LOTS">最近批次（做 T 复盘口径）</option>
+              </Select>
+              <div className="text-xs text-muted-foreground">
+                影响卖出已实现盈亏、剩余持仓成本和浮盈浮亏；默认 FIFO 保持传统会计口径。
               </div>
             </div>
           </div>

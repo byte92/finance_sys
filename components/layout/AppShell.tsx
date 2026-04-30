@@ -19,6 +19,7 @@ const AI_SUB_ITEMS = [
   { href: '/ai/chat', label: 'AI 对话', match: (pathname: string) => pathname.startsWith('/ai/chat') },
   { href: '/ai', label: '分析中心', match: (pathname: string) => pathname === '/ai' },
   { href: '/ai/history', label: '分析历史', match: (pathname: string) => pathname.startsWith('/ai/history') },
+  { href: '/ai/debug', label: 'Debug', match: (pathname: string) => pathname.startsWith('/ai/debug') },
 ] as const
 
 const SIDEBAR_COLLAPSED_KEY = 'stock-tracker-sidebar-collapsed'

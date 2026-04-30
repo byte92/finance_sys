@@ -7,7 +7,7 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary } from '@/lib/finance'
 
 export default function AiStockNavigator() {
-  const { stocks } = useStockStore()
+  const { stocks, config } = useStockStore()
 
   return (
     <section className="space-y-3">
@@ -23,7 +23,7 @@ export default function AiStockNavigator() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {stocks.map((stock) => {
-            const summary = calcStockSummary(stock)
+            const summary = calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode })
             return (
               <Link
                 key={stock.id}

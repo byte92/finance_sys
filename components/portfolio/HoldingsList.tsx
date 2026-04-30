@@ -14,7 +14,7 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPercent, formatPnl } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
 import { MARKET_LABELS } from '@/config/defaults'
-import type { Stock } from '@/types'
+import type { Stock, TradeMatchMode } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
 type SortOption =
@@ -40,7 +40,7 @@ export default function HoldingsList({
   description?: string
 }) {
   const router = useRouter()
-  const { stocks, deleteStock } = useStockStore()
+  const { stocks, deleteStock, config } = useStockStore()
   const { convertAmountSync } = useCurrency()
   const [showAddStock, setShowAddStock] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; code: string } | null>(null)
@@ -51,7 +51,9 @@ export default function HoldingsList({
     let cancelled = false
 
     async function loadQuotes() {
-      const activeHoldings = stocks.filter((stock) => calcStockSummary(stock).currentHolding > 0)
+      const activeHoldings = stocks.filter((stock) =>
+        calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode }).currentHolding > 0
+      )
 
       if (activeHoldings.length === 0) {
         setQuotesByStockId({})
@@ -88,7 +90,7 @@ export default function HoldingsList({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [stocks])
+  }, [stocks, config.tradeMatchMode])
 
   const visibleStocks = useMemo(() => {
     const sorted = sortBy === 'default'
@@ -100,8 +102,8 @@ export default function HoldingsList({
 
           const leftQuote = quotesByStockId[left.id]
           const rightQuote = quotesByStockId[right.id]
-          const leftSummary = calcStockSummary(left, leftQuote?.price)
-          const rightSummary = calcStockSummary(right, rightQuote?.price)
+          const leftSummary = calcStockSummary(left, leftQuote?.price, { matchMode: config.tradeMatchMode })
+          const rightSummary = calcStockSummary(right, rightQuote?.price, { matchMode: config.tradeMatchMode })
 
           const leftTodayPnl = leftQuote ? convertAmountSync(leftSummary.currentHolding * leftQuote.change, left.market) : Number.NEGATIVE_INFINITY
           const rightTodayPnl = rightQuote ? convertAmountSync(rightSummary.currentHolding * rightQuote.change, right.market) : Number.NEGATIVE_INFINITY
@@ -140,7 +142,7 @@ export default function HoldingsList({
         })
 
     return typeof limit === 'number' ? sorted.slice(0, limit) : sorted
-  }, [convertAmountSync, limit, quotesByStockId, sortBy, stocks])
+  }, [convertAmountSync, limit, quotesByStockId, sortBy, stocks, config.tradeMatchMode])
 
   return (
     <section className="space-y-3">
@@ -201,6 +203,7 @@ export default function HoldingsList({
                 key={stock.id}
                 stock={stock}
                 preloadedQuote={quotesByStockId[stock.id] ?? null}
+                matchMode={config.tradeMatchMode}
                 onOpen={() => router.push(`/stock/${stock.id}`)}
                 onDelete={() => setDeleteTarget({ id: stock.id, name: stock.name, code: stock.code })}
               />
@@ -237,17 +240,19 @@ export default function HoldingsList({
 function StockListRow({
   stock,
   preloadedQuote,
+  matchMode,
   onOpen,
   onDelete,
 }: {
   stock: Stock
   preloadedQuote: StockQuote | null
+  matchMode: TradeMatchMode
   onOpen: () => void
   onDelete: () => void
 }) {
   const { quote: liveQuote } = useStockQuote(stock.code, stock.market, { autoRefresh: true, refreshInterval: 60000 })
   const quote = liveQuote ?? preloadedQuote
-  const summary = calcStockSummary(stock, quote?.price)
+  const summary = calcStockSummary(stock, quote?.price, { matchMode })
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
   const formatNativeAmount = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
   const totalCost = summary.avgCostPrice * summary.currentHolding

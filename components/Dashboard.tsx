@@ -15,7 +15,7 @@ import { useStockQuote } from '@/hooks/useStockQuote'
 import { useTheme } from '@/hooks/useTheme'
 import AddStockModal from '@/components/AddStockModal'
 import SettingsModal from '@/components/SettingsModal'
-import type { Stock } from '@/types'
+import type { Stock, TradeMatchMode } from '@/types'
 
 export default function Dashboard() {
   const router = useRouter()
@@ -23,6 +23,7 @@ export default function Dashboard() {
     stocks,
     init,
     deleteStock,
+    config,
   } = useStockStore()
   const { theme, toggleTheme, mounted } = useTheme()
   const { displayCurrency, setDisplayCurrency, convertAmountSync, formatWithCurrency } = useCurrency()
@@ -43,7 +44,7 @@ export default function Dashboard() {
     let totalHolding = 0
 
     for (const stock of stocks) {
-      const summary = calcStockSummary(stock)
+      const summary = calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode })
       totalRealizedPnl += convertAmountSync(summary.realizedPnl, stock.market)
       totalInvested += convertAmountSync(summary.totalBuyAmount, stock.market)
       totalCommission += convertAmountSync(summary.totalCommission, stock.market)
@@ -61,7 +62,7 @@ export default function Dashboard() {
       totalDividend,
       totalHolding,
     }
-  }, [stocks, convertAmountSync])
+  }, [stocks, convertAmountSync, config.tradeMatchMode])
 
   return (
     <div className="min-h-screen bg-background">
@@ -169,6 +170,7 @@ export default function Dashboard() {
                       key={stock.id}
                       stock={stock}
                       displayCurrency={displayCurrency}
+                      matchMode={config.tradeMatchMode}
                       convertAmountSync={convertAmountSync}
                       formatWithCurrency={formatWithCurrency}
                       onOpen={() => router.push(`/stock/${stock.id}`)}
@@ -215,6 +217,7 @@ export default function Dashboard() {
 function StockListRow({
   stock,
   displayCurrency,
+  matchMode,
   convertAmountSync,
   formatWithCurrency,
   onOpen,
@@ -222,13 +225,14 @@ function StockListRow({
 }: {
   stock: Stock
   displayCurrency: string
+  matchMode: TradeMatchMode
   convertAmountSync: (amount: number, fromMarket: string) => number
   formatWithCurrency: (amount: number) => string
   onOpen: () => void
   onDelete: () => void
 }) {
   const { quote } = useStockQuote(stock.code, stock.market, { autoRefresh: true, refreshInterval: 60000 })
-  const summary = calcStockSummary(stock, quote?.price)
+  const summary = calcStockSummary(stock, quote?.price, { matchMode })
   const totalCost = convertAmountSync(summary.avgCostPrice * summary.currentHolding, stock.market)
   const avgCost = convertAmountSync(summary.avgCostPrice, stock.market)
   const realizedPnl = convertAmountSync(summary.realizedPnl, stock.market)

@@ -5,6 +5,7 @@ import type {
   Stock,
   StockSummary,
   Trade,
+  TradeMatchMode,
   TradePnlDetail,
 } from "@/types";
 import { roundMoney, calcCommission, calcAmount, calcPerShareCost, calcPnl, calcPnlPercent, add, sub, mul } from "./money";
@@ -17,6 +18,52 @@ type FeeBreakdown = {
 };
 
 type MainlandFeeProfile = "A_STOCK" | "A_ETF_OR_FUND";
+
+type CostLot = {
+  tradeId: string;
+  price: number;
+  quantity: number;
+};
+
+type MatchSellInput = {
+  quantity: number;
+  costQueue: CostLot[];
+  mode?: TradeMatchMode;
+};
+
+type MatchSellResult = {
+  costBasis: number;
+};
+
+function matchSellLots({
+  quantity,
+  costQueue,
+  mode = "FIFO",
+}: MatchSellInput): MatchSellResult {
+  let remaining = quantity;
+  let costBasis = 0;
+
+  while (remaining > 0 && costQueue.length > 0) {
+    const lotIndex = mode === "RECENT_LOTS" ? costQueue.length - 1 : 0;
+    const lot = costQueue[lotIndex];
+
+    if (lot.quantity <= remaining) {
+      costBasis = add(costBasis, mul(lot.price, lot.quantity));
+      remaining -= lot.quantity;
+      costQueue.splice(lotIndex, 1);
+    } else {
+      costBasis = add(costBasis, mul(lot.price, remaining));
+      lot.quantity -= remaining;
+      remaining = 0;
+    }
+  }
+
+  return { costBasis };
+}
+
+export type CalcStockSummaryOptions = {
+  matchMode?: TradeMatchMode;
+};
 
 function getMainlandFeeProfile(
   market: Market,
@@ -137,13 +184,15 @@ export function autoCalcFees(
   }
 }
 
-// 计算股票整体盈亏摘要（FIFO方法）
+// 计算股票整体盈亏摘要（默认 FIFO，可指定卖出成本匹配口径）
 // 支持：BUY / SELL / DIVIDEND
 export function calcStockSummary(
   stock: Stock,
   currentPrice?: number,
+  options: CalcStockSummaryOptions = {},
 ): StockSummary {
   const trades = [...stock.trades].sort((a, b) => a.date.localeCompare(b.date));
+  const tradeMatchMode = options.matchMode ?? "FIFO";
 
   let totalBuyAmount = 0;
   let totalSellAmount = 0;
@@ -153,8 +202,8 @@ export function calcStockSummary(
   let totalDividend = 0;
   let tradeCount = 0;
 
-  // FIFO 成本队列：{ price: 每股摊薄成本, quantity: 数量 }
-  const costQueue: Array<{ tradeId: string; price: number; quantity: number }> = [];
+  // 成本批次队列：{ price: 每股摊薄成本, quantity: 数量 }
+  const costQueue: CostLot[] = [];
 
   // 每笔交易盈亏明细
   const tradePnlDetails: TradePnlDetail[] = [];
@@ -186,20 +235,11 @@ export function calcStockSummary(
       totalCommission = add(totalCommission, add(trade.commission, trade.tax));
       totalSellAmount = add(totalSellAmount, trade.netAmount);
 
-      let remaining = trade.quantity;
-      let costBasis = 0;
-      while (remaining > 0 && costQueue.length > 0) {
-        const head = costQueue[0];
-        if (head.quantity <= remaining) {
-          costBasis = add(costBasis, mul(head.price, head.quantity));
-          remaining -= head.quantity;
-          costQueue.shift();
-        } else {
-          costBasis = add(costBasis, mul(head.price, remaining));
-          head.quantity -= remaining;
-          remaining = 0;
-        }
-      }
+      const { costBasis } = matchSellLots({
+        quantity: trade.quantity,
+        costQueue,
+        mode: tradeMatchMode,
+      });
 
       const pnl = calcPnl(trade.netAmount, costBasis);
       const pnlPercent = calcPnlPercent(pnl, costBasis);
@@ -273,6 +313,7 @@ export function calcStockSummary(
 
   return {
     stock,
+    tradeMatchMode,
     totalBuyAmount,
     totalSellAmount,
     currentHolding,

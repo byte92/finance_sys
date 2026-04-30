@@ -32,6 +32,7 @@ function normalizePayload(payload: Partial<StoredPayload> | null | undefined): S
     config: {
       ...DEFAULT_APP_CONFIG,
       ...(payload?.config ?? {}),
+      tradeMatchMode: payload?.config?.tradeMatchMode ?? DEFAULT_APP_CONFIG.tradeMatchMode,
       feeConfigs: {
         ...DEFAULT_APP_CONFIG.feeConfigs,
         ...(payload?.config?.feeConfigs ?? {}),

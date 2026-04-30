@@ -23,6 +23,9 @@ export type WebSearchResult = {
 type PlaywrightBrowser = import('playwright').Browser
 type PlaywrightBrowserContext = import('playwright').BrowserContext
 type PlaywrightPage = import('playwright').Page
+type OsModule = Pick<typeof import('node:os'), 'homedir' | 'platform'>
+type PathModule = Pick<typeof import('node:path'), 'join'>
+type Env = Partial<Record<string, string | undefined>>
 
 export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
   name: 'web.search',
@@ -46,8 +49,7 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
       const os = await import('node:os')
       const { chromium } = await import('playwright')
 
-      const cacheDir = process.env.PLAYWRIGHT_BROWSERS_PATH
-        || path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+      const cacheDir = getPlaywrightBrowsersPath(os, path)
       const execPath = findChromiumExecutable(cacheDir, fs, path)
 
       if (!execPath) {
@@ -102,7 +104,22 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.max(min, Math.min(parsed, max))
 }
 
-function findChromiumExecutable(
+export function getDefaultPlaywrightBrowsersPath(os: OsModule, path: PathModule, env: Env = process.env) {
+  switch (os.platform()) {
+    case 'darwin':
+      return path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
+    case 'win32':
+      return path.join(env.LOCALAPPDATA?.trim() || path.join(os.homedir(), 'AppData', 'Local'), 'ms-playwright')
+    default:
+      return path.join(env.XDG_CACHE_HOME?.trim() || path.join(os.homedir(), '.cache'), 'ms-playwright')
+  }
+}
+
+export function getPlaywrightBrowsersPath(os: OsModule, path: PathModule, env: Env = process.env) {
+  return env.PLAYWRIGHT_BROWSERS_PATH?.trim() || getDefaultPlaywrightBrowsersPath(os, path, env)
+}
+
+export function findChromiumExecutable(
   cacheDir: string,
   fs: typeof import('node:fs'),
   path: typeof import('node:path'),

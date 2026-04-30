@@ -147,7 +147,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
   return content
 }
 
-async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void) {
+async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
   const baseUrl = ensureApiBase(config.baseUrl)
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -161,6 +161,7 @@ async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMes
       stream: true,
       messages,
     }),
+    signal,
   })
 
   if (!res.ok || !res.body) {
@@ -199,7 +200,7 @@ async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMes
   assertNormalFinish(finishReason, receivedText, onChunk)
 }
 
-async function streamAnthropicCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void) {
+async function streamAnthropicCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
   const baseUrl = ensureApiBase(config.baseUrl)
   const system = messages.find((message) => message.role === 'system')?.content ?? ''
   const rest = messages
@@ -224,6 +225,7 @@ async function streamAnthropicCompatible(config: AiConfig, messages: LlmProvider
       stream: true,
       messages: rest,
     }),
+    signal,
   })
 
   if (!res.ok || !res.body) {
@@ -260,10 +262,10 @@ async function streamAnthropicCompatible(config: AiConfig, messages: LlmProvider
   assertNormalFinish(finishReason, receivedText, onChunk)
 }
 
-export async function streamCompletion(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void) {
+export async function streamCompletion(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
   if (config.provider === 'anthropic-compatible') {
-    await streamAnthropicCompatible(config, messages, onChunk)
+    await streamAnthropicCompatible(config, messages, onChunk, signal)
     return
   }
-  await streamOpenAiCompatible(config, messages, onChunk)
+  await streamOpenAiCompatible(config, messages, onChunk, signal)
 }

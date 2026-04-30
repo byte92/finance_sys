@@ -210,8 +210,8 @@ export async function buildChatContext({
   }
 }
 
-export async function streamChatCompletion(config: AiConfig, messages: ProviderMessage[], onChunk: (chunk: string) => void) {
-  await streamCompletion(config, messages, onChunk)
+export async function streamChatCompletion(config: AiConfig, messages: ProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
+  await streamCompletion(config, messages, onChunk, signal)
 }
 
 export function createChatMessageId() {

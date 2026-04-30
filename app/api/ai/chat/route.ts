@@ -16,6 +16,10 @@ type Body = {
   externalStocks?: Array<{ symbol: string; market: Market }>
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
 export async function POST(request: Request) {
   const startedAt = Date.now()
   const payload = await safeReadJsonBody<Body>(request)
@@ -152,7 +156,7 @@ export async function POST(request: Request) {
           }
           assistantContent += chunk
           controller.enqueue(encoder.encode(`event: token\ndata: ${JSON.stringify({ token: chunk })}\n\n`))
-        })
+        }, request.signal)
 
         if (!assistantContent.trim()) {
           throw new Error('AI 未返回有效内容')
@@ -184,6 +188,25 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ sessionId, runId: agentRunId, timings: { contextMs, firstTokenMs, totalMs } })}\n\n`))
         controller.close()
       } catch (error) {
+        if (request.signal.aborted || isAbortError(error)) {
+          if (assistantContent.trim()) {
+            saveAiChatMessage({
+              id: randomUUID(),
+              sessionId,
+              userId: body.userId!,
+              role: 'assistant',
+              content: assistantContent,
+              contextSnapshot: null,
+              tokenEstimate: estimateTokens(assistantContent),
+            })
+          }
+          try {
+            controller.close()
+          } catch {
+            // 客户端主动断开时 stream 可能已经关闭。
+          }
+          return
+        }
         const message = error instanceof Error ? error.message : 'AI 对话失败'
         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`))
         controller.close()

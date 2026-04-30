@@ -66,6 +66,44 @@ test('agent planner uses portfolio skills for portfolio risk questions', async (
   ])
 })
 
+test('agent planner keeps recent stock focus for follow-up metric questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '你看一下我平均收益是多少？',
+    stocks,
+    history: [{
+      id: 'message-1',
+      sessionId: 'session-1',
+      userId: 'user-1',
+      role: 'assistant',
+      content: '成都银行分析',
+      contextSnapshot: {
+        agent: {
+          entities: [{
+            type: 'stock',
+            stockId: 'stock-1',
+            code: '601838',
+            name: '成都银行',
+            market: 'A',
+          }],
+        },
+      },
+      tokenEstimate: 10,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }],
+    aiConfig: mockAiConfig,
+  })
+
+  assert.equal(plan.intent, 'stock_analysis')
+  assert.equal(plan.responseMode, 'answer')
+  assert.equal(plan.entities[0]?.stockId, 'stock-1')
+  assert.deepEqual(plan.requiredSkills.map((item) => item.name), [
+    'stock.getHolding',
+    'stock.getRecentTrades',
+    'stock.getQuote',
+    'stock.getTechnicalSnapshot',
+  ])
+})
+
 test('agent planner refuses clearly out-of-scope questions', async () => {
   const plan = await planAgentResponse({
     userMessage: '帮我看看今天成都天气怎么样',

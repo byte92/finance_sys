@@ -1,6 +1,6 @@
 import { detectStockCode, formatStockCandidate, matchStocks } from '@/lib/agent/entity/stockMatcher'
 import type { AgentPlan, AgentSkillCall } from '@/lib/agent/types'
-import type { AiConfig, Market, Stock } from '@/types'
+import type { AiChatMessage, AiConfig, Market, Stock } from '@/types'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
 
 const PORTFOLIO_KEYWORDS = ['组合', '仓位', '持仓', '风险', '亏损', '盈利', '收益', '回撤', '集中', '配置', '哪只', '哪些']
@@ -13,6 +13,8 @@ function includesAny(content: string, keywords: string[]) {
 }
 
 const FINANCIAL_KEYWORDS = ['财报', '业绩', '营收', '利润', '盈利', '净利润', 'EPS', '每股收益', '分红', '派息', '增长', '同比', '环比']
+const EXPLICIT_PORTFOLIO_KEYWORDS = ['组合', '全部', '整体', '所有', '每只', '哪些', '哪只', '仓位', '配置']
+const FOLLOW_UP_STOCK_KEYWORDS = ['收益', '盈利', '亏损', '成本', '均价', '平均', '持仓', '分红', '手续费', '操作', '建议', '怎么看', '怎么样', '多少']
 
 function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = [
@@ -101,14 +103,41 @@ async function planViaLLM(userMessage: string, stocks: Stock[], aiConfig: AiConf
   }
 }
 
+function findRecentStockFocus(history: AiChatMessage[] | undefined, stocks: Stock[]) {
+  for (const message of [...(history ?? [])].reverse()) {
+    const agent = message.contextSnapshot?.agent as { entities?: unknown } | undefined
+    const entities = agent?.entities
+    if (!Array.isArray(entities)) continue
+
+    for (const entity of entities) {
+      if (!entity || typeof entity !== 'object') continue
+      const stockId = 'stockId' in entity && typeof entity.stockId === 'string' ? entity.stockId : ''
+      const code = 'code' in entity && typeof entity.code === 'string' ? entity.code : ''
+      const name = 'name' in entity && typeof entity.name === 'string' ? entity.name : ''
+      const stock = stocks.find((item) => item.id === stockId)
+        ?? (code ? stocks.find((item) => item.code.toUpperCase() === code.toUpperCase()) : undefined)
+        ?? (name ? stocks.find((item) => item.name === name) : undefined)
+      if (stock) return stock
+    }
+  }
+  return null
+}
+
+function shouldUseRecentStockFocus(content: string) {
+  if (!includesAny(content, FOLLOW_UP_STOCK_KEYWORDS)) return false
+  return !includesAny(content, EXPLICIT_PORTFOLIO_KEYWORDS)
+}
+
 export async function planAgentResponse({
   userMessage,
   stocks,
+  history,
   externalStocks = [],
   aiConfig,
 }: {
   userMessage: string
   stocks: Stock[]
+  history?: AiChatMessage[]
   externalStocks?: Array<{ symbol: string; market: Market }>
   aiConfig: AiConfig
 }): Promise<AgentPlan> {
@@ -184,6 +213,24 @@ export async function planAgentResponse({
       ],
       responseMode: 'clarify',
       clarifyQuestion: `没有在当前持仓中找到 ${code}。请选择市场后继续：${MARKET_OPTIONS.join(' / ')}。`,
+    }
+  }
+
+  const recentStockFocus = findRecentStockFocus(history, stocks)
+  if (recentStockFocus && shouldUseRecentStockFocus(content)) {
+    return {
+      intent: includesAny(content, TRADE_KEYWORDS) ? 'trade_review' : 'stock_analysis',
+      entities: [{
+        type: 'stock',
+        raw: content,
+        stockId: recentStockFocus.id,
+        code: recentStockFocus.code,
+        name: recentStockFocus.name,
+        market: recentStockFocus.market,
+        confidence: 0.78,
+      }],
+      requiredSkills: buildStockSkillCalls(recentStockFocus, content),
+      responseMode: 'answer',
     }
   }
 

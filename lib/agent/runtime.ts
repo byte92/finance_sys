@@ -8,6 +8,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const plan = await planAgentResponse({
     userMessage: input.userMessage,
     stocks: input.stocks,
+    history: input.history,
     externalStocks: input.externalStocks ?? [],
     aiConfig: input.aiConfig,
   })

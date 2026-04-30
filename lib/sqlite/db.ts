@@ -568,6 +568,18 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return rows.map(parseChatMessageRow);
   }
 
+  function getAiChatMessage(userId: string, messageId: string) {
+    const row = db.prepare(
+      `
+      SELECT *
+      FROM ai_chat_messages
+      WHERE user_id = ? AND id = ?
+      `,
+    ).get(userId, messageId) as Record<string, unknown> | undefined;
+
+    return row ? parseChatMessageRow(row) : null;
+  }
+
   function deleteAiChatSession(userId: string, sessionId: string) {
     db.prepare("DELETE FROM ai_chat_messages WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
     db.prepare("DELETE FROM ai_agent_runs WHERE user_id = ? AND session_id = ?").run(userId, sessionId);
@@ -628,6 +640,18 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     return rows.map(parseAiAgentRunRow);
   }
 
+  function getAiAgentRun(userId: string, runId: string) {
+    const row = db.prepare(
+      `
+      SELECT *
+      FROM ai_agent_runs
+      WHERE user_id = ? AND id = ?
+      `,
+    ).get(userId, runId) as Record<string, unknown> | undefined;
+
+    return row ? parseAiAgentRunRow(row) : null;
+  }
+
   return {
     dbPath,
     getPortfolioByUserId,
@@ -641,11 +665,13 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
     getAiChatSession,
     listAiChatSessions,
     saveAiChatMessage,
+    getAiChatMessage,
     listAiChatMessages,
     deleteAiChatSession,
     clearAiChatMessages,
     clearAiChatByUserId,
     saveAiAgentRun,
+    getAiAgentRun,
     listAiAgentRuns,
     setSessionContext,
     getSessionContext,
@@ -718,6 +744,10 @@ export function saveAiChatMessage(input: SaveAiChatMessageInput) {
   portfolioStore.saveAiChatMessage(input);
 }
 
+export function getAiChatMessage(userId: string, messageId: string) {
+  return portfolioStore.getAiChatMessage(userId, messageId);
+}
+
 export function listAiChatMessages(userId: string, sessionId: string, limit?: number) {
   return portfolioStore.listAiChatMessages(userId, sessionId, limit);
 }
@@ -736,6 +766,10 @@ export function clearAiChatByUserId(userId: string) {
 
 export function saveAiAgentRun(input: SaveAiAgentRunInput) {
   portfolioStore.saveAiAgentRun(input);
+}
+
+export function getAiAgentRun(userId: string, runId: string) {
+  return portfolioStore.getAiAgentRun(userId, runId);
 }
 
 export function listAiAgentRuns(userId: string, sessionId: string, limit?: number) {

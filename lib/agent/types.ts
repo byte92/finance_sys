@@ -78,6 +78,33 @@ export type AgentSkill<TArgs = Record<string, unknown>, TResult = unknown> = {
   execute: (args: TArgs, ctx: AgentExecutionContext) => Promise<AgentSkillResult<TResult>>
 }
 
+export type AgentAnswerType =
+  | 'stock_holding_review'
+  | 'trade_review'
+  | 'portfolio_review'
+  | 'market_review'
+  | 'clarify'
+  | 'refusal'
+  | 'general'
+
+export type AgentAnswerItem = {
+  label: string
+  value: unknown
+  source: string
+  note?: string
+}
+
+export type AgentAnswerDraft = {
+  answerType: AgentAnswerType
+  facts: AgentAnswerItem[]
+  calculations: AgentAnswerItem[]
+  inferences: AgentAnswerItem[]
+  missingData: AgentAnswerItem[]
+  recommendations: AgentAnswerItem[]
+  qualityWarnings: AgentAnswerItem[]
+  confidence: 'low' | 'medium' | 'high'
+}
+
 export type AgentProviderMessage = {
   role: 'system' | 'user' | 'assistant'
   content: string
@@ -86,6 +113,7 @@ export type AgentProviderMessage = {
 export type AgentContextBuildResult = {
   messages: AgentProviderMessage[]
   contextSnapshot: Record<string, unknown>
+  answerDraft: AgentAnswerDraft
   stats: AiChatContextStats
 }
 

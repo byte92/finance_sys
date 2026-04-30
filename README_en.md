@@ -21,15 +21,18 @@ StockTracker aims to bring all these capabilities into one open-source project: 
 ## Core Features ✨
 
 - Local SQLite persistence — no cloud account required by default.
-- Unified record model for A-shares, HK stocks, US stocks, funds, ETFs, and crypto assets.
+- Unified record model for A-shares (including ETFs), HK stocks, US stocks, funds, and crypto assets.
 - Support for buy, sell, and dividend trade records.
 - FIFO-based realized P&L, remaining cost basis, and total gain/loss calculation.
 - Automatic fee calculation by market, with user-configurable rate settings.
 - Aggregated market data from Tencent Finance, Nasdaq, Yahoo Finance, Stooq, Alpha Vantage, and more.
 - K-line charts, technical indicators, valuation fields, news, and market overview.
-- Built-in AI chat, portfolio analysis, individual stock analysis, and market analysis.
-- AI Agent Runtime calls Skills on demand — avoids stuffing all holdings into context.
+- Built-in AI chat, portfolio analysis, individual stock analysis, and market analysis, with Chinese/English language toggle.
+- AI Agent Runtime calls Skills on demand with context token budget management — avoids stuffing all holdings into context.
 - Markdown-based built-in Skill descriptions, laying the groundwork for future plugin extensions.
+- Multi-source automatic fallback with manual input mode as the last resort.
+- Built-in exchange rate service for unified multi-currency portfolio conversion.
+- AI Agent debug view for inspecting intent recognition and Skill call chains.
 - External data API smoke tests for catching upstream interface changes during open-source maintenance.
 
 ## Architecture 🧭
@@ -51,7 +54,7 @@ flowchart TB
   Agent --> Skills["Skill Registry"]
   Skills --> SQLite
   Skills --> DataSources
-  Agent --> LLM["OpenAI-compatible Model Service"]
+  Agent --> LLM["OpenAI / Anthropic Compatible Model Service"]
 
   Docker["Docker / Docker Compose"] --> App
   Docker --> SQLite

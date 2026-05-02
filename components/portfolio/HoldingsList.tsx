@@ -13,6 +13,7 @@ import { useStockQuote } from '@/hooks/useStockQuote'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPercent, formatPnl } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
+import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
 import { MARKET_LABELS } from '@/config/defaults'
 import type { Stock, TradeMatchMode } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
@@ -104,12 +105,14 @@ export default function HoldingsList({
           const rightQuote = quotesByStockId[right.id]
           const leftSummary = calcStockSummary(left, leftQuote?.price, { matchMode: config.tradeMatchMode })
           const rightSummary = calcStockSummary(right, rightQuote?.price, { matchMode: config.tradeMatchMode })
+          const leftDailyPnl = getDailyQuotePnl(leftSummary.currentHolding, leftQuote, left.market)
+          const rightDailyPnl = getDailyQuotePnl(rightSummary.currentHolding, rightQuote, right.market)
 
-          const leftTodayPnl = leftQuote ? convertAmountSync(leftSummary.currentHolding * leftQuote.change, left.market) : Number.NEGATIVE_INFINITY
-          const rightTodayPnl = rightQuote ? convertAmountSync(rightSummary.currentHolding * rightQuote.change, right.market) : Number.NEGATIVE_INFINITY
+          const leftTodayPnl = leftQuote ? convertAmountSync(leftDailyPnl.amount, left.market) : Number.NEGATIVE_INFINITY
+          const rightTodayPnl = rightQuote ? convertAmountSync(rightDailyPnl.amount, right.market) : Number.NEGATIVE_INFINITY
 
-          const leftPrevValueRaw = leftQuote ? leftSummary.currentHolding * Math.max(leftQuote.price - leftQuote.change, 0) : 0
-          const rightPrevValueRaw = rightQuote ? rightSummary.currentHolding * Math.max(rightQuote.price - rightQuote.change, 0) : 0
+          const leftPrevValueRaw = leftQuote ? leftDailyPnl.previousValue : 0
+          const rightPrevValueRaw = rightQuote ? rightDailyPnl.previousValue : 0
           const leftPrevValue = leftPrevValueRaw > 0 ? convertAmountSync(leftPrevValueRaw, left.market) : 0
           const rightPrevValue = rightPrevValueRaw > 0 ? convertAmountSync(rightPrevValueRaw, right.market) : 0
           const leftTodayRate = leftPrevValue > 0 ? leftTodayPnl / leftPrevValue : Number.NEGATIVE_INFINITY
@@ -260,10 +263,15 @@ function StockListRow({
   const realizedPnl = summary.realizedPnl
   const unrealizedPnl = quote ? summary.unrealizedPnl : null
   const totalPnl = quote ? summary.totalPnl : null
-  const todayPnl = quote ? summary.currentHolding * quote.change : null
-  const previousClose = quote ? quote.price - quote.change : null
-  const todayPnlRate = quote && previousClose && previousClose > 0 ? (quote.change / previousClose) * 100 : null
+  const dailyPnl = getDailyQuotePnl(summary.currentHolding, quote, stock.market)
+  const todayPnl = quote ? dailyPnl.amount : null
+  const todayPnlRate = quote ? dailyPnl.rate : null
   const currentPrice = quote ? quote.price : null
+  const dailyHint = dailyPnl.state === 'market-closed'
+    ? '今日休市'
+    : dailyPnl.state === 'stale-quote'
+      ? '暂无今日行情'
+      : '暂无当日行情'
 
   return (
     <div
@@ -298,7 +306,7 @@ function StockListRow({
           {quote ? formatPnl(todayPnl ?? 0, nativeCurrency) : '--'}
         </div>
         <div className={`text-xs ${(todayPnlRate ?? 0) >= 0 ? 'profit-text' : 'loss-text'}`}>
-          {todayPnlRate === null ? '暂无当日行情' : formatPercent(todayPnlRate)}
+          {dailyPnl.state === 'active' && todayPnlRate !== null ? formatPercent(todayPnlRate) : dailyHint}
         </div>
         <div className="text-xs text-muted-foreground">
           {quote ? `现价 ${formatNativeAmount(currentPrice ?? 0)}` : '等待行情返回'}

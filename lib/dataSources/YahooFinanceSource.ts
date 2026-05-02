@@ -42,7 +42,7 @@ export class YahooFinanceSource implements StockDataSource {
   async getQuote(symbol: string, market: Market): Promise<StockQuote | null> {
     try {
       const std = toYahooSymbol(symbol, market)
-      const query = `symbols=${encodeURIComponent(std)}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
+      const query = `symbols=${encodeURIComponent(std)}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,regularMarketTime,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const result = await this.fetchFirstQuoteResult(query)
       if (!result) {
         return this.fetchChartQuote(symbol, market, std)
@@ -70,7 +70,7 @@ export class YahooFinanceSource implements StockDataSource {
         pb: parseOptionalNumber(result.priceToBook),
         marketCap: parseOptionalNumber(result.marketCap),
         valuationSource: 'yahoo-finance',
-        timestamp: new Date().toISOString(),
+        timestamp: formatYahooTimestamp(result.regularMarketTime),
         currency: getCurrency(market),
         source: 'yahoo-finance',
       }
@@ -83,7 +83,7 @@ export class YahooFinanceSource implements StockDataSource {
   async getBatchQuotes(symbols: string[], market: Market): Promise<StockQuote[]> {
     try {
       const stdSymbols = symbols.map(s => toYahooSymbol(s, market))
-      const query = `symbols=${encodeURIComponent(stdSymbols.join(','))}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
+      const query = `symbols=${encodeURIComponent(stdSymbols.join(','))}&fields=regularMarketPrice,previousClose,regularMarketChange,regularMarketChangePercent,regularMarketVolume,regularMarketTime,longName,trailingPE,epsTrailingTwelveMonths,priceToBook,marketCap`
       const results = await this.fetchQuoteResults(query)
       if (!results.length) {
         const fallbackResults: StockQuote[] = []
@@ -108,7 +108,7 @@ export class YahooFinanceSource implements StockDataSource {
           pb: parseOptionalNumber(r.priceToBook),
           marketCap: parseOptionalNumber(r.marketCap),
           valuationSource: 'yahoo-finance',
-          timestamp: new Date().toISOString(),
+          timestamp: formatYahooTimestamp(r.regularMarketTime),
           currency: getCurrency(market),
           source: 'yahoo-finance',
         }))
@@ -191,6 +191,12 @@ export class YahooFinanceSource implements StockDataSource {
 
 function parseOptionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function formatYahooTimestamp(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? new Date(value * 1000).toISOString()
+    : new Date().toISOString()
 }
 
 function toYahooSymbol(code: string, market: Market): string {

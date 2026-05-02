@@ -44,6 +44,7 @@ export class StooqSource implements StockDataSource {
       if (cols.length < 8) return null
       const close = Number(cols[6])
       const volume = Number(cols[7])
+      const tradingDate = cols[1]
       if (!Number.isFinite(close) || close <= 0) return null
 
       return {
@@ -53,7 +54,7 @@ export class StooqSource implements StockDataSource {
         change: 0,
         changePercent: 0,
         volume: Number.isFinite(volume) ? volume : undefined,
-        timestamp: new Date().toISOString(),
+        timestamp: /^\d{4}-\d{2}-\d{2}$/.test(tradingDate) ? tradingDate : new Date().toISOString(),
         currency: 'USD',
         source: 'stooq',
       }

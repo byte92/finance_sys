@@ -4,7 +4,7 @@
   "description": "Local-first portfolio tracker and AI investing copilot.",
   "main": "index.js",
   "packageManager": "pnpm@10.33.0",
-    "scripts": {
+  "scripts": {
     "preinstall": "node scripts/only-pnpm.cjs",
     "prebuild": "node scripts/only-pnpm.cjs",
     "dev": "node scripts/dev.cjs",

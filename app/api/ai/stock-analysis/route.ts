@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildAnalysisTags, generateStockAnalysis } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
-import { saveAiAnalysis } from '@/lib/sqlite/db'
 import type { AiConfig, Stock } from '@/types'
 
 type Body = {
@@ -30,19 +29,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '缺少 AI 配置' }, { status: 400 })
     }
     const result = await generateStockAnalysis(body.stock, resolveEffectiveAiConfig(body.aiConfig), body.forceRefresh === true)
-    saveAiAnalysis({
-      id: randomUUID(),
-      userId: body.userId,
-      type: 'stock',
-      stockId: body.stock.id,
-      stockCode: body.stock.code,
-      stockName: body.stock.name,
-      market: body.stock.market,
-      confidence: result.confidence,
-      tags: buildAnalysisTags('stock', result.confidence, result.analysisStrength, body.stock),
-      generatedAt: result.generatedAt,
-      result,
-    })
+    try {
+      const { saveAiAnalysis } = await import('@/lib/sqlite/db')
+      saveAiAnalysis({
+        id: randomUUID(),
+        userId: body.userId,
+        type: 'stock',
+        stockId: body.stock.id,
+        stockCode: body.stock.code,
+        stockName: body.stock.name,
+        market: body.stock.market,
+        confidence: result.confidence,
+        tags: buildAnalysisTags('stock', result.confidence, result.analysisStrength, body.stock),
+        generatedAt: result.generatedAt,
+        result,
+      })
+    } catch (error) {
+      console.error('Failed to persist stock AI analysis:', error)
+    }
     return NextResponse.json({ result })
   } catch (error) {
     const message = error instanceof Error ? error.message : '个股 AI 分析失败'

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { describeClientRequestError, readJsonResponse } from "@/lib/api/client";
 import { adoptDeviceIdFromLocalUserId, getDeviceId } from "@/lib/device-id";
 import { generateId } from "@/lib/finance";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
@@ -74,6 +75,7 @@ function mergeAppConfig(config?: Partial<AppConfig>): AppConfig {
 
 const LOCAL_KEY = "stock-tracker-storage";
 const LOCAL_SQLITE_USER_PREFIX = "local:";
+const STORAGE_UNAVAILABLE_MESSAGE = "本地数据服务暂时不可用，请稍后重试。";
 
 function loadFromLocalStorage(): StoredPayload {
   try {
@@ -114,8 +116,10 @@ async function fetchRemote(userId: string): Promise<RemoteStoredPayload> {
     method: "GET",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Failed to load remote data (${res.status})`);
-  const payload = (await res.json()) as StoredPayload;
+  const payload = await readJsonResponse<RemoteStoredPayload>(res, {
+    fallbackMessage: "读取本地数据失败，请稍后重试。",
+    unavailableMessage: STORAGE_UNAVAILABLE_MESSAGE,
+  });
   return {
     stocks: payload.stocks ?? [],
     config: mergeAppConfig(payload.config),
@@ -130,7 +134,10 @@ async function persistRemote(userId: string, stocks: Stock[], config: AppConfig)
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, stocks, config }),
   });
-  if (!res.ok) throw new Error(`Failed to persist remote data (${res.status})`);
+  await readJsonResponse<{ ok: true }>(res, {
+    fallbackMessage: "保存本地数据失败，请稍后重试。",
+    unavailableMessage: STORAGE_UNAVAILABLE_MESSAGE,
+  });
 }
 
 async function clearRemoteAiChat(userId: string) {
@@ -139,7 +146,10 @@ async function clearRemoteAiChat(userId: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, all: true }),
   });
-  if (!res.ok) throw new Error(`Failed to clear AI chat (${res.status})`);
+  await readJsonResponse<{ ok: true }>(res, {
+    fallbackMessage: "清理 AI 对话失败，请稍后重试。",
+    unavailableMessage: "AI 对话服务暂时不可用，请稍后重试。",
+  });
 }
 
 function sortTrades(stocks: Stock[]) {
@@ -177,7 +187,7 @@ export const useStockStore = create<StockStore>()((set, get) => ({
         config: nextPayload.config,
       });
     } catch (error) {
-      console.error("Failed to initialize store:", error);
+      console.error("Failed to initialize store:", describeClientRequestError(error, STORAGE_UNAVAILABLE_MESSAGE), error);
       const local = loadFromLocalStorage();
       const userId = createLocalSqliteUserId();
       set({
@@ -200,7 +210,7 @@ export const useStockStore = create<StockStore>()((set, get) => ({
         config: remote.config,
       });
     } catch (error) {
-      console.error("Sync failed:", error);
+      console.error("Sync failed:", describeClientRequestError(error, STORAGE_UNAVAILABLE_MESSAGE), error);
     }
   },
 

@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Sparkles, RefreshCw, AlertTriangle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisResult } from '@/types'
+
+const AI_ANALYSIS_UNAVAILABLE_MESSAGE = '服务暂时不可用，请稍后重试或点击强制刷新。'
 
 export default function PortfolioAnalysisCard({ compact = false }: { compact?: boolean }) {
   const { stocks, config, userId } = useStockStore()
@@ -40,15 +43,16 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
           dateTo: today,
         })
         const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
-        const data = await res.json()
-        if (!res.ok) {
-          throw new Error(data?.error ?? '加载今日组合分析失败')
-        }
+        const data = await readJsonResponse<{ records?: Array<{ result?: AiAnalysisResult }> }>(res, {
+          fallbackMessage: '加载今日组合分析失败',
+          unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+        })
         const records = Array.isArray(data?.records) ? data.records : []
         const latest = records[0] as { result?: AiAnalysisResult } | undefined
         setResult(latest?.result ?? null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : '加载今日组合分析失败')
+        console.error('Load portfolio AI analysis history failed:', err)
+        setError(describeClientRequestError(err, '加载今日组合分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
       } finally {
         setBootstrapping(false)
       }
@@ -71,11 +75,14 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
           forceRefresh,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? '组合 AI 分析失败')
+      const data = await readJsonResponse<{ result: AiAnalysisResult }>(res, {
+        fallbackMessage: '组合 AI 分析失败',
+        unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+      })
       setResult(data.result as AiAnalysisResult)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '组合 AI 分析失败')
+      console.error('Run portfolio AI analysis failed:', err)
+      setError(describeClientRequestError(err, '组合 AI 分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
     } finally {
       setLoading(false)
     }

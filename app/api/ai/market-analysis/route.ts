@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { generateId } from '@/lib/finance'
 import { generateMarketAnalysis, buildAnalysisTags } from '@/lib/marketOverview'
 import { safeReadJsonBody } from '@/lib/api/request'
-import { saveAiAnalysis } from '@/lib/sqlite/db'
 import type { AiConfig } from '@/types'
 
 type MarketAnalysisBody = {
@@ -28,19 +27,24 @@ export async function POST(request: NextRequest) {
 
     const result = await generateMarketAnalysis(resolveEffectiveAiConfig(body.aiConfig), body.forceRefresh)
 
-    saveAiAnalysis({
-      id: generateId(),
-      userId: body.userId,
-      type: 'market',
-      confidence: result.confidence,
-      tags: buildAnalysisTags('market', result.confidence, result.analysisStrength),
-      result,
-      generatedAt: result.generatedAt,
-      stockId: null,
-      stockCode: null,
-      stockName: null,
-      market: null,
-    })
+    try {
+      const { saveAiAnalysis } = await import('@/lib/sqlite/db')
+      saveAiAnalysis({
+        id: generateId(),
+        userId: body.userId,
+        type: 'market',
+        confidence: result.confidence,
+        tags: buildAnalysisTags('market', result.confidence, result.analysisStrength),
+        result,
+        generatedAt: result.generatedAt,
+        stockId: null,
+        stockCode: null,
+        stockName: null,
+        market: null,
+      })
+    } catch (error) {
+      console.error('Failed to persist market AI analysis:', error)
+    }
 
     return NextResponse.json({ result })
   } catch (error) {

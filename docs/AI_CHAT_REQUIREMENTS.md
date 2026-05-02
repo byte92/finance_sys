@@ -346,7 +346,7 @@ AI 对话只对用户暴露上下文长度配置，不再提供单次输出 toke
 - 全屏对话区可以继续同一会话。
 - JSON 导出/导入暂不包含 AI 对话历史。
 - 清空数据会同时清空 AI 对话历史。
-- `npm run test` 和 `npm run build` 通过。
+- `pnpm test` 和 `pnpm build` 通过。
 
 ## 10. 已确认的取舍
 

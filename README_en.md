@@ -99,19 +99,19 @@ Things to note:
 Requirements:
 
 - Node.js 18+
-- npm
+- pnpm
 - macOS / Linux / Windows
 
 ```bash
 git clone https://github.com/byte92/finance_sys.git
 cd finance_sys
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 After starting, visit:
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
 
 For more on development, environment variables, database, and testing, see the [Development Guide](./docs/DEVELOPMENT.md).
 
@@ -122,16 +122,17 @@ If you just want to run it as a local service, use Docker Compose directly:
 ```bash
 git clone https://github.com/byte92/finance_sys.git
 cd finance_sys
+cd docker
 docker compose up -d --build
 ```
 
 After starting, visit:
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
 
-For AI features, copy `.env.example` to `.env.local` and fill in your model configuration. The container stores SQLite data in a Docker volume by default, so data persists across restarts.
+For custom Docker host ports, copy `docker/.env.example` to `docker/.env` and set `HOST_PORT`. For AI features, copy the root `.env.example` to `.env.local` and fill in your model configuration; Docker Compose optionally injects `.env.local` into the container. Without `docker/.env`, the host port defaults to `3218`; SQLite data is stored in a Docker volume by default, so data persists across restarts.
 
-For more on Docker, volumes, and Docker Hub publishing, see the [Docker Deployment Guide](./docs/DOCKER.md).
+For more on Docker, volumes, and Docker Hub publishing, see the [Docker Deployment Guide](./docker/README.md).
 
 ## Project Structure
 
@@ -153,7 +154,7 @@ For detailed boundaries, see [Project Structure](./docs/PROJECT_STRUCTURE.md).
 ## Documentation
 
 - [Development Guide](./docs/DEVELOPMENT.md)
-- [Docker Deployment Guide](./docs/DOCKER.md)
+- [Docker Deployment Guide](./docker/README.md)
 - [Project Structure](./docs/PROJECT_STRUCTURE.md)
 - [Data API Inventory](./docs/DATA_API_INVENTORY.md)
 - [Agent Architecture](./docs/AGENT_ARCHITECTURE.md)
@@ -171,14 +172,14 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting a PR.
 Common verification commands:
 
 ```bash
-npm test
-npm run build
+pnpm test
+pnpm build
 ```
 
 Real external API checks:
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 ## Roadmap 🗺️

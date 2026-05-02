@@ -4,21 +4,32 @@
 
 ## 本地构建并启动
 
-准备环境变量：
+如果需要修改宿主机端口，可以准备 Docker 编排配置：
 
 ```bash
-cp .env.example .env.local
+cd docker
+cp .env.example .env
 ```
 
-按需填写 `.env.local` 中的 AI 模型配置。然后启动服务：
+没有 `docker/.env` 时也可以直接启动，宿主机端口默认使用 `3218`：
 
 ```bash
+cd docker
 docker compose up -d --build
 ```
 
 启动后访问：
 
-- http://localhost:3000
+- 默认端口：[http://localhost:3218](http://localhost:3218)
+- 如果 `docker/.env` 中设置了 `HOST_PORT`，访问 `http://localhost:${HOST_PORT}`
+
+如果需要 AI/API Key 等业务配置，请在项目根目录准备 `.env.local`：
+
+```bash
+cp .env.example .env.local
+```
+
+`docker/docker-compose.yml` 会可选读取 `../.env.local` 并把这些业务变量注入容器。应用代码仍然通过 `process.env.AI_API_KEY`、`process.env.AI_MODEL` 等方式读取。
 
 默认数据会保存在 Docker volume `stocktracker-data` 中，容器重启后不会丢失。
 
@@ -40,21 +51,25 @@ docker compose down -v
 如果镜像已经发布到 Docker Hub，可以直接拉取运行：
 
 ```bash
+HOST_PORT=${HOST_PORT:-3218}
+
 docker run -d \
   --name stocktracker \
   --restart unless-stopped \
-  -p 3000:3000 \
-  --env-file .env.local \
+  -p "${HOST_PORT}:3218" \
+  -e PORT=3218 \
   -v stocktracker-data:/app/data \
   byte92/stocktracker:latest
 ```
+
+如果需要传入 AI/API Key 等业务配置，可以额外加上 `--env-file ../.env.local`。
 
 ## 发布到 Docker Hub
 
 维护者发布镜像时可以使用：
 
 ```bash
-docker build -t byte92/stocktracker:latest .
+docker build -f Dockerfile -t byte92/stocktracker:latest ..
 docker tag byte92/stocktracker:latest byte92/stocktracker:<version>
 docker push byte92/stocktracker:latest
 docker push byte92/stocktracker:<version>
@@ -73,14 +88,14 @@ docker push byte92/stocktracker:<version>
 /app/data/finance.sqlite
 ```
 
-`docker-compose.yml` 会把这个目录挂载到命名 volume。请不要把真实 SQLite 数据库打进镜像，也不要把包含真实 API Key 的 `.env.local` 提交到仓库。
+`docker/docker-compose.yml` 会把这个目录挂载到命名 volume。请不要把真实 SQLite 数据库打进镜像，也不要把包含真实 API Key 的 `.env.local` 或包含本地编排偏好的 `docker/.env` 提交到仓库。
 
 ## 架构说明
 
 Docker 镜像使用 Next.js standalone 输出：
 
 ```text
-npm ci -> npm run build -> .next/standalone -> node server.js
+pnpm install --frozen-lockfile -> pnpm build -> .next/standalone -> node server.js
 ```
 
 这样运行镜像只携带生产服务所需文件，镜像体积和启动路径都更清晰。

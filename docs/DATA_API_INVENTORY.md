@@ -24,12 +24,12 @@
 
 ## 外部接口有效性测试
 
-项目提供了 `tests/external-apis.test.ts`，用于真实请求外部数据接口并校验响应结构。为了避免普通单测被网络、上游限流或地区访问策略影响，默认 `npm run test` 会跳过这组测试。
+项目提供了 `tests/external-apis.test.ts`，用于真实请求外部数据接口并校验响应结构。为了避免普通单测被网络、上游限流或地区访问策略影响，默认 `pnpm test` 会跳过这组测试。
 
 需要验证接口是否可用时，执行：
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 这组测试会覆盖腾讯财经报价、Nasdaq 报价、Yahoo Finance 报价、Stooq 报价、腾讯 K 线、美股 K 线、腾讯指数、Google News RSS 和汇率接口。Alpha Vantage 报价测试需要配置 `ALPHA_VANTAGE_API_KEY` 或 `NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY`。

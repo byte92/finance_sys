@@ -5,37 +5,37 @@
 ## 环境要求
 
 - Node.js 18+
-- npm
+- pnpm
 - macOS / Linux / Windows
 
-首次拉取项目后请使用 npm 安装依赖，确保 lockfile 与依赖树保持一致：
+首次拉取项目后请使用 pnpm 安装依赖，确保 lockfile 与依赖树保持一致：
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## 常用命令
 
 ```bash
 # 启动开发环境
-npm run dev
+pnpm dev
 
 # 运行默认测试
-npm test
+pnpm test
 
 # 真实外部接口 smoke test
-npm run test:external
+pnpm test:external
 
 # 生产构建
-npm run build
+pnpm build
 
 # 生产启动
-npm run start
+pnpm start
 ```
 
 开发服务器启动后访问：
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
 
 ## 本地数据库
 
@@ -63,7 +63,7 @@ FINANCE_SQLITE_PATH=/absolute/path/to/finance.sqlite
 例如：
 
 ```bash
-FINANCE_SQLITE_PATH=./data/dev-finance.sqlite npm run dev
+FINANCE_SQLITE_PATH=./data/dev-finance.sqlite pnpm dev
 ```
 
 ## AI 模型配置
@@ -94,7 +94,7 @@ AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 | `NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | 兼容旧配置，不推荐。`NEXT_PUBLIC_` 变量会暴露到前端。 |
 | `FINANCE_SQLITE_PATH` | 否 | `./data/dev-finance.sqlite` | 自定义 SQLite 数据库文件路径。未设置时默认使用 `data/finance.sqlite`。 |
 
-`.env` 与 `.env.local` 都会被 Next.js 加载；同名变量通常 `.env.local` 优先。建议把示例和非敏感默认值放 `.env`，把真实 API Key 放 `.env.local`。
+建议把项目业务配置放在 `.env.local`。Docker 编排配置单独放在 `docker/.env`，例如宿主机端口 `HOST_PORT`；容器运行时会由 Compose 可选读取根目录 `.env.local` 并注入业务环境变量。
 
 ## 数据迁移与备份
 
@@ -146,13 +146,13 @@ AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 默认测试不依赖真实外部网络：
 
 ```bash
-npm test
+pnpm test
 ```
 
 外部接口 smoke test 会真实请求行情、K 线、新闻和汇率接口，适合发布前或排查数据源问题时运行：
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 Alpha Vantage 测试需要配置 `ALPHA_VANTAGE_API_KEY`，否则会跳过。

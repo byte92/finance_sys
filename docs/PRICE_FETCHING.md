@@ -84,13 +84,13 @@ NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY=YOUR_KEY_HERE
 默认测试不请求真实外部网络：
 
 ```bash
-npm test
+pnpm test
 ```
 
 检查外部接口是否仍可用：
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 该测试覆盖报价、K 线、大盘指数、新闻和汇率。Alpha Vantage 未配置 Key 时会自动跳过。

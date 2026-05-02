@@ -23,9 +23,6 @@ export type WebSearchResult = {
 type PlaywrightBrowser = import('playwright').Browser
 type PlaywrightBrowserContext = import('playwright').BrowserContext
 type PlaywrightPage = import('playwright').Page
-type OsModule = Pick<typeof import('node:os'), 'homedir' | 'platform'>
-type PathModule = Pick<typeof import('node:path'), 'join'>
-type Env = Partial<Record<string, string | undefined>>
 
 export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
   name: 'web.search',
@@ -44,23 +41,9 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
 
     try {
       // 动态导入避免 SSR 时加载原生模块。
-      const path = await import('node:path')
-      const fs = await import('node:fs')
-      const os = await import('node:os')
       const { chromium } = await import('playwright')
 
-      const cacheDir = getPlaywrightBrowsersPath(os, path)
-      const execPath = findChromiumExecutable(cacheDir, fs, path)
-
-      if (!execPath) {
-        return {
-          skillName: 'web.search',
-          ok: false,
-          error: '未找到 Playwright Chromium 浏览器，请先安装 Playwright 浏览器依赖',
-        }
-      }
-
-      browser = await chromium.launch({ executablePath: execPath, headless: true })
+      browser = await chromium.launch({ headless: true })
       context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         viewport: { width: 1280, height: 800 },
@@ -78,7 +61,7 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
 
       return buildSearchResult(query, results, resultLimit)
     } catch (error) {
-      return { skillName: 'web.search', ok: false, error: error instanceof Error ? error.message : '搜索请求失败' }
+      return { skillName: 'web.search', ok: false, error: describeWebSearchError(error) }
     } finally {
       await context?.close().catch(() => {})
       await browser?.close().catch(() => {})
@@ -104,39 +87,17 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.max(min, Math.min(parsed, max))
 }
 
-export function getDefaultPlaywrightBrowsersPath(os: OsModule, path: PathModule, env: Env = process.env) {
-  switch (os.platform()) {
-    case 'darwin':
-      return path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright')
-    case 'win32':
-      return path.join(env.LOCALAPPDATA?.trim() || path.join(os.homedir(), 'AppData', 'Local'), 'ms-playwright')
-    default:
-      return path.join(env.XDG_CACHE_HOME?.trim() || path.join(os.homedir(), '.cache'), 'ms-playwright')
+export function describeWebSearchError(error: unknown) {
+  if (!(error instanceof Error)) return '搜索请求失败'
+  if (isMissingPlaywrightBrowserError(error.message)) {
+    return '未找到 Playwright Chromium 浏览器，请先安装 Playwright 浏览器依赖'
   }
+  return error.message || '搜索请求失败'
 }
 
-export function getPlaywrightBrowsersPath(os: OsModule, path: PathModule, env: Env = process.env) {
-  return env.PLAYWRIGHT_BROWSERS_PATH?.trim() || getDefaultPlaywrightBrowsersPath(os, path, env)
-}
-
-export function findChromiumExecutable(
-  cacheDir: string,
-  fs: typeof import('node:fs'),
-  path: typeof import('node:path'),
-) {
-  if (!fs.existsSync(cacheDir)) return undefined
-  const dirs = fs.readdirSync(cacheDir).filter((dir) => dir.startsWith('chromium_headless_shell-'))
-  for (const dir of dirs.sort().reverse()) {
-    const candidates = [
-      path.join(cacheDir, dir, 'chrome-headless-shell-mac-arm64', 'chrome-headless-shell'),
-      path.join(cacheDir, dir, 'chrome-headless-shell-mac-x64', 'chrome-headless-shell'),
-      path.join(cacheDir, dir, 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
-      path.join(cacheDir, dir, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe'),
-    ]
-    const executable = candidates.find((item) => fs.existsSync(item))
-    if (executable) return executable
-  }
-  return undefined
+function isMissingPlaywrightBrowserError(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes("executable doesn't exist") || normalized.includes('playwright install')
 }
 
 async function collectSearchCandidates(page: PlaywrightPage, query: string, searchLimit: number): Promise<WebSearchItem[]> {

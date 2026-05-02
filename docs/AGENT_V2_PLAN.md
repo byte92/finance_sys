@@ -314,7 +314,7 @@ Phase A 改动最小、风险最低，先做可以快速验证链式执行的架
 | Skill manifest 规范 | 标准化 SKILL.md 格式，支持版本、权限声明、依赖声明 |
 | 社区 Skill 安装 | 支持从本地目录加载第三方 Skill（`skills/custom/`） |
 | 权限白名单 | 安装前自动校验 `requiredScopes`，拒绝越权 Skill |
-| 安全审计工具 | 提供 `npm run audit:skills` 检查已安装 Skill 的权限和脚本绑定 |
+| 安全审计工具 | 提供 `pnpm audit:skills` 检查已安装 Skill 的权限和脚本绑定 |
 | Skill 市场（远期） | Web 端浏览、安装社区 Skill |
 
 ### V5：工作流 Agent

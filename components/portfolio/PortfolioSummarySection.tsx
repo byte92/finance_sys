@@ -8,6 +8,7 @@ import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_CURRENCY } from '@/lib/ExchangeRateService'
+import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
 import type { StockQuote } from '@/types/stockApi'
 
 type TodayPnlSnapshot = {
@@ -21,6 +22,9 @@ type TodayPnlSnapshot = {
   losers: number
   flat: number
   quoted: number
+  activeDaily: number
+  closed: number
+  stale: number
 }
 
 export default function PortfolioSummarySection() {
@@ -38,6 +42,9 @@ export default function PortfolioSummarySection() {
     losers: 0,
     flat: 0,
     quoted: 0,
+    activeDaily: 0,
+    closed: 0,
+    stale: 0,
   })
   const [todayPnlLoading, setTodayPnlLoading] = useState(false)
 
@@ -89,7 +96,7 @@ export default function PortfolioSummarySection() {
         .filter(({ summary }) => summary.currentHolding > 0)
 
       if (activeHoldings.length === 0) {
-        setTodayPnl({ amount: 0, rate: 0, marketValue: 0, costBasis: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 })
+        setTodayPnl({ amount: 0, rate: 0, marketValue: 0, costBasis: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0, gainers: 0, losers: 0, flat: 0, quoted: 0, activeDaily: 0, closed: 0, stale: 0 })
         return
       }
 
@@ -109,15 +116,15 @@ export default function PortfolioSummarySection() {
             }
 
             const quotedSummary = calcStockSummary(stock, quote.price, { matchMode: config.tradeMatchMode })
-            const rawTodayPnl = summary.currentHolding * quote.change
-            const rawPreviousValue = summary.currentHolding * Math.max(quote.price - quote.change, 0)
+            const dailyPnl = getDailyQuotePnl(summary.currentHolding, quote, stock.market)
             const rawMarketValue = summary.currentHolding * quote.price
             const rawCostBasis = quotedSummary.avgCostPrice * quotedSummary.currentHolding
             return {
-              todayPnl: convertWithRates(rawTodayPnl, stock.market),
-              previousValue: convertWithRates(rawPreviousValue, stock.market),
+              todayPnl: convertWithRates(dailyPnl.amount, stock.market),
+              previousValue: convertWithRates(dailyPnl.previousValue, stock.market),
               marketValue: convertWithRates(rawMarketValue, stock.market),
               costBasis: convertWithRates(rawCostBasis, stock.market),
+              dailyState: dailyPnl.state,
             }
           }),
         )
@@ -126,24 +133,31 @@ export default function PortfolioSummarySection() {
           return
         }
 
-        const next = responses.filter((item): item is { todayPnl: number; previousValue: number; marketValue: number; costBasis: number } => item !== null)
+        const next = responses.filter((item): item is { todayPnl: number; previousValue: number; marketValue: number; costBasis: number; dailyState: ReturnType<typeof getDailyQuotePnl>['state'] } => item !== null)
         const snapshot = next.reduce(
           (acc, item) => {
-            acc.amount += item.todayPnl
-            acc.rateBase += item.previousValue
+            if (item.dailyState === 'active') {
+              acc.amount += item.todayPnl
+              acc.rateBase += item.previousValue
+              acc.activeDaily += 1
+              if (item.todayPnl > 0) {
+                acc.gainers += 1
+              } else if (item.todayPnl < 0) {
+                acc.losers += 1
+              } else {
+                acc.flat += 1
+              }
+            } else if (item.dailyState === 'market-closed') {
+              acc.closed += 1
+            } else if (item.dailyState === 'stale-quote') {
+              acc.stale += 1
+            }
             acc.marketValue += item.marketValue
             acc.costBasis += item.costBasis
             acc.quoted += 1
-            if (item.todayPnl > 0) {
-              acc.gainers += 1
-            } else if (item.todayPnl < 0) {
-              acc.losers += 1
-            } else {
-              acc.flat += 1
-            }
             return acc
           },
-          { amount: 0, rateBase: 0, marketValue: 0, costBasis: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 },
+          { amount: 0, rateBase: 0, marketValue: 0, costBasis: 0, gainers: 0, losers: 0, flat: 0, quoted: 0, activeDaily: 0, closed: 0, stale: 0 },
         )
         const unrealizedPnl = snapshot.marketValue - snapshot.costBasis
 
@@ -158,11 +172,14 @@ export default function PortfolioSummarySection() {
           losers: snapshot.losers,
           flat: snapshot.flat,
           quoted: snapshot.quoted,
+          activeDaily: snapshot.activeDaily,
+          closed: snapshot.closed,
+          stale: snapshot.stale,
         })
       } catch (error) {
         console.error('Failed to load portfolio daily pnl:', error)
         if (!cancelled) {
-          setTodayPnl({ amount: 0, rate: 0, marketValue: 0, costBasis: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0, gainers: 0, losers: 0, flat: 0, quoted: 0 })
+          setTodayPnl({ amount: 0, rate: 0, marketValue: 0, costBasis: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0, gainers: 0, losers: 0, flat: 0, quoted: 0, activeDaily: 0, closed: 0, stale: 0 })
         }
       } finally {
         if (!cancelled) {
@@ -212,8 +229,12 @@ export default function PortfolioSummarySection() {
           <div className="text-xs text-muted-foreground mt-1">
             {todayPnlLoading
               ? '正在刷新当日行情'
-              : todayPnl.quoted > 0
+              : todayPnl.activeDaily > 0
                 ? `${todayPnl.gainers} 只上涨 · ${todayPnl.losers} 只下跌${todayPnl.flat > 0 ? ` · ${todayPnl.flat} 只平盘` : ''}`
+                : todayPnl.quoted > 0 && todayPnl.closed > 0
+                  ? '今日休市 · 最近行情不计入今日盈亏'
+                  : todayPnl.quoted > 0 && todayPnl.stale > 0
+                    ? '暂无今日行情 · 最近行情不计入今日盈亏'
                 : '暂无可用行情'}
           </div>
         </Card>
@@ -224,7 +245,7 @@ export default function PortfolioSummarySection() {
             {formatWithCurrency(todayPnl.marketValue)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            {todayPnlLoading ? '正在刷新行情' : todayPnl.quoted > 0 ? `${todayPnl.quoted} 只持仓有行情` : '暂无可用行情'}
+            {todayPnlLoading ? '正在刷新行情' : todayPnl.quoted > 0 ? `${todayPnl.quoted} 只持仓有最近行情` : '暂无可用行情'}
           </div>
         </Card>
 

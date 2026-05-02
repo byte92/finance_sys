@@ -321,18 +321,45 @@ async function capturePageContentWithBrowser(context: PlaywrightBrowserContext, 
   }
 }
 
-function buildQueryVariants(query: string) {
+export function buildQueryVariants(query: string) {
   const year = String(new Date().getFullYear())
   const code = query.match(/\b\d{6}\b/)?.[0]
-  const chineseName = query.match(/[\u4e00-\u9fa5]{2,}(?=\s+\d{6}\b)/)?.[0]
-  const variants = [
-    query.replace(/最新财报/g, '').replace(/\s+/g, ' ').trim(),
-    query,
-    query.replace(/最新财报/g, '一季报').replace(/\s+/g, ' ').trim(),
-    `${query} ${year}`,
-    code && chineseName ? `${chineseName} ${code}.SH ${year} 一季报 净利润 营业收入` : '',
-    code && chineseName ? `${chineseName} ${year} 一季报 净利润 营业收入 ${code}` : '',
-  ]
+  const chineseName = extractLikelyChineseStockName(query, code)
+  const nameCode = [chineseName, code].filter(Boolean).join(' ')
+  const variants: string[] = []
+  const push = (value: string | null | undefined) => {
+    const normalized = value?.replace(/\s+/g, ' ').trim()
+    if (normalized) variants.push(normalized)
+  }
+
+  if (code && isAStockCode(code) && isAStockAnnouncementQuery(query)) {
+    const exchange = getAStockExchange(code)
+    push(`site:cninfo.com.cn ${nameCode || code} 公告 ${year}`)
+    if (exchange?.site) push(`site:${exchange.site} ${nameCode || code} 公告 ${year}`)
+    push(`${nameCode || code} 公告 巨潮资讯 ${exchange?.label ?? '交易所'} 官方公告 ${year}`)
+    if (isFinancialReportQuery(query)) {
+      push(`site:cninfo.com.cn ${nameCode || code} 年报 季报 一季报 净利润 营业收入 ${year}`)
+      if (exchange?.site) push(`site:${exchange.site} ${nameCode || code} 定期报告 业绩 ${year}`)
+    }
+  }
+
+  if (isAShareMarketNewsQuery(query)) {
+    push(`A股 今日 大盘 新闻 政策 盘面 ${year}`)
+    push(`A股 今日 大事件 政策 证券时报 中国证券报 财联社 ${year}`)
+    push(`A股 证监会 央行 财政部 政策 新闻 ${year}`)
+  }
+
+  if (code && nameCode && isStockNewsQuery(query)) {
+    push(`${nameCode} 今日 新闻 利好 利空 ${year}`)
+    push(`${nameCode} 最新消息 发生了什么 ${year}`)
+  }
+
+  push(query.replace(/最新财报/g, '').replace(/\s+/g, ' ').trim())
+  push(query)
+  push(query.replace(/最新财报/g, '一季报').replace(/\s+/g, ' ').trim())
+  push(`${query} ${year}`)
+  push(code && chineseName ? `${chineseName} ${code}.SH ${year} 一季报 净利润 营业收入` : '')
+  push(code && chineseName ? `${chineseName} ${year} 一季报 净利润 营业收入 ${code}` : '')
   return Array.from(new Set(variants.filter(Boolean)))
 }
 
@@ -356,17 +383,58 @@ function sortByRelevance(query: string, results: WebSearchItem[]) {
 function scoreResult(query: string, result: WebSearchItem) {
   const haystack = `${result.title} ${result.snippet} ${result.url} ${result.content ?? ''}`.toLowerCase()
   const tokens = Array.from(new Set(query.toLowerCase().match(/[a-z0-9.]+|[\u4e00-\u9fa5]{2,}/g) ?? []))
-    .filter((token) => !['最新财报', '财报'].includes(token))
+    .filter((token) => !['最新财报', '财报', 'site'].includes(token))
   const tokenScore = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0)
   const financeScore = /(财报|一季报|季报|年报|业绩|公告|营业收入|净利润|eps|revenue|earnings)/i.test(haystack) ? 2 : 0
   const metricScore = /(同比增长|同比下降|归母|归属于|869\.41|2303\.70|净利润.*亿元|营业收入.*亿元)/i.test(haystack) ? 3 : 0
+  const authorityScore = isAStockAnnouncementQuery(query) && /(cninfo\.com\.cn|sse\.com\.cn|szse\.cn|巨潮资讯|上海证券交易所|深圳证券交易所|上交所|深交所)/i.test(haystack) ? 5 : 0
+  const marketNewsScore = isAShareMarketNewsQuery(query) && /(证监会|新华社|证券时报|中国证券报|上海证券报|财联社|央视财经|央行|财政部)/i.test(haystack) ? 2 : 0
   const contentScore = result.content && result.content.length >= 80 ? 1 : 0
   const junkPenalty = /(工商登记|政务服务|企业信用|采购公告|招标|招聘|开户行|网点查询|电子银行|网上银行|市场监督管理)/i.test(haystack) ? -6 : 0
-  return tokenScore + financeScore + metricScore + contentScore + junkPenalty
+  return tokenScore + financeScore + metricScore + authorityScore + marketNewsScore + contentScore + junkPenalty
 }
 
 function isFinancialReportQuery(query: string) {
   return /(财报|一季报|季报|年报|业绩|营业收入|净利润|eps|revenue|earnings)/i.test(query)
+}
+
+function isAStockAnnouncementQuery(query: string) {
+  return /(公告|披露|停牌|复牌|减持|增持|回购|业绩预告|业绩快报|年报|季报|半年报|重大事项|澄清|财报|定期报告)/i.test(query)
+}
+
+function isStockNewsQuery(query: string) {
+  return /(新闻|消息|利好|利空|发生了什么|出了?什么事|怎么了|今日|今天|最新)/i.test(query)
+}
+
+function isAShareMarketNewsQuery(query: string) {
+  return /(A\s*股|大盘|盘面|沪指|上证|深成指|创业板|两市|三大指数)/i.test(query)
+    && /(今日|今天|新闻|消息|政策|大事件|事件|盘面|发生|利好|利空|证监会|央行|财政部|降准|降息)/i.test(query)
+}
+
+function isAStockCode(code: string) {
+  return /^\d{6}$/.test(code)
+}
+
+function getAStockExchange(code: string) {
+  if (/^6/.test(code)) return { site: 'sse.com.cn', label: '上交所' }
+  if (/^[023]/.test(code)) return { site: 'szse.cn', label: '深交所' }
+  return null
+}
+
+function extractLikelyChineseStockName(query: string, code?: string) {
+  if (code) {
+    const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const beforeCode = query.match(new RegExp(`([\\u4e00-\\u9fa5]{2,})\\s+${escapedCode}\\b`))?.[1]
+    if (beforeCode) return beforeCode
+    const afterCode = query.match(new RegExp(`\\b${escapedCode}\\s+([\\u4e00-\\u9fa5]{2,})`))?.[1]
+    if (afterCode && !isGenericSearchToken(afterCode)) return afterCode
+  }
+
+  return query.match(/[\u4e00-\u9fa5]{2,}/g)?.find((token) => !isGenericSearchToken(token)) ?? null
+}
+
+function isGenericSearchToken(token: string) {
+  return /^(最新|今日|今天|新闻|消息|公告|官方公告|巨潮资讯|上交所|深交所|交易所|财报|年报|季报|半年报|一季报|业绩|利好|利空|政策|大盘|盘面)$/.test(token)
 }
 
 function normalizeDuckUrl(raw: string) {

@@ -8,6 +8,7 @@
     "preinstall": "node scripts/only-pnpm.cjs",
     "prebuild": "node scripts/only-pnpm.cjs",
     "dev": "next dev -p 3218",
+    "lint": "tsc --noEmit",
     "build": "next build",
     "start": "next start -p 3218",
     "test": "tsx --test tests/**/*.test.ts",

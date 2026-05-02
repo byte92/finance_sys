@@ -250,6 +250,7 @@ prompt: lib/agent/prompts/analysis.ts#STOCK_ANALYSIS_PROMPT
 | `stock.getAnalysisContext` | `stock.read` / `trade.read` / `quote.read` | 固定个股分析模板所需的完整受控上下文。 |
 | `market.getAnalysisContext` | `market.read` / `quote.read` | 固定大盘分析模板所需的三地指数、技术指标和新闻上下文。 |
 | `market.resolveCandidate` | `quote.read` | 当用户只提供名称或代码且市场不明确时，返回候选项。 |
+| `web.search` | `network.fetch` | 检索最新公开网页来源；个股新闻/公告、利好利空、A 股大盘政策或盘面新闻会由 Planner 触发，A 股公告优先扩展到巨潮资讯和交易所站点。 |
 
 V1 支持两类 Skill manifest 来源：
 
@@ -269,6 +270,7 @@ Planner 负责把自然语言问题转成结构化计划。
 - 股票代码识别：`601838`、`00700`、`AAPL`。
 - 本地持仓名称匹配：如“成都银行”命中持仓名称。
 - 常见组合词识别：仓位、风险、亏损、盈利、复盘、分红、成本。
+- 公开搜索识别：个股新闻/公告/利好利空/今日事件，以及 A 股大盘今日政策、盘面新闻、大事件。
 - 无关主题识别：天气、编程、娱乐、医疗、法律、通用百科。
 
 ### 7.2 LLM 兜底

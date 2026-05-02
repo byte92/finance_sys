@@ -85,3 +85,44 @@ test('answer builder records failed skills as missing data', () => {
   assert.equal(draft.confidence, 'medium')
   assert.deepEqual(draft.missingData.map((item) => item.label), ['stock.getQuote'])
 })
+
+test('answer builder exposes web search sources and searched time', () => {
+  const draft = buildAgentAnswerDraft({
+    intent: 'market_question',
+    entities: [{ type: 'market', raw: 'A股大盘', market: 'A', confidence: 0.8 }],
+    requiredSkills: [],
+    responseMode: 'answer',
+  }, [
+    {
+      skillName: 'web.search',
+      ok: true,
+      data: {
+        query: 'A股 今日政策 新闻',
+        searchedAt: '2026-05-02T14:30:00.000Z',
+        results: [
+          {
+            title: 'A股市场政策新闻',
+            url: 'https://example.com/news',
+            snippet: '证监会发布资本市场相关安排。',
+            content: '证监会发布资本市场相关安排，市场关注后续政策落地节奏。',
+            source: 'bing',
+          },
+        ],
+      },
+    },
+  ])
+
+  const searchedAt = draft.facts.find((item) => item.label === '公开搜索时间')
+  const sources = draft.facts.find((item) => item.label === '公开搜索来源')
+
+  assert.equal(draft.answerType, 'market_review')
+  assert.equal(searchedAt?.value, '2026-05-02T14:30:00.000Z')
+  assert.match(searchedAt?.note ?? '', /不是实时数据库事实/)
+  assert.deepEqual(sources?.value, [{
+    title: 'A股市场政策新闻',
+    url: 'https://example.com/news',
+    source: 'bing',
+    summary: '证监会发布资本市场相关安排。',
+    point: '证监会发布资本市场相关安排，市场关注后续政策落地节奏。',
+  }])
+})

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Select } from '@/components/ui/select'
+import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
 
@@ -22,6 +23,7 @@ type AnalysisTypeFilter = 'ALL' | 'stock' | 'portfolio' | 'market'
 type ActionFilter = 'ALL' | '买入' | '加仓' | '继续持有' | '减仓' | '卖出' | '观望' | '回避'
 
 const ACTION_OPTIONS: ActionFilter[] = ['ALL', '买入', '加仓', '继续持有', '减仓', '卖出', '观望', '回避']
+const HISTORY_UNAVAILABLE_MESSAGE = 'AI 分析历史服务暂时不可用，请稍后重试。'
 
 export default function AiHistoryView() {
   const { userId } = useStockStore()
@@ -50,11 +52,14 @@ export default function AiHistoryView() {
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
         const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data?.error ?? '获取历史失败')
-        setRecords(data.records as AiAnalysisHistoryRecord[])
+        const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
+          fallbackMessage: '获取历史失败',
+          unavailableMessage: HISTORY_UNAVAILABLE_MESSAGE,
+        })
+        setRecords(data.records ?? [])
       } catch (err) {
-        setError(err instanceof Error ? err.message : '获取历史失败')
+        console.error('Load AI analysis history failed:', err)
+        setError(describeClientRequestError(err, '获取历史失败', HISTORY_UNAVAILABLE_MESSAGE))
       } finally {
         setLoading(false)
       }
@@ -147,14 +152,15 @@ export default function AiHistoryView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, id: deleteTarget.id }),
       })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data?.error ?? '删除分析记录失败')
-      }
+      await readJsonResponse<{ ok: true }>(res, {
+        fallbackMessage: '删除分析记录失败',
+        unavailableMessage: HISTORY_UNAVAILABLE_MESSAGE,
+      })
       setRecords((current) => current.filter((record) => record.id !== deleteTarget.id))
       setDeleteTarget(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除分析记录失败')
+      console.error('Delete AI analysis history failed:', err)
+      setError(describeClientRequestError(err, '删除分析记录失败', HISTORY_UNAVAILABLE_MESSAGE))
     }
   }
 

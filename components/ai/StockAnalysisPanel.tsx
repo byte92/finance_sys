@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Clock, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiAnalysisResult, Stock } from '@/types'
+
+const AI_ANALYSIS_UNAVAILABLE_MESSAGE = '服务暂时不可用，请稍后重试或点击强制刷新。'
 
 export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
   const { config, userId } = useStockStore()
@@ -42,8 +45,10 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
           limit: '1',
         })
         const res = await fetch(`/api/ai/history?${params.toString()}`, { signal: controller.signal })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data?.error ?? '读取个股 AI 历史失败')
+        const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
+          fallbackMessage: '读取个股 AI 历史失败',
+          unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+        })
         const latest = (data.records as AiAnalysisHistoryRecord[] | undefined)?.[0]
         if (latest) {
           setResult(latest.result)
@@ -51,7 +56,8 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : '读取个股 AI 历史失败')
+        console.error('Load stock AI analysis history failed:', err)
+        setError(describeClientRequestError(err, '读取个股 AI 历史失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
       } finally {
         if (!controller.signal.aborted) setHistoryLoading(false)
       }
@@ -75,12 +81,15 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
           forceRefresh,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? '个股 AI 分析失败')
+      const data = await readJsonResponse<{ result: AiAnalysisResult }>(res, {
+        fallbackMessage: '个股 AI 分析失败',
+        unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+      })
       setResult(data.result as AiAnalysisResult)
       setRestoredFromHistory(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '个股 AI 分析失败')
+      console.error('Run stock AI analysis failed:', err)
+      setError(describeClientRequestError(err, '个股 AI 分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
     } finally {
       setLoading(false)
     }

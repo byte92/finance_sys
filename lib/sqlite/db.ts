@@ -681,19 +681,29 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
   };
 }
 
-const portfolioStore = createPortfolioStore();
+type PortfolioStore = ReturnType<typeof createPortfolioStore>;
+
+let portfolioStore: PortfolioStore | null = null;
+
+function getPortfolioStore() {
+  if (!portfolioStore) {
+    portfolioStore = createPortfolioStore();
+  }
+  return portfolioStore;
+}
 
 export function getPortfolioByUserId(userId: string): StoredPayload {
-  return portfolioStore.getPortfolioByUserId(userId);
+  return getPortfolioStore().getPortfolioByUserId(userId);
 }
 
 export function getPortfolioByUserIdWithLocalFallback(userId: string): ResolvedStoredPayload {
-  const payload = portfolioStore.getPortfolioByUserId(userId);
+  const store = getPortfolioStore();
+  const payload = store.getPortfolioByUserId(userId);
   if (payload.stocks.length > 0 || !userId.startsWith("local:")) {
     return { ...payload, userId };
   }
 
-  const fallback = portfolioStore.getLatestNonEmptyLocalPortfolio();
+  const fallback = store.getLatestNonEmptyLocalPortfolio();
   if (fallback && fallback.userId !== userId) {
     return fallback;
   }
@@ -702,77 +712,77 @@ export function getPortfolioByUserIdWithLocalFallback(userId: string): ResolvedS
 }
 
 export function savePortfolioByUserId(userId: string, payload: StoredPayload) {
-  portfolioStore.savePortfolioByUserId(userId, payload);
+  getPortfolioStore().savePortfolioByUserId(userId, payload);
 }
 
 export function saveAiAnalysis(record: SaveAiAnalysisInput) {
-  portfolioStore.saveAiAnalysis(record);
+  getPortfolioStore().saveAiAnalysis(record);
 }
 
 export function listAiAnalysisByUserId(userId: string, filters: ListAiAnalysisFilters = {}) {
-  return portfolioStore.listAiAnalysisByUserId(userId, filters);
+  return getPortfolioStore().listAiAnalysisByUserId(userId, filters);
 }
 
 export function deleteAiAnalysisById(userId: string, id: string) {
-  return portfolioStore.deleteAiAnalysisById(userId, id);
+  return getPortfolioStore().deleteAiAnalysisById(userId, id);
 }
 
 export function saveAiChatSession(input: SaveAiChatSessionInput) {
-  portfolioStore.saveAiChatSession(input);
+  getPortfolioStore().saveAiChatSession(input);
 }
 
 export function updateAiChatSessionTitle(userId: string, sessionId: string, title: string) {
-  portfolioStore.updateAiChatSessionTitle(userId, sessionId, title);
+  getPortfolioStore().updateAiChatSessionTitle(userId, sessionId, title);
 }
 
 export function setSessionContext(userId: string, sessionId: string, context: Record<string, unknown> | null) {
-  portfolioStore.setSessionContext(userId, sessionId, context);
+  getPortfolioStore().setSessionContext(userId, sessionId, context);
 }
 
 export function getSessionContext(userId: string, sessionId: string) {
-  return portfolioStore.getSessionContext(userId, sessionId);
+  return getPortfolioStore().getSessionContext(userId, sessionId);
 }
 
 export function getAiChatSession(userId: string, sessionId: string) {
-  return portfolioStore.getAiChatSession(userId, sessionId);
+  return getPortfolioStore().getAiChatSession(userId, sessionId);
 }
 
 export function listAiChatSessions(userId: string) {
-  return portfolioStore.listAiChatSessions(userId);
+  return getPortfolioStore().listAiChatSessions(userId);
 }
 
 export function saveAiChatMessage(input: SaveAiChatMessageInput) {
-  portfolioStore.saveAiChatMessage(input);
+  getPortfolioStore().saveAiChatMessage(input);
 }
 
 export function getAiChatMessage(userId: string, messageId: string) {
-  return portfolioStore.getAiChatMessage(userId, messageId);
+  return getPortfolioStore().getAiChatMessage(userId, messageId);
 }
 
 export function listAiChatMessages(userId: string, sessionId: string, limit?: number) {
-  return portfolioStore.listAiChatMessages(userId, sessionId, limit);
+  return getPortfolioStore().listAiChatMessages(userId, sessionId, limit);
 }
 
 export function deleteAiChatSession(userId: string, sessionId: string) {
-  return portfolioStore.deleteAiChatSession(userId, sessionId);
+  return getPortfolioStore().deleteAiChatSession(userId, sessionId);
 }
 
 export function clearAiChatMessages(userId: string, sessionId: string) {
-  return portfolioStore.clearAiChatMessages(userId, sessionId);
+  return getPortfolioStore().clearAiChatMessages(userId, sessionId);
 }
 
 export function clearAiChatByUserId(userId: string) {
-  return portfolioStore.clearAiChatByUserId(userId);
+  return getPortfolioStore().clearAiChatByUserId(userId);
 }
 
 export function saveAiAgentRun(input: SaveAiAgentRunInput) {
-  portfolioStore.saveAiAgentRun(input);
+  getPortfolioStore().saveAiAgentRun(input);
 }
 
 export function getAiAgentRun(userId: string, runId: string) {
-  return portfolioStore.getAiAgentRun(userId, runId);
+  return getPortfolioStore().getAiAgentRun(userId, runId);
 }
 
 export function listAiAgentRuns(userId: string, sessionId: string, limit?: number) {
-  return portfolioStore.listAiAgentRuns(userId, sessionId, limit);
+  return getPortfolioStore().listAiAgentRuns(userId, sessionId, limit);
 }

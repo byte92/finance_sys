@@ -7,7 +7,7 @@
   "scripts": {
     "preinstall": "node scripts/only-pnpm.cjs",
     "prebuild": "node scripts/only-pnpm.cjs",
-    "dev": "next dev -p 3218",
+    "dev": "node scripts/dev.cjs",
     "lint": "tsc --noEmit",
     "build": "next build",
     "start": "next start -p 3218",

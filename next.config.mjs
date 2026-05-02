@@ -4,8 +4,8 @@ const nextConfig = {
   output: 'standalone',
   allowedDevOrigins: [
     '127.0.0.1',
-    '127.0.0.1:3000',
-    'http://127.0.0.1:3000',
+    '127.0.0.1:3218',
+    'http://127.0.0.1:3218',
   ],
 };
 

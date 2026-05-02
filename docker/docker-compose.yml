@@ -1,21 +1,25 @@
+name: stocktracker
+
 services:
   stocktracker:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     image: stocktracker:local
     container_name: stocktracker
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3218}:3218"
     env_file:
-      - path: .env.local
+      - path: ../.env.local
         required: false
     environment:
       NODE_ENV: production
+      PORT: 3218
       FINANCE_SQLITE_PATH: /app/data/finance.sqlite
     volumes:
       - stocktracker-data:/app/data
 
 volumes:
   stocktracker-data:
+    name: stocktracker-data

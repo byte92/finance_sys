@@ -14,10 +14,9 @@
 | `lib/` | 领域逻辑、数据源适配、AI/Agent Runtime、SQLite、本地工具函数。 |
 | `skills/` | Agent Skill Markdown 描述文件。内置 Skill 放在 `skills/builtin`。 |
 | `store/` | Zustand store，负责前端状态和本地持久化协调。 |
-| `tests/` | Node test runner 测试。默认测试不依赖真实外部网络；外部接口 smoke test 使用 `npm run test:external`。 |
+| `tests/` | Node test runner 测试。默认测试不依赖真实外部网络；外部接口 smoke test 使用 `pnpm test:external`。 |
 | `types/` | 跨模块共享类型。 |
-| `Dockerfile` | 生产容器镜像构建入口，使用 Next.js standalone 输出。 |
-| `docker-compose.yml` | 本地 Docker 服务编排，默认挂载持久化 SQLite 数据卷。 |
+| `docker/` | Dockerfile、Compose 编排、构建忽略规则和 Docker 部署说明集中目录。 |
 
 ## `lib/` 目录边界
 

@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "description": "Local-first portfolio tracker and AI investing copilot.",
   "main": "index.js",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "next dev",
+    "preinstall": "node scripts/only-pnpm.cjs",
+    "prebuild": "node scripts/only-pnpm.cjs",
+    "dev": "next dev -p 3218",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3218",
     "test": "tsx --test tests/**/*.test.ts",
     "test:external": "tsx --test tests/external-apis.test.ts"
   },
@@ -45,6 +48,13 @@
   },
   "overrides": {
     "postcss": "$postcss"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp"
+    ]
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",

@@ -25,8 +25,8 @@
 ## 本地开发
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 默认访问：
@@ -38,14 +38,14 @@ npm run dev
 至少运行：
 
 ```bash
-npm test
-npm run build
+pnpm test
+pnpm build
 ```
 
 如果修改了外部 API、行情源、新闻、汇率、K 线或 LLM provider，请额外运行：
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 如果修改了收益、手续费、FIFO、分红或成本计算，请重点检查：

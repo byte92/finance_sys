@@ -99,19 +99,19 @@ data/finance.sqlite
 环境要求：
 
 - Node.js 18+
-- npm
+- pnpm
 - macOS / Linux / Windows
 
 ```bash
 git clone https://github.com/byte92/finance_sys.git
 cd finance_sys
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 启动后访问：
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
 
 更多开发、环境变量、数据库和测试说明见 [开发指南](./docs/DEVELOPMENT.md)。
 
@@ -122,16 +122,17 @@ npm run dev
 ```bash
 git clone https://github.com/byte92/finance_sys.git
 cd finance_sys
+cd docker
 docker compose up -d --build
 ```
 
 启动后访问：
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
 
-需要 AI 功能时，把 `.env.example` 复制为 `.env.local` 并填入模型配置。容器默认把 SQLite 数据保存在 Docker volume 中，重启不会丢失。
+如需修改 Docker 暴露端口，可把 `docker/.env.example` 复制为 `docker/.env` 并修改 `HOST_PORT`。如需启用 AI 功能，可把根目录 `.env.example` 复制为 `.env.local` 并填入模型配置；Docker Compose 会把 `.env.local` 可选注入容器。没有 `docker/.env` 时端口默认使用 `3218`。容器默认把 SQLite 数据保存在 Docker volume 中，重启不会丢失。
 
-更多 Docker、数据卷和 Docker Hub 发布说明见 [Docker 部署指南](./docs/DOCKER.md)。
+更多 Docker、数据卷和 Docker Hub 发布说明见 [Docker 部署指南](./docker/README.md)。
 
 ## 项目结构
 
@@ -153,7 +154,7 @@ types/        共享类型
 ## 文档
 
 - [开发指南](./docs/DEVELOPMENT.md)
-- [Docker 部署指南](./docs/DOCKER.md)
+- [Docker 部署指南](./docker/README.md)
 - [项目目录结构](./docs/PROJECT_STRUCTURE.md)
 - [数据接口清单](./docs/DATA_API_INVENTORY.md)
 - [Agent 架构设计](./docs/AGENT_ARCHITECTURE.md)
@@ -171,14 +172,14 @@ types/        共享类型
 常用验证命令：
 
 ```bash
-npm test
-npm run build
+pnpm test
+pnpm build
 ```
 
 真实外部接口检查：
 
 ```bash
-npm run test:external
+pnpm test:external
 ```
 
 ## 路线方向 🗺️

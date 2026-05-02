@@ -51,6 +51,42 @@ test('agent planner uses stock skills for a single-stock question', async () => 
   ])
 })
 
+test('agent planner adds web search for stock announcement questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '成都银行最近有什么公告？',
+    stocks,
+    aiConfig: mockAiConfig,
+  })
+
+  const webSearch = plan.requiredSkills.find((item) => item.name === 'web.search')
+
+  assert.equal(plan.intent, 'stock_analysis')
+  assert.equal(plan.responseMode, 'answer')
+  assert.equal(plan.entities[0]?.stockId, 'stock-1')
+  assert.ok(webSearch)
+  assert.match(String(webSearch?.args.query), /成都银行 601838/)
+  assert.match(String(webSearch?.args.query), /公告/)
+  assert.match(String(webSearch?.args.query), /巨潮资讯/)
+  assert.match(String(webSearch?.args.query), /上交所/)
+})
+
+test('agent planner adds web search for stock news and bullish or bearish questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '成都银行今天发生了什么，有利空吗？',
+    stocks,
+    aiConfig: mockAiConfig,
+  })
+
+  const webSearch = plan.requiredSkills.find((item) => item.name === 'web.search')
+
+  assert.equal(plan.intent, 'stock_analysis')
+  assert.equal(plan.responseMode, 'answer')
+  assert.ok(webSearch)
+  assert.match(String(webSearch?.args.query), /成都银行 601838/)
+  assert.match(String(webSearch?.args.query), /今日新闻/)
+  assert.match(String(webSearch?.args.query), /利好 利空/)
+})
+
 test('agent planner uses portfolio skills for portfolio risk questions', async () => {
   const plan = await planAgentResponse({
     userMessage: '我现在组合最大的风险是什么',
@@ -102,6 +138,23 @@ test('agent planner keeps recent stock focus for follow-up metric questions', as
     'stock.getQuote',
     'stock.getTechnicalSnapshot',
   ])
+})
+
+test('agent planner adds web search for A-share market event and policy questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: 'A股大盘今天有什么政策新闻和盘面大事件？',
+    stocks,
+    aiConfig: mockAiConfig,
+  })
+
+  assert.equal(plan.intent, 'market_question')
+  assert.equal(plan.responseMode, 'answer')
+  assert.deepEqual(plan.requiredSkills.map((item) => item.name), [
+    'market.getAnalysisContext',
+    'web.search',
+  ])
+  assert.match(String(plan.requiredSkills[1]?.args.query), /A股/)
+  assert.match(String(plan.requiredSkills[1]?.args.query), /政策/)
 })
 
 test('agent planner refuses clearly out-of-scope questions', async () => {

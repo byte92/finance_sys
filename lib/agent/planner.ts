@@ -15,6 +15,10 @@ function includesAny(content: string, keywords: string[]) {
 const FINANCIAL_KEYWORDS = ['财报', '业绩', '营收', '利润', '盈利', '净利润', 'EPS', '每股收益', '分红', '派息', '增长', '同比', '环比']
 const EXPLICIT_PORTFOLIO_KEYWORDS = ['组合', '全部', '整体', '所有', '每只', '哪些', '哪只', '仓位', '配置']
 const FOLLOW_UP_STOCK_KEYWORDS = ['收益', '盈利', '亏损', '成本', '均价', '平均', '持仓', '分红', '手续费', '操作', '建议', '怎么看', '怎么样', '多少']
+const STOCK_WEB_SEARCH_KEYWORDS = ['新闻', '消息', '公告', '披露', '利好', '利空', '催化', '传闻', '监管', '处罚', '停牌', '复牌', '减持', '增持', '回购', '中标', '诉讼', '调查', '澄清']
+const STOCK_ANNOUNCEMENT_KEYWORDS = ['公告', '披露', '停牌', '复牌', '减持', '增持', '回购', '业绩预告', '业绩快报', '年报', '季报', '半年报', '重大事项', '澄清']
+const A_SHARE_MARKET_KEYWORDS = ['A股', 'A 股', '大盘', '盘面', '沪指', '上证', '深成指', '创业板', '两市', '三大指数']
+const MARKET_WEB_SEARCH_KEYWORDS = ['今日', '今天', '新闻', '消息', '政策', '大事件', '事件', '盘面', '发生', '利好', '利空', '监管', '会议', '降准', '降息', '证监会']
 
 function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = [
@@ -29,7 +33,66 @@ function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall
       { name: 'stock.getFinancials', args: { symbol: stock.code, market: stock.market }, reason: '用户询问财报或业绩数据，需要获取最新财务指标' },
     )
   }
+  if (shouldSearchStockWeb(userMessage)) {
+    skills.push(
+      {
+        name: 'web.search',
+        args: { query: buildStockWebSearchQuery(stock, userMessage), limit: 5, searchLimit: 10 },
+        reason: '用户询问个股新闻、公告、利好利空或今日事件，需要检索公开网页来源',
+      },
+    )
+  }
   return skills
+}
+
+type StockSearchTarget = Pick<Stock, 'code' | 'name' | 'market'>
+
+function shouldSearchStockWeb(content: string) {
+  return includesAny(content, STOCK_WEB_SEARCH_KEYWORDS)
+    || /(今天|今日|最新).*(发生|消息|新闻|公告|利好|利空|怎么了|什么事|事件)/.test(content)
+    || /(发生了什么|出了?什么事|有什么消息|有啥消息|怎么了)/.test(content)
+}
+
+function isAnnouncementQuestion(content: string) {
+  return includesAny(content, STOCK_ANNOUNCEMENT_KEYWORDS) || includesAny(content, ['财报', '业绩'])
+}
+
+function getAStockAuthorityHint(code: string) {
+  if (/^6/.test(code)) return '巨潮资讯 上交所 官方公告'
+  if (/^[023]/.test(code)) return '巨潮资讯 深交所 官方公告'
+  return '巨潮资讯 交易所 官方公告'
+}
+
+function buildStockWebSearchQuery(stock: StockSearchTarget, content: string) {
+  const year = String(new Date().getFullYear())
+  const identity = [stock.name, stock.code].filter(Boolean).join(' ')
+  if (isAnnouncementQuestion(content)) {
+    const authorityHint = stock.market === 'A' ? getAStockAuthorityHint(stock.code) : '官方公告'
+    return `${identity} 最新公告 ${year} ${authorityHint}`.trim()
+  }
+  if (includesAny(content, ['利好', '利空'])) {
+    return `${identity} 今日新闻 利好 利空 ${year}`.trim()
+  }
+  return `${identity} 最新新闻 今日发生了什么 ${year}`.trim()
+}
+
+function shouldSearchAShareMarketWeb(content: string) {
+  return includesAny(content, A_SHARE_MARKET_KEYWORDS) && includesAny(content, MARKET_WEB_SEARCH_KEYWORDS)
+}
+
+function buildAShareMarketWebSearchQuery(content: string) {
+  const year = String(new Date().getFullYear())
+  if (includesAny(content, ['政策', '降准', '降息', '证监会'])) {
+    return `A股 今日政策 新闻 证监会 央行 财政部 ${year}`
+  }
+  return `A股 今日大盘 新闻 盘面 大事件 政策 ${year}`
+}
+
+function inferMarketFromCode(code: string): Market | null {
+  if (/^\d{6}$/.test(code)) return 'A'
+  if (/^\d{5}$/.test(code)) return 'HK'
+  if (/^[A-Z]{1,6}$/.test(code)) return 'US'
+  return null
 }
 
 const PLANNER_SYSTEM_PROMPT = [
@@ -60,6 +123,9 @@ const PLANNER_SYSTEM_PROMPT = [
   '规则：',
   '- 如果用户问题与股票投资无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
   '- 如果标的不明确，responseMode 设为 clarify',
+  '- 如果用户询问某只个股的新闻、公告、利好利空、今日发生了什么、出了什么事，必须规划 web.search',
+  '- 如果用户询问 A 股大盘今日大事件、政策、盘面新闻或发生了什么，必须规划 web.search；可同时读取 market.getAnalysisContext',
+  '- A 股公告类 web.search query 应包含股票名称/代码，并优先加入 巨潮资讯、上交所/深交所、官方公告 等权威来源词',
   '- 只规划数据读取 Skill，不要规划分析 Skill（如 getAnalysisContext）',
   '- args 中的值从用户消息中提取，不要编造',
 ].join('\n')
@@ -194,6 +260,17 @@ export async function planAgentResponse({
           { name: 'stock.getFinancials', args: { symbol: item.symbol, market: item.market }, reason: '用户询问财报或业绩数据，需要获取最新财务指标' },
         )
       }
+      if (shouldSearchStockWeb(content)) {
+        base.push({
+          name: 'web.search',
+          args: {
+            query: buildStockWebSearchQuery({ code: item.symbol, name: item.symbol, market: item.market }, content),
+            limit: 5,
+            searchLimit: 10,
+          },
+          reason: '用户询问未持仓标的的新闻、公告、利好利空或今日事件，需要检索公开网页来源',
+        })
+      }
       return base
     })
     return {
@@ -204,7 +281,31 @@ export async function planAgentResponse({
     }
   }
 
+  if (shouldSearchAShareMarketWeb(content)) {
+    return {
+      intent: 'market_question',
+      entities: [{ type: 'market', raw: 'A股大盘', market: 'A', confidence: 0.82 }],
+      requiredSkills: [
+        { name: 'market.getAnalysisContext', args: { market: 'A' }, reason: '用户询问 A 股大盘，需要读取指数、技术指标和新闻上下文' },
+        { name: 'web.search', args: { query: buildAShareMarketWebSearchQuery(content), limit: 5, searchLimit: 10 }, reason: '用户询问 A 股大盘今日事件、政策或盘面新闻，需要检索公开网页来源' },
+      ],
+      responseMode: 'answer',
+    }
+  }
+
   if (code && !matches.length) {
+    const inferredMarket = inferMarketFromCode(code)
+    if (inferredMarket && shouldSearchStockWeb(content)) {
+      return {
+        intent: 'stock_analysis',
+        entities: [{ type: 'stock', raw: code, code, market: inferredMarket, confidence: 0.72 }],
+        requiredSkills: [
+          { name: 'stock.getExternalQuote', args: { symbol: code, market: inferredMarket }, reason: '用户询问未持仓标的，代码可推断市场，先抓取外部行情' },
+          { name: 'web.search', args: { query: buildStockWebSearchQuery({ code, name: code, market: inferredMarket }, content), limit: 5, searchLimit: 10 }, reason: '用户询问个股新闻、公告、利好利空或今日事件，需要检索公开网页来源' },
+        ],
+        responseMode: 'answer',
+      }
+    }
     return {
       intent: 'stock_analysis',
       entities: [{ type: 'stock', raw: code, code, confidence: 0.55 }],

@@ -13,6 +13,10 @@ function findResult(skillResults: AgentSkillResult[], name: string) {
   return skillResults.find((result) => result.skillName === name)
 }
 
+function findResults(skillResults: AgentSkillResult[], name: string) {
+  return skillResults.filter((result) => result.skillName === name)
+}
+
 function getData(result: AgentSkillResult | undefined) {
   return result?.ok && isRecord(result.data) ? result.data : null
 }
@@ -31,6 +35,26 @@ function getIndicators(data: Record<string, unknown> | null) {
 
 function hasSkill(skillResults: AgentSkillResult[], name: string) {
   return skillResults.some((result) => result.skillName === name)
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function toWebSearchSource(item: Record<string, unknown>) {
+  const title = textValue(item.title)
+  const url = textValue(item.url)
+  if (!title || !url) return null
+
+  const snippet = textValue(item.snippet)
+  const content = textValue(item.content)
+  return {
+    title,
+    url,
+    source: textValue(item.source) || 'web',
+    summary: (snippet || content).slice(0, 280),
+    point: content && content !== snippet ? content.slice(0, 360) : undefined,
+  }
 }
 
 function inferAnswerType(plan: AgentPlan): AgentAnswerDraft['answerType'] {
@@ -125,6 +149,25 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
     addItem(calculations, '组合已实现收益', portfolioSummary.totalRealizedPnl, 'portfolio.getSummary')
     addItem(calculations, '组合未实现收益', portfolioSummary.totalUnrealizedPnl, 'portfolio.getSummary')
     addItem(calculations, '组合交易笔数', portfolioSummary.totalTradeCount, 'portfolio.getSummary')
+  }
+
+  for (const result of findResults(skillResults, 'web.search')) {
+    const data = getData(result)
+    if (!data) continue
+
+    const searchedAt = textValue(data.searchedAt)
+    const query = textValue(data.query)
+    const sources = (Array.isArray(data.results) ? data.results : [])
+      .filter(isRecord)
+      .map(toWebSearchSource)
+      .filter((item): item is NonNullable<ReturnType<typeof toWebSearchSource>> => item !== null)
+
+    addItem(facts, '公开搜索查询', query, 'web.search')
+    addItem(facts, '公开搜索时间', searchedAt, 'web.search', '这是搜索执行时间；搜索结果是公开网页候选来源，不是实时数据库事实。')
+    addItem(facts, '公开搜索来源', sources, 'web.search', '回答新闻、公告或政策问题时应列出标题、链接、摘要/要点和搜索时间，并使用“公开搜索结果显示/检索到”一类表述。')
+    if (!sources.length) {
+      addItem(missingData, '公开搜索结果', '没有检索到可用于引用的公开网页结果。', 'web.search')
+    }
   }
 
   if (answerType === 'trade_review') {

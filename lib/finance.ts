@@ -35,6 +35,12 @@ type MatchSellResult = {
   costBasis: number;
 };
 
+const QUANTITY_EPSILON = 1e-12;
+
+function normalizeQuantity(value: number) {
+  return Math.abs(value) < QUANTITY_EPSILON ? 0 : value;
+}
+
 function matchSellLots({
   quantity,
   costQueue,
@@ -43,17 +49,17 @@ function matchSellLots({
   let remaining = quantity;
   let costBasis = 0;
 
-  while (remaining > 0 && costQueue.length > 0) {
+  while (remaining > QUANTITY_EPSILON && costQueue.length > 0) {
     const lotIndex = mode === "RECENT_LOTS" ? costQueue.length - 1 : 0;
     const lot = costQueue[lotIndex];
 
-    if (lot.quantity <= remaining) {
+    if (lot.quantity <= remaining + QUANTITY_EPSILON) {
       costBasis = add(costBasis, mul(lot.price, lot.quantity));
-      remaining -= lot.quantity;
+      remaining = normalizeQuantity(sub(remaining, lot.quantity));
       costQueue.splice(lotIndex, 1);
     } else {
       costBasis = add(costBasis, mul(lot.price, remaining));
-      lot.quantity -= remaining;
+      lot.quantity = normalizeQuantity(sub(lot.quantity, remaining));
       remaining = 0;
     }
   }
@@ -184,7 +190,7 @@ export function autoCalcFees(
   }
 }
 
-// 计算股票整体盈亏摘要（默认 FIFO，可指定卖出成本匹配口径）
+// 计算单个标的整体盈亏摘要（默认 FIFO，可指定卖出成本匹配口径）
 // 支持：BUY / SELL / DIVIDEND
 export function calcStockSummary(
   stock: Stock,
@@ -213,7 +219,7 @@ export function calcStockSummary(
       tradeCount++;
       totalCommission = add(totalCommission, add(trade.commission, trade.tax));
       totalBuyAmount = add(totalBuyAmount, trade.netAmount);
-      currentHolding += trade.quantity;
+      currentHolding = normalizeQuantity(add(currentHolding, trade.quantity));
       costQueue.push({
         tradeId: trade.id,
         price: calcPerShareCost(trade.netAmount, trade.quantity),
@@ -244,7 +250,7 @@ export function calcStockSummary(
       const pnl = calcPnl(trade.netAmount, costBasis);
       const pnlPercent = calcPnlPercent(pnl, costBasis);
       realizedPnl = add(realizedPnl, pnl);
-      currentHolding -= trade.quantity;
+      currentHolding = normalizeQuantity(sub(currentHolding, trade.quantity));
 
       tradePnlDetails.push({
         tradeId: trade.id,
@@ -288,9 +294,11 @@ export function calcStockSummary(
       ? {
           ...detail,
           soldQuantity:
-            ((stock.trades.find((trade) => trade.id === detail.tradeId)?.quantity ?? 0) -
-              (remainingQuantityByTradeId.get(detail.tradeId) ?? 0)),
-          remainingQuantity: remainingQuantityByTradeId.get(detail.tradeId) ?? 0,
+            normalizeQuantity(sub(
+              stock.trades.find((trade) => trade.id === detail.tradeId)?.quantity ?? 0,
+              remainingQuantityByTradeId.get(detail.tradeId) ?? 0,
+            )),
+          remainingQuantity: normalizeQuantity(remainingQuantityByTradeId.get(detail.tradeId) ?? 0),
         }
       : detail,
   );

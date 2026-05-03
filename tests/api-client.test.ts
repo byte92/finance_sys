@@ -34,7 +34,7 @@ test('readJsonResponse hides HTML error pages from users', async () => {
 
     await assert.rejects(
       readJsonResponse(response, {
-        fallbackMessage: '个股 AI 分析失败',
+        fallbackMessage: '标的 AI 分析失败',
         unavailableMessage: '服务暂时不可用，请稍后重试或点击强制刷新。',
       }),
       (error) => {
@@ -60,7 +60,7 @@ test('readJsonResponse hides low-level JSON error messages', async () => {
 
   await assert.rejects(
     readJsonResponse(response, {
-      fallbackMessage: '个股 AI 分析失败',
+      fallbackMessage: '标的 AI 分析失败',
       unavailableMessage: '服务暂时不可用，请稍后重试或点击强制刷新。',
     }),
     (error) => {

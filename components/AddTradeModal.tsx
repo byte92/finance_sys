@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
 import { autoCalcFees, calcStockSummary, todayStr } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
+import { getMarketAssetUnit, getMarketMinQuantity, getMarketQuantityStep } from '@/config/defaults'
 import type { Market, TradeType, Trade } from '@/types'
 
 interface AddTradeModalProps {
@@ -40,10 +41,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   const [date, setDate] = useState(todayStr())
   const [price, setPrice] = useState('')
   const [quantity, setQuantity] = useState('')
-  // 分红专用字段
-  const [dividendPerShare, setDividendPerShare] = useState('')  // 每股分红金额
-  const [dividendShares, setDividendShares] = useState('')      // 持有股数
-  const [dividendTax, setDividendTax] = useState('20')         // 分红税率(%)，默认20%
+  // 现金收益专用字段（分红、派息、加密资产收益等）
+  const [dividendPerShare, setDividendPerShare] = useState('')
+  const [dividendShares, setDividendShares] = useState('')
+  const [dividendTax, setDividendTax] = useState('20')
   const [autoFee, setAutoFee] = useState(true)
   const [commission, setCommission] = useState('')
   const [tax, setTax] = useState('')
@@ -52,6 +53,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   const marketCurrency = MARKET_CURRENCY[market] || 'CNY'
   const currencySymbol = CURRENCY_SYMBOLS[marketCurrency]
   const currencyUnitLabel = getCurrencyUnitLabel(marketCurrency)
+  const assetUnit = getMarketAssetUnit(market)
+  const quantityStep = getMarketQuantityStep(market)
+  const minQuantity = getMarketMinQuantity(market)
+  const incomeLabel = market === 'CRYPTO' ? '收益' : '分红'
 
   // 编辑模式：初始化表单数据
   useEffect(() => {
@@ -59,7 +64,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
       setType(editTrade.type)
       setDate(editTrade.date)
       if (editTrade.type === 'DIVIDEND') {
-        // 分红：price=每股分红, quantity=持有股数
+        // 现金收益：price=每单位收益, quantity=持有数量
         setDividendPerShare(editTrade.price.toString())
         setDividendShares(editTrade.quantity.toString())
         // 计算税率：tax / (price * quantity)
@@ -87,12 +92,12 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   }, [type, availableHolding, editTrade?.type, dividendShares])
 
   const priceNum = parseFloat(price) || 0
-  const quantityNum = parseInt(quantity) || 0
+  const quantityNum = parseFloat(quantity) || 0
   const totalAmount = priceNum * quantityNum
 
-  // 分红计算
+  // 现金收益计算
   const dividendPerShareNum = parseFloat(dividendPerShare) || 0
-  const dividendSharesNum = parseInt(dividendShares) || 0
+  const dividendSharesNum = parseFloat(dividendShares) || 0
   const parsedDividendTax = Number(dividendTax)
   const dividendTaxRate = Number.isFinite(parsedDividendTax) ? parsedDividendTax / 100 : 0.2
   const grossDividend = dividendPerShareNum * dividendSharesNum
@@ -133,32 +138,32 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
 
     if (type === 'DIVIDEND') {
       if (!dividendPerShare || dividendPerShareNum <= 0) {
-        setError('请填写有效的每股分红金额')
+        setError(`请填写有效的每${assetUnit}${incomeLabel}金额`)
         return
       }
       if (!dividendShares || dividendSharesNum <= 0) {
-        setError('请填写分红时的持有股数')
+        setError(`请填写${incomeLabel}时的持有数量`)
         return
       }
       if (dividendSharesNum > availableHolding) {
-        setError(`分红股数不能超过当前持仓 ${availableHolding.toLocaleString()} 股`)
+        setError(`${incomeLabel}数量不能超过当前持仓 ${formatQuantity(availableHolding)} ${assetUnit}`)
         return
       }
-      // 分红记录：price=每股分红, quantity=持有股数, netAmount=税后实收
+      // 收益记录：price=每单位收益, quantity=持有数量, netAmount=税后实收
       tradeData.price = dividendPerShareNum
       tradeData.quantity = dividendSharesNum
       tradeData.commission = 0
       tradeData.tax = dividendTaxAmount
       tradeData.totalAmount = grossDividend
       tradeData.netAmount = netDividend
-      tradeData.note = note || `每股分红${currencySymbol}${dividendPerShareNum}，税率${dividendTax}%`
+      tradeData.note = note || `每${assetUnit}${incomeLabel}${currencySymbol}${dividendPerShareNum}，税率${dividendTax}%`
     } else {
       if (!price || !quantity || priceNum <= 0 || quantityNum <= 0) {
         setError('请填写有效的价格和数量')
         return
       }
       if (type === 'SELL' && quantityNum > availableHolding) {
-        setError(`当前最多可卖出 ${availableHolding.toLocaleString()} 股，请先检查持仓或交易顺序`)
+        setError(`当前最多可卖出 ${formatQuantity(availableHolding)} ${assetUnit}，请先检查持仓或交易顺序`)
         return
       }
       tradeData.price = priceNum
@@ -198,7 +203,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* 类型切换：买入 / 卖出 / 分红 */}
+          {/* 类型切换：买入 / 卖出 / 现金收益 */}
           <div className="flex gap-2">
             <button type="button" onClick={() => setType('BUY')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all border ${
@@ -216,7 +221,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all border ${
                 type === 'DIVIDEND' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-transparent text-muted-foreground hover:bg-secondary'
               }`}>
-              <Gift className="inline h-4 w-4 mr-1.5" />分红
+              <Gift className="inline h-4 w-4 mr-1.5" />{incomeLabel}
             </button>
           </div>
 
@@ -236,8 +241,8 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                     value={price} onChange={(e) => setPrice(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="quantity">成交数量（股）</Label>
-                  <Input id="quantity" type="number" min="1" step="1" placeholder="100"
+                  <Label htmlFor="quantity">成交数量（{assetUnit}）</Label>
+                  <Input id="quantity" type="number" min={minQuantity} step={quantityStep} placeholder={market === 'CRYPTO' ? '0.01' : '100'}
                     value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5 col-span-2">
@@ -285,29 +290,29 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             </>
           )}
 
-          {/* 分红表单 */}
+          {/* 现金收益表单 */}
           {type === 'DIVIDEND' && (
             <div className="space-y-3">
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="text-xs text-muted-foreground mb-2">
-                  录入分红后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本
+                  录入{incomeLabel}后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
-                  当前可分红持股数：{availableHolding.toLocaleString()} 股
+                  当前可记录数量：{formatQuantity(availableHolding)} {assetUnit}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="dps">每股分红（{currencyUnitLabel}）</Label>
+                    <Label htmlFor="dps">每{assetUnit}{incomeLabel}（{currencyUnitLabel}）</Label>
                     <Input id="dps" type="number" step="0.0001" min="0" placeholder="0.10"
                       value={dividendPerShare} onChange={(e) => setDividendPerShare(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="dshares">持有股数</Label>
-                    <Input id="dshares" type="number" min="1" step="1" placeholder="1000"
+                    <Label htmlFor="dshares">持有数量（{assetUnit}）</Label>
+                    <Input id="dshares" type="number" min={minQuantity} step={quantityStep} placeholder={market === 'CRYPTO' ? '0.01' : '1000'}
                       value={dividendShares} onChange={(e) => setDividendShares(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="dtax">分红税率（%）</Label>
+                    <Label htmlFor="dtax">{incomeLabel}税率（%）</Label>
                     <Input id="dtax" type="number" step="1" min="0" max="100" placeholder="20"
                       value={dividendTax} onChange={(e) => setDividendTax(e.target.value)} />
                   </div>
@@ -322,7 +327,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 {grossDividend > 0 && (
                   <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-muted-foreground">税前分红</span>
+                      <span className="text-muted-foreground">税前{incomeLabel}</span>
                       <div className="font-mono text-foreground font-medium">{currencySymbol}{grossDividend.toFixed(2)}</div>
                     </div>
                     <div>
@@ -350,7 +355,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
               : type === 'SELL' ? 'bg-loss hover:bg-loss/90 text-white'
               : 'bg-primary hover:bg-primary/90'
             }`}>
-              {isEdit ? '保存修改' : `确认${type === 'BUY' ? '买入' : type === 'SELL' ? '卖出' : '录入分红'}`}
+              {isEdit ? '保存修改' : `确认${type === 'BUY' ? '买入' : type === 'SELL' ? '卖出' : `录入${incomeLabel}`}`}
             </Button>
           </div>
         </form>
@@ -364,4 +369,10 @@ function getCurrencyUnitLabel(currency: keyof typeof CURRENCY_SYMBOLS) {
   if (currency === 'HKD') return '港元'
   if (currency === 'USDT') return 'USDT'
   return '元'
+}
+
+function formatQuantity(value: number) {
+  return value.toLocaleString('zh-CN', {
+    maximumFractionDigits: 8,
+  })
 }

@@ -14,7 +14,7 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPercent, formatPnl } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
 import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
-import { MARKET_LABELS } from '@/config/defaults'
+import { getMarketAssetUnit, MARKET_LABELS } from '@/config/defaults'
 import type { Stock, TradeMatchMode } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
@@ -153,7 +153,7 @@ export default function HoldingsList({
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
           <div className="text-xs text-muted-foreground mt-1">
-            {description ?? (limit ? `展示前 ${visibleStocks.length} 条持仓，点击进入详情。` : `共 ${stocks.length} 只，支持删除与进入详情。`)}
+            {description ?? (limit ? `展示前 ${visibleStocks.length} 条持仓，点击进入详情。` : `共 ${stocks.length} 个资产，支持删除与进入详情。`)}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -179,7 +179,7 @@ export default function HoldingsList({
           {showAddButton && (
             <Button size="sm" onClick={() => setShowAddStock(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />
-              添加股票
+              添加资产
             </Button>
           )}
         </div>
@@ -188,7 +188,7 @@ export default function HoldingsList({
       {visibleStocks.length === 0 ? (
         <Card className="border-border bg-card">
           <div className="p-6 text-sm text-muted-foreground">
-            还没有添加股票，点击右上角“添加股票”开始记录。
+            还没有添加资产，点击右上角“添加资产”开始记录。
           </div>
         </Card>
       ) : (
@@ -257,6 +257,7 @@ function StockListRow({
   const quote = liveQuote ?? preloadedQuote
   const summary = calcStockSummary(stock, quote?.price, { matchMode })
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
+  const assetUnit = getMarketAssetUnit(stock.market)
   const formatNativeAmount = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
   const totalCost = summary.avgCostPrice * summary.currentHolding
   const avgCost = summary.avgCostPrice
@@ -294,7 +295,7 @@ function StockListRow({
           {formatNativeAmount(totalCost)}
         </div>
         <div className="text-xs text-muted-foreground">
-          持仓 {summary.currentHolding.toLocaleString()} 股
+          持仓 {formatQuantity(summary.currentHolding)} {assetUnit}
         </div>
         <div className="text-xs text-muted-foreground">
           均价 {formatNativeAmount(avgCost)}
@@ -354,4 +355,10 @@ function StockListRow({
 function formatWithNativeCurrency(amount: number, currency: Currency) {
   const symbol = CURRENCY_SYMBOLS[currency] ?? '¥'
   return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatQuantity(value: number) {
+  return value.toLocaleString('zh-CN', {
+    maximumFractionDigits: 8,
+  })
 }

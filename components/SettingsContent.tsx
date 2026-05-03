@@ -10,10 +10,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
-import { MARKET_LABELS } from '@/config/defaults'
+import { MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
 import type { AiAnalysisLanguage, AiProvider, ExportData, Market, TradeMatchMode } from '@/types'
 
-const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
 type SectionId = 'basic' | 'ai' | 'preferences'
 const SETTINGS_SECTIONS_STORAGE_KEY = 'stock-tracker-settings-sections'
@@ -326,7 +325,7 @@ export default function SettingsContent({
                   value={defaultMarket}
                   onChange={(e) => setDefaultMarket(e.target.value as Market)}
                 >
-                  {MARKETS.map((market) => (
+                  {SUPPORTED_MARKETS.map((market) => (
                     <option key={market} value={market}>
                       {MARKET_LABELS[market]}
                     </option>
@@ -343,7 +342,7 @@ export default function SettingsContent({
             </div>
 
             <div className="space-y-4">
-              {MARKETS.map((market) => {
+              {SUPPORTED_MARKETS.map((market) => {
                 const fee = feeConfigs[market]
                 return (
                   <div key={market} className="rounded-lg border border-border p-4 space-y-3">

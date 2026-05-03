@@ -33,6 +33,13 @@ export const STOOQ_CONFIG: DataSourceConfig = {
   cacheTtl: 60,
 }
 
+// 加密货币行情（聚合公开现货 API，无需 Key）
+export const CRYPTO_CONFIG: DataSourceConfig = {
+  provider: 'crypto',
+  rateLimit: 120,
+  cacheTtl: 15,
+}
+
 // 默认服务配置
 export const DEFAULT_STOCK_SERVICE_CONFIG = {
   defaultProvider: 'tencent' as DataSourceProvider,
@@ -40,11 +47,12 @@ export const DEFAULT_STOCK_SERVICE_CONFIG = {
     'tencent': TENCENT_CONFIG,
     'alpha-vantage': ALPHA_VANTAGE_CONFIG,
     'stooq': STOOQ_CONFIG,
+    'crypto': CRYPTO_CONFIG,
     'manual': MANUAL_CONFIG,
   },
   cacheEnabled: true,
   cacheTtl: 60,
-  fallbackChain: ['tencent', 'stooq', 'alpha-vantage', 'manual'] as DataSourceProvider[],
+  fallbackChain: ['tencent', 'stooq', 'crypto', 'alpha-vantage', 'manual'] as DataSourceProvider[],
 }
 
 // 统一的代码转换规则：按市场 + 数据源生成标准代码，不维护硬编码映射表
@@ -67,6 +75,10 @@ export function normalizeSymbol(code: string, market: Market, provider: DataSour
   if (provider === 'stooq') {
     if (market === 'US') return `${c.toLowerCase()}.us`
     return c.toLowerCase()
+  }
+
+  if (provider === 'crypto') {
+    return c.replace(/[-_/\s]/g, '')
   }
 
   return c

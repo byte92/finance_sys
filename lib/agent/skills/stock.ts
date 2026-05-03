@@ -40,7 +40,7 @@ function quoteToContext(quote: StockQuote | null) {
 
 export const stockMatchSkill: AgentSkill<{ query?: string }> = {
   name: 'stock.match',
-  description: '根据用户输入匹配本地持仓中的股票。',
+  description: '根据用户输入匹配本地持仓中的标的。',
   inputSchema: { query: 'string' },
   requiredScopes: ['stock.read', 'quote.read'],
   async execute(args, ctx) {
@@ -58,7 +58,7 @@ export const stockMatchSkill: AgentSkill<{ query?: string }> = {
 
 export const stockGetHoldingSkill: AgentSkill<Record<string, unknown>> = {
   name: 'stock.getHolding',
-  description: '读取单只股票的本地持仓、成本、盈亏和备注。',
+  description: '读取单个标的的本地持仓、成本、盈亏和备注。',
   inputSchema: { stockId: 'string' },
   requiredScopes: ['stock.read'],
   async execute(args, ctx) {
@@ -98,7 +98,7 @@ export const stockGetHoldingSkill: AgentSkill<Record<string, unknown>> = {
 
 export const stockGetRecentTradesSkill: AgentSkill<Record<string, unknown>> = {
   name: 'stock.getRecentTrades',
-  description: '读取单只股票最近交易记录。',
+  description: '读取单个标的最近交易记录。',
   inputSchema: { stockId: 'string', limit: 'number' },
   requiredScopes: ['trade.read'],
   async execute(args, ctx) {
@@ -127,7 +127,7 @@ export const stockGetRecentTradesSkill: AgentSkill<Record<string, unknown>> = {
 
 export const stockGetQuoteSkill: AgentSkill<Record<string, unknown>> = {
   name: 'stock.getQuote',
-  description: '读取单只本地持仓股票的行情和估值数据。',
+  description: '读取单个本地持仓标的的行情和估值数据。',
   inputSchema: { stockId: 'string' },
   requiredScopes: ['quote.read'],
   async execute(args, ctx) {
@@ -140,7 +140,7 @@ export const stockGetQuoteSkill: AgentSkill<Record<string, unknown>> = {
 
 export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: Market; query?: string; keyword?: string; name?: string }> = {
   name: 'stock.getExternalQuote',
-  description: '读取未持仓股票的行情和估值数据。',
+  description: '读取未持仓标的的行情和估值数据。',
   inputSchema: { symbol: 'string', market: 'Market', query: 'string', keyword: 'string', name: 'string' },
   requiredScopes: ['quote.read'],
   async execute(args, ctx) {
@@ -180,7 +180,7 @@ export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: 
 
 export const stockGetTechnicalSnapshotSkill: AgentSkill<Record<string, unknown>> = {
   name: 'stock.getTechnicalSnapshot',
-  description: '读取单只股票的技术指标摘要。',
+  description: '读取单个标的的技术指标摘要。',
   inputSchema: { stockId: 'string', symbol: 'string', market: 'Market', query: 'string' },
   requiredScopes: ['quote.read'],
   async execute(args, ctx) {
@@ -336,7 +336,7 @@ async function fetchSinaAStockFinancials(symbol: string): Promise<FinancialsData
 
 export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData> = {
   name: 'stock.getFinancials',
-  description: '获取股票最近财报数据（EPS、营收增长等），支持美股/A股/港股。',
+  description: '获取标的最近财报数据（EPS、营收增长等），支持美股/A股/港股。',
   inputSchema: { symbol: 'string', market: 'Market', researchQuery: 'string?', sourceHints: 'string[]?' },
   requiredScopes: ['quote.read', 'network.fetch'],
   async execute(args, ctx) {

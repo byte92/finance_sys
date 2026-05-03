@@ -1,17 +1,10 @@
 import type { Market, Stock } from '@/types'
+import { MARKET_LABELS } from '@/config/defaults'
 
 export type StockMatch = {
   stock: Stock
   confidence: number
   reason: string
-}
-
-const MARKET_LABELS: Record<Market, string> = {
-  A: 'A 股',
-  HK: '港股',
-  US: '美股',
-  FUND: '基金',
-  CRYPTO: '加密资产',
 }
 
 function normalize(input: string) {

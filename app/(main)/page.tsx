@@ -25,7 +25,7 @@ export default function OverviewPage() {
       <div className="px-4 py-6 lg:px-6 space-y-8">
         <PortfolioSummarySection />
         <PortfolioAnalysisCard compact />
-        <HoldingsList limit={5} showAddButton={false} title="持仓预览" description="展示前 5 只持仓，便于快速进入详情或转到完整持仓页。" />
+        <HoldingsList limit={5} showAddButton={false} title="持仓预览" description="展示前 5 个持仓，便于快速进入详情或转到完整持仓页。" />
       </div>
     </div>
   )

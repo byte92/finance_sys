@@ -295,3 +295,64 @@ test('分红会计入已实现盈亏，但不会重复摊薄剩余持仓成本',
   assert.equal(summary.currentHolding, 100)
   assert.equal(Number(summary.avgCostPrice.toFixed(2)), 10.05)
 })
+
+test('加密资产支持小数数量和交易所手续费', () => {
+  const buyFees = autoCalcFees('BUY', 50000, 0.1, 'CRYPTO', 'BTC')
+  const sellFees = autoCalcFees('SELL', 60000, 0.03, 'CRYPTO', 'BTC')
+
+  assert.equal(buyFees.commission, 5)
+  assert.equal(buyFees.tax, 0)
+  assert.equal(buyFees.netAmount, 5005)
+  assert.equal(sellFees.commission, 1.8)
+  assert.equal(sellFees.tax, 0)
+  assert.equal(sellFees.netAmount, 1798.2)
+
+  const stock: Stock = {
+    id: 'crypto-1',
+    code: 'BTC',
+    name: 'BTC/USDT',
+    market: 'CRYPTO',
+    trades: [
+      {
+        id: 't1',
+        stockId: 'crypto-1',
+        type: 'BUY',
+        date: '2026-01-01',
+        price: 50000,
+        quantity: 0.1,
+        commission: buyFees.commission,
+        tax: buyFees.tax,
+        totalAmount: 5000,
+        netAmount: buyFees.netAmount,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 't2',
+        stockId: 'crypto-1',
+        type: 'SELL',
+        date: '2026-01-02',
+        price: 60000,
+        quantity: 0.03,
+        commission: sellFees.commission,
+        tax: sellFees.tax,
+        totalAmount: 1800,
+        netAmount: sellFees.netAmount,
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+      },
+    ],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  const summary = calcStockSummary(stock, 65000)
+
+  assert.equal(summary.currentHolding, 0.07)
+  assert.equal(summary.avgCostPrice, 50050)
+  assert.equal(Number(summary.realizedPnl.toFixed(2)), 296.7)
+  assert.equal(Number(summary.unrealizedPnl.toFixed(2)), 1046.5)
+  assert.equal(Number(summary.totalPnl.toFixed(2)), 1343.2)
+  assert.equal(summary.tradePnlDetails[0]?.soldQuantity, 0.03)
+  assert.equal(summary.tradePnlDetails[0]?.remainingQuantity, 0.07)
+})

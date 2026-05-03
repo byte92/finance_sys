@@ -25,7 +25,7 @@ async function handlePOST(request: Request) {
       return NextResponse.json({ error: '缺少用户 ID' }, { status: 400 })
     }
     if (!body.stock) {
-      return NextResponse.json({ error: '缺少目标股票数据' }, { status: 400 })
+      return NextResponse.json({ error: '缺少目标标的数据' }, { status: 400 })
     }
     if (!body.aiConfig) {
       return NextResponse.json({ error: '缺少 AI 配置' }, { status: 400 })
@@ -51,7 +51,7 @@ async function handlePOST(request: Request) {
     }
     return NextResponse.json({ result })
   } catch (error) {
-    const message = error instanceof Error ? error.message : '个股 AI 分析失败'
+    const message = error instanceof Error ? error.message : '标的 AI 分析失败'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

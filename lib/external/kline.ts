@@ -1,4 +1,5 @@
 import type { Market } from '@/types'
+import { COINBASE_EXCHANGE_BASE, CRYPTO_BINANCE_HOSTS, normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -14,7 +15,7 @@ export type KlineItem = {
   volume: number
 }
 
-export type KlineSource = 'tencent' | 'nasdaq' | 'stooq' | 'alpha-vantage'
+export type KlineSource = 'tencent' | 'nasdaq' | 'stooq' | 'alpha-vantage' | 'binance' | 'coinbase'
 
 export type KlineFetchResult = {
   candles: KlineItem[]
@@ -82,8 +83,10 @@ function getSourceChain(market: Market, interval: KlineInterval): KlineSource[] 
   if (isDaily) {
     if (market === 'US') return ['nasdaq', 'alpha-vantage']
     if (isChina) return ['tencent', 'alpha-vantage']
+    if (market === 'CRYPTO') return ['binance', 'coinbase']
     return ['alpha-vantage']
   }
+  if (market === 'CRYPTO') return ['binance', 'coinbase']
   return isChina ? ['tencent', 'alpha-vantage'] : ['alpha-vantage']
 }
 
@@ -112,6 +115,8 @@ async function fetchBySource(source: KlineSource, symbol: string, market: Market
     nasdaq: fetchNasdaqKline,
     stooq: fetchStooqKline,
     'alpha-vantage': fetchAlphaVantageKline,
+    binance: fetchBinanceCryptoKline,
+    coinbase: fetchCoinbaseCryptoKline,
   }
   return fetchers[source](symbol, market, interval, days)
 }
@@ -283,6 +288,129 @@ async function fetchAlphaVantageKline(symbol: string, market: Market, interval: 
   return sortByTime(items)
 }
 
+async function fetchBinanceCryptoKline(symbol: string, market: Market, interval: KlineInterval, days: number): Promise<KlineItem[]> {
+  if (market !== 'CRYPTO') return []
+  const normalized = normalizeCryptoSymbol(symbol)
+  if (!normalized) return []
+
+  const binanceInterval = interval === '60m' ? '1h' : interval
+  const limit = getCryptoKlineLimit(interval, days)
+
+  for (const baseUrl of CRYPTO_BINANCE_HOSTS) {
+    try {
+      const params = new URLSearchParams({
+        symbol: normalized.binanceSymbol,
+        interval: binanceInterval,
+        limit: String(limit),
+      })
+      const url = `${baseUrl}/api/v3/klines?${params}`
+      const res = await loggedFetch(url, {
+        signal: AbortSignal.timeout(CONFIG.TIMEOUT),
+        cache: CONFIG.CACHE,
+      }, {
+        operation: 'kline.crypto.binance',
+        provider: new URL(baseUrl).host,
+        resource: normalized.binanceSymbol,
+        metadata: { interval, days, limit },
+      })
+      if (!res.ok) continue
+
+      const rows = await res.json() as unknown[]
+      if (!Array.isArray(rows)) continue
+      const items = rows
+        .map((row) => {
+          if (!Array.isArray(row)) return null
+          const openTime = Number(row[0])
+          return formatKlineItem(
+            Math.floor(openTime / 1000),
+            Number(row[1]),
+            Number(row[4]),
+            Number(row[2]),
+            Number(row[3]),
+            Number(row[5]),
+          )
+        })
+        .filter((item): item is KlineItem => item !== null)
+
+      if (items.length) return sortByTime(items)
+    } catch (error) {
+      logger.warn('kline.crypto.binance.failed', { error, symbol: normalized.binanceSymbol, baseUrl })
+    }
+  }
+
+  return []
+}
+
+async function fetchCoinbaseCryptoKline(symbol: string, market: Market, interval: KlineInterval, days: number): Promise<KlineItem[]> {
+  if (market !== 'CRYPTO') return []
+  const normalized = normalizeCryptoSymbol(symbol)
+  if (!normalized) return []
+
+  const granularity = getCoinbaseGranularity(interval)
+  if (!granularity) return []
+
+  const end = new Date()
+  const start = new Date(end.getTime() - getCoinbaseRangeMs(interval, days))
+  const params = new URLSearchParams({
+    granularity: String(granularity),
+    start: start.toISOString(),
+    end: end.toISOString(),
+  })
+  const url = `${COINBASE_EXCHANGE_BASE}/products/${encodeURIComponent(normalized.coinbaseProductId)}/candles?${params}`
+  const res = await loggedFetch(url, {
+    signal: AbortSignal.timeout(CONFIG.TIMEOUT),
+    cache: CONFIG.CACHE,
+  }, {
+    operation: 'kline.crypto.coinbase',
+    provider: 'coinbase-exchange',
+    resource: normalized.coinbaseProductId,
+    metadata: { interval, days, granularity },
+  })
+  if (!res.ok) return []
+
+  const rows = await res.json() as unknown[]
+  if (!Array.isArray(rows)) return []
+
+  const items = rows
+    .map((row) => {
+      if (!Array.isArray(row)) return null
+      return formatKlineItem(
+        Number(row[0]),
+        Number(row[3]),
+        Number(row[4]),
+        Number(row[2]),
+        Number(row[1]),
+        Number(row[5]),
+      )
+    })
+    .filter((item): item is KlineItem => item !== null)
+
+  return sortByTime(items)
+}
+
+function getCryptoKlineLimit(interval: KlineInterval, days: number) {
+  if (!Number.isFinite(days)) return 1000
+  if (interval === '1d') return Math.max(2, Math.min(1000, Math.ceil(days) + 14))
+
+  const barsPerDay = interval === '5m' ? 288 : interval === '15m' ? 96 : interval === '30m' ? 48 : 24
+  return Math.max(2, Math.min(1000, Math.ceil(days * barsPerDay)))
+}
+
+function getCoinbaseGranularity(interval: KlineInterval) {
+  if (interval === '1d') return 86400
+  if (interval === '5m') return 300
+  if (interval === '15m') return 900
+  if (interval === '60m') return 3600
+  return null
+}
+
+function getCoinbaseRangeMs(interval: KlineInterval, days: number) {
+  const granularity = getCoinbaseGranularity(interval)
+  if (!granularity || !Number.isFinite(days)) return 300 * 86400 * 1000
+  const maxRangeMs = granularity * 300 * 1000
+  return Math.min(days * 86400 * 1000, maxRangeMs)
+}
+
 function formatUsDateForNasdaq(days: number) {
   const date = new Date()
   if (Number.isFinite(days)) {
@@ -337,7 +465,7 @@ export async function fetchKline(symbol: string, market: Market, options: { inte
 }
 
 export async function fetchDailyCandles(symbol: string, market: Market, limit = 240): Promise<KlineItem[]> {
-  if (market === 'FUND' || market === 'CRYPTO') return []
+  if (market === 'FUND') return []
   const range = limit <= 180 ? '6mo' : limit <= 366 ? '1y' : '3y'
   const result = await fetchKline(symbol, market, { interval: '1d', range })
   return result.candles.slice(-limit)

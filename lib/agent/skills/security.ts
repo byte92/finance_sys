@@ -13,7 +13,7 @@ export type SecurityResolveResult = {
 
 export const securityResolveSkill: AgentSkill<SecurityResolveInput, SecurityResolveResult> = {
   name: 'security.resolve',
-  description: '基础证券实体解析：将名称、代码、简称或自然语言提问解析为标准证券代码、市场和持仓状态。',
+  description: '基础标的实体解析：将名称、代码、简称或自然语言提问解析为标准代码、市场和持仓状态。',
   inputSchema: { query: 'string', limit: 'number' },
   requiredScopes: ['stock.read', 'quote.read'],
   async execute(args, ctx) {

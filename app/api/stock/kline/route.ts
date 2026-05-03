@@ -1,21 +1,19 @@
 import { NextResponse } from 'next/server'
+import { parseMarket } from '@/config/defaults'
 import { fetchKline, VALID_KLINE_INTERVALS, type KlineFetchResult, type KlineInterval } from '@/lib/external/kline'
 import { withApiLogging } from '@/lib/observability/api'
-import type { Market } from '@/types'
-
-const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 
 async function handleGET(request: Request): Promise<NextResponse<KlineFetchResult>> {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')?.trim()
-  const market = searchParams.get('market') as Market | null
+  const market = parseMarket(searchParams.get('market'))
   const range = searchParams.get('range') || '6mo'
   const interval = (searchParams.get('interval') || '1d') as KlineInterval
 
   if (!symbol) {
     return NextResponse.json({ candles: [], interval, range, error: 'Missing query param: symbol' }, { status: 400 })
   }
-  if (!market || !VALID_MARKETS.includes(market)) {
+  if (!market) {
     return NextResponse.json({ candles: [], interval, range, error: 'Invalid query param: market' }, { status: 400 })
   }
   if (!VALID_KLINE_INTERVALS.includes(interval)) {

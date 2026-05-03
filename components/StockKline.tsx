@@ -12,7 +12,8 @@ import {
   type MouseEventParams,
 } from 'lightweight-charts'
 import type { Market, Trade, TradeMatchMode } from '@/types'
-import { calcPerShareCost, add, mul } from '@/lib/money'
+import { calcPerShareCost, add, mul, sub } from '@/lib/money'
+import { getMarketAssetUnit } from '@/config/defaults'
 
 type KlineItem = {
   time: number
@@ -50,7 +51,7 @@ type LegendKey = 'buy' | 'sell' | 'dividend' | 'ma5' | 'ma10' | 'ma20' | 'cost' 
 const LEGEND_ITEMS: Array<{ key: LegendKey; label: string; color: string; type: 'marker' | 'line' | 'histogram' }> = [
   { key: 'buy', label: '买点', color: '#ef4444', type: 'marker' },
   { key: 'sell', label: '卖点', color: '#22c55e', type: 'marker' },
-  { key: 'dividend', label: '分红', color: '#f97316', type: 'marker' },
+  { key: 'dividend', label: '收益', color: '#f97316', type: 'marker' },
   { key: 'ma5', label: 'MA5', color: '#f59e0b', type: 'line' },
   { key: 'ma10', label: 'MA10', color: '#3b82f6', type: 'line' },
   { key: 'ma20', label: 'MA20', color: '#a855f7', type: 'line' },
@@ -116,7 +117,9 @@ export default function StockKline({
     holding: holdingRef,
   }
 
-  const minuteSupported = market === 'A' || market === 'FUND'
+  const minuteSupported = market === 'A' || market === 'FUND' || market === 'CRYPTO'
+  const assetUnit = getMarketAssetUnit(market)
+  const incomeLabel = market === 'CRYPTO' ? '收益' : '分红'
 
   useEffect(() => {
     if (!minuteSupported && interval !== '1d') {
@@ -166,7 +169,7 @@ export default function StockKline({
           position: 'aboveBar',
           color: '#f97316',
           shape: 'circle',
-          text: `分红 ${t.netAmount.toFixed(2)}`,
+          text: `${incomeLabel} ${t.netAmount.toFixed(2)}`,
         })
       } else {
         markers.push({
@@ -174,13 +177,13 @@ export default function StockKline({
           position: t.type === 'BUY' ? 'belowBar' : 'aboveBar',
           color: t.type === 'BUY' ? '#ef4444' : '#22c55e',
           shape: t.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-          text: `${t.type === 'BUY' ? '买' : '卖'} ${t.quantity}`,
+          text: `${t.type === 'BUY' ? '买' : '卖'} ${fmtNum(t.quantity)}`,
         })
       }
     }
 
     return markers
-  }, [mappedTrades])
+  }, [mappedTrades, incomeLabel])
 
   const ma5Data = useMemo(() => calcMA(data, 5), [data])
   const ma10Data = useMemo(() => calcMA(data, 10), [data])
@@ -218,10 +221,10 @@ export default function StockKline({
           while (remaining > 0 && costQueue.length > 0) {
             const lotIndex = matchMode === 'RECENT_LOTS' ? costQueue.length - 1 : 0
             if (costQueue[lotIndex].quantity <= remaining) {
-              remaining -= costQueue[lotIndex].quantity
+              remaining = normalizeQuantity(sub(remaining, costQueue[lotIndex].quantity))
               costQueue.splice(lotIndex, 1)
             } else {
-              costQueue[lotIndex].quantity -= remaining
+              costQueue[lotIndex].quantity = normalizeQuantity(sub(costQueue[lotIndex].quantity, remaining))
               remaining = 0
             }
           }
@@ -229,7 +232,7 @@ export default function StockKline({
         tradeIdx++
       }
       const totalCost = costQueue.reduce((sum, item) => add(sum, mul(item.price, item.quantity)), 0)
-      const totalQty = costQueue.reduce((sum, item) => sum + item.quantity, 0)
+      const totalQty = costQueue.reduce((sum, item) => add(sum, item.quantity), 0)
       if (totalQty > 0) {
         result.push({ time: d.time as any, value: calcPerShareCost(totalCost, totalQty) })
       }
@@ -246,7 +249,7 @@ export default function StockKline({
     }
     let holding = 0
     return data.map((d) => {
-      holding += deltaByDate.get(d.date) || 0
+      holding = normalizeQuantity(add(holding, deltaByDate.get(d.date) || 0))
       return {
         time: d.time as any,
         value: holding > 0 ? 1 : 0,
@@ -584,7 +587,7 @@ export default function StockKline({
                       {hover.ma20 !== undefined && <span><span style={{ color: '#a855f7' }}>MA20</span> <span className="text-foreground">{hover.ma20.toFixed(2)}</span></span>}
                     </div>
                   )}
-                  <div><span style={{ color: '#64748b' }}>成交量</span> <span className="text-foreground">{c.volume.toLocaleString('zh-CN')} 股</span></div>
+                  <div><span style={{ color: '#64748b' }}>成交量</span> <span className="text-foreground">{fmtNum(c.volume)} {assetUnit}</span></div>
                 </div>
               )
             })()}
@@ -595,9 +598,9 @@ export default function StockKline({
                     const perShare = t.price || (t.quantity > 0 ? t.totalAmount / t.quantity : 0)
                     return (
                       <div key={t.id} className="flex items-center justify-between gap-2">
-                        <span className="text-[#f97316]">分红</span>
+                        <span className="text-[#f97316]">{incomeLabel}</span>
                         <span className="text-muted-foreground font-mono text-right">
-                          每股{fmtNum(perShare)} · {t.quantity}股<br />
+                          每{assetUnit}{fmtNum(perShare)} · {fmtNum(t.quantity)}{assetUnit}<br />
                           税前{t.totalAmount.toFixed(2)} 税{t.tax.toFixed(2)} 实收{t.netAmount.toFixed(2)}
                         </span>
                       </div>
@@ -606,7 +609,7 @@ export default function StockKline({
                   return (
                     <div key={t.id} className="flex items-center justify-between gap-2">
                       <span className={t.type === 'BUY' ? 'profit-text' : 'loss-text'}>
-                        {t.type === 'BUY' ? '买入' : '卖出'} {t.quantity}
+                        {t.type === 'BUY' ? '买入' : '卖出'} {fmtNum(t.quantity)} {assetUnit}
                       </span>
                       <span className="text-muted-foreground font-mono">
                         @{t.price} 费{(t.commission + t.tax).toFixed(2)}
@@ -640,6 +643,10 @@ export default function StockKline({
 
 function fmtNum(v: number): string {
   return v.toFixed(8).replace(/\.?0+$/, '').replace(/\.$/, '') || '0'
+}
+
+function normalizeQuantity(value: number) {
+  return Math.abs(value) < 1e-12 ? 0 : value
 }
 
 function LegendDot({ label, color, active, onClick }: { label: string; color: string; active: boolean; onClick: () => void }) {

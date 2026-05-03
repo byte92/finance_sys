@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
-import { MARKET_LABELS } from '@/config/defaults'
+import { getMarketCodeMinLength, MARKET_CODE_PLACEHOLDERS, MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
 import type { Market } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
@@ -22,8 +22,6 @@ interface AddStockModalProps {
     note?: string
   }
 }
-
-const MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 
 export default function AddStockModal({ onClose, onAdded, editStock }: AddStockModalProps) {
   const { addStock, updateStock, config } = useStockStore()
@@ -48,7 +46,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
     setMarket(config.defaultMarket)
   }, [config.defaultMarket, editStock])
 
-  // 当代码改变时，自动搜索股票名称
+  // 当代码改变时，自动搜索资产名称
   useEffect(() => {
     const searchStock = async () => {
       const trimmedCode = code.trim()
@@ -56,7 +54,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
         setIsValidated(Boolean(trimmedCode && name.trim()))
         return
       }
-      if (!trimmedCode || trimmedCode.length < 4) {
+      if (!trimmedCode || trimmedCode.length < getMarketCodeMinLength(market)) {
         setIsValidated(false)
         return
       }
@@ -77,12 +75,12 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
           setError('')
         } else {
           setIsValidated(false)
-          setError(data?.error ?? '未找到该股票，请检查代码或市场是否正确')
+          setError(data?.error ?? '未找到该资产，请检查代码或市场是否正确，也可以手动填写名称后保存')
         }
       } catch (e) {
-        console.error('搜索股票失败:', e)
+        console.error('搜索资产失败:', e)
         setIsValidated(false)
-        setError('搜索失败，请检查网络连接')
+        setError('搜索失败，可手动填写名称后保存')
       } finally {
         setIsValidating(false)
       }
@@ -96,11 +94,11 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
     e.preventDefault()
     const trimmedCode = code.trim()
     if (!trimmedCode) {
-      setError('请填写股票代码')
+      setError('请填写资产代码')
       return
     }
     if (!name.trim()) {
-      setError('请填写股票名称')
+      setError('请填写资产名称')
       return
     }
     try {
@@ -116,7 +114,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
       }
       onClose()
     } catch (error) {
-      console.error(isEdit ? '更新股票失败:' : '添加股票失败:', error)
+      console.error(isEdit ? '更新资产失败:' : '添加资产失败:', error)
       setError(isEdit ? '保存失败，请重试' : '添加失败，请重试')
     }
   }
@@ -129,7 +127,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border p-5">
-          <h2 className="text-base font-semibold">{isEdit ? '编辑股票/资产' : '添加股票/资产'}</h2>
+          <h2 className="text-base font-semibold">{isEdit ? '编辑资产' : '添加资产'}</h2>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-secondary transition-colors">
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -144,7 +142,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
               onChange={(e) => setMarket(e.target.value as Market)}
               className="h-10 bg-background"
             >
-              {MARKETS.map((m) => (
+              {SUPPORTED_MARKETS.map((m) => (
                 <option key={m} value={m}>{MARKET_LABELS[m]}</option>
               ))}
             </Select>
@@ -158,7 +156,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
             <div className="relative">
               <Input
                 id="code"
-                placeholder={market === 'A' ? '如：000001 或 510300' : market === 'HK' ? '如：00700' : '如：AAPL'}
+                placeholder={MARKET_CODE_PLACEHOLDERS[market]}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
@@ -174,7 +172,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
             <Label htmlFor="name">名称 {isValidated && <span className="text-xs text-green-600 ml-2">✓ 已验证</span>}</Label>
             <Input
               id="name"
-              placeholder="输入代码后自动搜索..."
+              placeholder="输入代码后自动搜索，也可手动填写"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -195,7 +193,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
 
           <div className="flex gap-2 pt-1">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">取消</Button>
-            <Button type="submit" className="flex-1" disabled={!isValidated || isValidating}>
+            <Button type="submit" className="flex-1" disabled={!code.trim() || !name.trim() || isValidating}>
               {isEdit ? '保存' : '添加'}
             </Button>
           </div>

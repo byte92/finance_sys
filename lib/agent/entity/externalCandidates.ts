@@ -1,8 +1,10 @@
 import { detectStockCode } from '@/lib/agent/entity/stockMatcher'
+import { SUPPORTED_MARKETS } from '@/config/defaults'
+import { normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
 import { loggedFetch } from '@/lib/observability/fetch'
 import type { Market } from '@/types'
 
-export type ExternalCandidateSource = 'tencent.smartbox' | 'code.inference'
+export type ExternalCandidateSource = 'tencent.smartbox' | 'code.inference' | 'crypto.inference'
 
 export type ExternalCandidate = {
   code: string
@@ -11,8 +13,6 @@ export type ExternalCandidate = {
   confidence: number
   source?: ExternalCandidateSource
 }
-
-const MARKET_OPTIONS: Market[] = ['A', 'HK', 'US']
 
 function normalize(input: string) {
   return input
@@ -128,6 +128,8 @@ function dedupeCandidates(candidates: ExternalCandidate[]) {
 
 function inferCandidatesFromCode(query: string): ExternalCandidate[] {
   const code = detectStockCode(query)
+  const cryptoCandidate = inferCryptoCandidate(query, code)
+  if (cryptoCandidate) return [cryptoCandidate]
   if (!code) return []
 
   const upper = code.toUpperCase()
@@ -141,6 +143,24 @@ function inferCandidatesFromCode(query: string): ExternalCandidate[] {
     return [{ code: upper, name: upper, market: 'US', confidence: 0.72, source: 'code.inference' }]
   }
   return []
+}
+
+function inferCryptoCandidate(query: string, detectedCode?: string | null): ExternalCandidate | null {
+  const normalized = normalizeCryptoSymbol(detectedCode ?? query)
+  if (!normalized) return null
+
+  const upperQuery = query.toUpperCase()
+  const hasPairSyntax = /[-_/](USDT|USDC|USD|BUSD)\b/.test(upperQuery)
+  const hasCryptoIntent = /(加密|数字货币|虚拟货币|币|crypto|usdt|usdc|binance|coinbase)/i.test(query)
+  if (!hasPairSyntax && !hasCryptoIntent) return null
+
+  return {
+    code: normalized.baseAsset,
+    name: normalized.displayName,
+    market: 'CRYPTO',
+    confidence: 0.74,
+    source: 'crypto.inference',
+  }
 }
 
 export async function resolveExternalCandidates(query: string, limit = 5): Promise<ExternalCandidate[]> {
@@ -186,20 +206,20 @@ export function inferMarketCandidatesFromCode(query: string): ExternalCandidate[
   const upper = code.toUpperCase()
 
   if (/^\d{5,6}$/.test(upper)) {
-    return MARKET_OPTIONS.map((market) => ({
+    return SUPPORTED_MARKETS.map((market) => ({
       code: upper,
       name: upper,
       market,
-      confidence: market === 'A' ? 0.65 : 0.35,
+      confidence: market === 'A' ? 0.65 : market === 'FUND' ? 0.5 : 0.35,
       source: 'code.inference',
     }))
   }
 
-  return MARKET_OPTIONS.map((market) => ({
+  return SUPPORTED_MARKETS.map((market) => ({
     code: upper,
     name: upper,
     market,
-    confidence: market === 'US' ? 0.65 : 0.35,
+    confidence: market === 'US' ? 0.65 : market === 'CRYPTO' ? 0.45 : 0.35,
     source: 'code.inference',
   }))
 }

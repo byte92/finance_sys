@@ -170,12 +170,12 @@ export const portfolioGetAnalysisContextSkill: AgentSkill<Record<string, unknown
 
 export const stockGetAnalysisContextSkill: AgentSkill<{ stockId?: string }, StockAnalysisContext> = {
   name: 'stock.getAnalysisContext',
-  description: '为固定个股 AI 分析读取持仓、行情、技术指标和新闻上下文。',
+  description: '为固定标的 AI 分析读取持仓、行情、技术指标和新闻上下文。',
   inputSchema: { stockId: 'string' },
   requiredScopes: ['stock.read', 'trade.read', 'quote.read'],
   async execute(args, ctx) {
     const stock = ctx.stocks.find((item) => item.id === args.stockId)
-    if (!stock) return { skillName: 'stock.getAnalysisContext', ok: false, error: '未找到目标股票' }
+    if (!stock) return { skillName: 'stock.getAnalysisContext', ok: false, error: '未找到目标标的' }
     return {
       skillName: 'stock.getAnalysisContext',
       ok: true,

@@ -36,7 +36,7 @@ async function decodeGBK(res: Response): Promise<string> {
   }
 }
 
-// 将股票代码转换为腾讯格式
+// 将标的代码转换为腾讯格式
 // A股: sz000001(深交所) sh600519(上交所) sh510300(ETF-上交所)
 // 港股: hk00700
 function toTencentCode(code: string, market: Market): string {

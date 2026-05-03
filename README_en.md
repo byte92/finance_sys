@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/README-English-blue)](./README_en.md)
 [![中文](https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-lightgrey)](./README.md)
 
-[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![Node.js](https://img.shields.io/badge/node-18%2B-339933?logo=node.js&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-10.x-F69220?logo=pnpm&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
@@ -18,12 +18,19 @@ It helps you record trades, calculate real cost basis, track market data and ret
 
 ## Screenshots and Demo
 
-Screenshots and demo GIFs will be added in a follow-up. Planned coverage:
+> Screenshots are generated with sanitized demo data and do not include real holdings or trade records.
 
-- Portfolio overview and holding returns.
-- Stock detail, trade records, and K-line charts.
-- AI chat, analysis history, and Trace debugging.
-- Chinese / English UI switching.
+| Portfolio Overview | Holdings |
+| --- | --- |
+| ![Portfolio overview](./docs/assets/screenshots/readme-overview.png) | ![Holdings](./docs/assets/screenshots/readme-portfolio.png) |
+
+| Stock Detail | AI Chat |
+| --- | --- |
+| ![Stock detail](./docs/assets/screenshots/readme-stock-detail.png) | ![AI chat](./docs/assets/screenshots/readme-ai-chat.png) |
+
+| AI Analysis History |
+| --- |
+| ![AI analysis history](./docs/assets/screenshots/readme-ai-history.png) |
 
 ## Why StockTracker 💡
 
@@ -286,4 +293,4 @@ StockTracker provides trade recording, data organization, and analysis assistanc
 
 ## License
 
-[ISC](./LICENSE)
+[MIT](./LICENSE)

@@ -3,6 +3,7 @@ import { applySkillManifest, loadBuiltinSkillManifests, loadConfiguredSkillManif
 import { portfolioGetAnalysisContextSkill, stockGetAnalysisContextSkill } from '@/lib/agent/skills/analysis'
 import { marketGetAnalysisContextSkill, marketResolveCandidateSkill } from '@/lib/agent/skills/market'
 import { securityResolveSkill } from '@/lib/agent/skills/security'
+import { financeCalculateSkill } from '@/lib/agent/skills/finance'
 import { webSearchSkill } from '@/lib/agent/skills/search'
 import { webFetchSkill } from '@/lib/agent/skills/web'
 import { portfolioGetSummarySkill, portfolioGetTopPositionsSkill } from '@/lib/agent/skills/portfolio'
@@ -18,6 +19,7 @@ import {
 
 const BUILTIN_SKILLS: AgentSkill<any, any>[] = [
   securityResolveSkill,
+  financeCalculateSkill,
   marketResolveCandidateSkill,
   marketGetAnalysisContextSkill,
   webFetchSkill,

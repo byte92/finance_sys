@@ -36,6 +36,14 @@ export type AgentSkillCall = {
   reason: string
 }
 
+export type AgentResolvedSecurity = {
+  symbol: string
+  market: Market
+  name?: string
+  stockId?: string
+  inPortfolio?: boolean
+}
+
 export type AgentPlan = {
   intent: AgentIntent
   entities: AgentEntity[]
@@ -50,6 +58,7 @@ export type AgentExecutionContext = {
   stocks: Stock[]
   aiConfig: AiConfig
   maxContextTokens: number
+  allowedScopes?: AgentDataScope[]
 }
 
 export type AgentSkillResult<TResult = unknown> = {
@@ -129,5 +138,6 @@ export type AgentRunInput = {
   stocks: Stock[]
   history: AiChatMessage[]
   userMessage: string
+  resolvedSecurities?: AgentResolvedSecurity[]
   externalStocks?: Array<{ symbol: string; market: Market }>
 }

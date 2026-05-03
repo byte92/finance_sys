@@ -2,11 +2,18 @@ import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
-import { buildChatTitle, estimateTokens, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
+import { buildChatTitle, estimateTokens, getContextStats, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
 import { runAgent } from '@/lib/agent/runtime'
+import {
+  buildClarificationQuestion,
+  normalizeClarificationCandidates,
+  normalizeClarificationState,
+  resolveClarificationSelection,
+} from '@/lib/agent/clarification'
 import { withApiLogging } from '@/lib/observability/api'
 import { logger } from '@/lib/observability/logger'
 import { getAiChatSession, getSessionContext, listAiChatMessages, saveAiAgentRun, saveAiChatMessage, saveAiChatSession, setSessionContext, updateAiChatSessionTitle } from '@/lib/sqlite/db'
+import type { AgentPlan, AgentResolvedSecurity } from '@/lib/agent/types'
 import type { AiConfig, Market, Stock } from '@/types'
 
 type Body = {
@@ -18,25 +25,8 @@ type Body = {
   externalStocks?: Array<{ symbol: string; market: Market }>
 }
 
-const MARKET_ALIASES: Record<Market, string[]> = {
-  A: ['A', 'A股', 'A 股', '沪深', '上证', '深交所', '上交所'],
-  HK: ['HK', '港股', '香港', '港交所'],
-  US: ['US', '美股', '美国', '纳斯达克', '纽交所', 'NYSE', 'NASDAQ'],
-  FUND: ['FUND', '基金', 'ETF'],
-  CRYPTO: ['CRYPTO', '加密', '币', '数字货币', '虚拟货币', 'USDT', 'USDC'],
-}
-
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError'
-}
-
-function matchesCandidateAnswer(answer: string, candidate: { code: string; name: string; market: string }) {
-  const upperAnswer = answer.toUpperCase()
-  const market = candidate.market as Market
-  return upperAnswer.includes(candidate.code.toUpperCase())
-    || answer.includes(candidate.name)
-    || upperAnswer.includes(candidate.market.toUpperCase())
-    || (MARKET_ALIASES[market] ?? []).some((alias) => upperAnswer.includes(alias.toUpperCase()))
 }
 
 async function handlePOST(request: Request) {
@@ -82,23 +72,140 @@ async function handlePOST(request: Request) {
           })
         }
 
-        // 检查是否有待澄清的状态（多轮）
-        const pending = existingSession ? getSessionContext(body.userId!, sessionId) : null
-        let externalStocks = body.externalStocks ?? []
-        if (pending?.type === 'clarify' && Array.isArray(pending.candidates) && pending.candidates.length > 0) {
-          // 用户正在选择一个候选标的
-          const userAnswer = userMessage.trim()
-          const candidates = pending.candidates as Array<{ code: string; name: string; market: string }>
-          const match = candidates.find((c) => matchesCandidateAnswer(userAnswer, c))
+        controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'planning' })}\n\n`))
 
-          if (match && match.market) {
-            externalStocks = [{ symbol: match.code, market: match.market as Market }]
-            setSessionContext(body.userId!, sessionId, null) // 匹配后消费澄清状态
+        // 检查是否有待澄清的状态（多轮）。候选选择由 LLM 在对话内判断；
+        // 识别不到时继续追问，不通过 UI 弹窗阻断对话。
+        const pending = existingSession ? normalizeClarificationState(getSessionContext(body.userId!, sessionId)) : null
+        let externalStocks = body.externalStocks ?? []
+        let resolvedSecurities: AgentResolvedSecurity[] = []
+        let agentUserMessage = userMessage
+        if (pending) {
+          const resolution = await resolveClarificationSelection({
+            userMessage,
+            pending,
+            aiConfig: effectiveAiConfig,
+          })
+
+          if (resolution.status === 'selected') {
+            const candidate = resolution.candidate
+            resolvedSecurities = [{
+              symbol: candidate.code,
+              market: candidate.market,
+              name: candidate.name,
+              stockId: candidate.stockId,
+              inPortfolio: candidate.inPortfolio,
+            }]
+            if (pending.originalUserMessage) {
+              agentUserMessage = `${pending.originalUserMessage}\n用户澄清选择：${userMessage}`
+            }
+            setSessionContext(body.userId!, sessionId, null)
+          } else if (resolution.status === 'new_question') {
+            setSessionContext(body.userId!, sessionId, null)
+          } else {
+            const candidates = normalizeClarificationCandidates(pending.candidates)
+            const question = resolution.question || buildClarificationQuestion(candidates, pending.question)
+            setSessionContext(body.userId!, sessionId, { ...pending, question })
+
+            agentRunId = randomUUID()
+            const userMessageId = randomUUID()
+            const plan: AgentPlan = {
+              intent: 'stock_analysis',
+              entities: candidates.map((candidate) => ({
+                type: 'stock',
+                raw: candidate.name || candidate.code,
+                code: candidate.code,
+                name: candidate.name,
+                market: candidate.market,
+                stockId: candidate.stockId,
+                confidence: candidate.confidence ?? 0.5,
+              })),
+              requiredSkills: [],
+              responseMode: 'clarify',
+              clarifyQuestion: question,
+            }
+            const skillResults = [{
+              skillName: 'agent.clarify',
+              ok: true,
+              data: { question, candidates, reason: resolution.reason ?? null },
+            }]
+            const contextSnapshot = {
+              generatedAt: new Date().toISOString(),
+              agent: {
+                version: 2,
+                intent: plan.intent,
+                responseMode: plan.responseMode,
+                entities: plan.entities,
+                requiredSkills: plan.requiredSkills,
+              },
+              skillResults,
+            }
+            const stats = getContextStats(
+              estimateTokens(JSON.stringify(contextSnapshot)) + estimateTokens(userMessage) + estimateTokens(question),
+              effectiveAiConfig.maxContextTokens || 128000,
+            )
+
+            saveAiChatMessage({
+              id: userMessageId,
+              sessionId,
+              userId: body.userId!,
+              role: 'user',
+              content: userMessage,
+              contextSnapshot,
+              tokenEstimate: estimateTokens(userMessage),
+            })
+            saveAiAgentRun({
+              id: agentRunId,
+              sessionId,
+              userId: body.userId!,
+              messageId: userMessageId,
+              intent: plan.intent,
+              responseMode: plan.responseMode,
+              plan: plan as unknown as Record<string, unknown>,
+              skillCalls: plan.requiredSkills,
+              skillResults,
+              contextStats: stats as unknown as Record<string, unknown>,
+            })
+            saveAiChatMessage({
+              id: randomUUID(),
+              sessionId,
+              userId: body.userId!,
+              role: 'assistant',
+              content: question,
+              contextSnapshot,
+              tokenEstimate: estimateTokens(question),
+            })
+
+            if (existingSession && existingSession.title === '新对话') {
+              updateAiChatSessionTitle(body.userId!, sessionId, buildChatTitle(userMessage))
+            }
+
+            firstTokenMs = Date.now() - startedAt
+            assistantContent = question
+            controller.enqueue(encoder.encode(`event: meta\ndata: ${JSON.stringify({
+              sessionId,
+              stats,
+              timings: { contextMs },
+              agent: {
+                runId: agentRunId,
+                intent: plan.intent,
+                responseMode: plan.responseMode,
+                skillCount: skillResults.length,
+              },
+            })}\n\n`))
+            controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'generating' })}\n\n`))
+            controller.enqueue(encoder.encode(`event: token\ndata: ${JSON.stringify({ token: question })}\n\n`))
+            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({
+              sessionId,
+              runId: agentRunId,
+              timings: { contextMs, firstTokenMs, totalMs: Date.now() - startedAt },
+            })}\n\n`))
+            controller.close()
+            return
           }
         }
 
         const history = listAiChatMessages(body.userId!, sessionId)
-        controller.enqueue(encoder.encode(`event: status\ndata: ${JSON.stringify({ phase: 'planning' })}\n\n`))
 
         const contextStartedAt = Date.now()
         const agent = await runAgent({
@@ -107,7 +214,8 @@ async function handlePOST(request: Request) {
           aiConfig: effectiveAiConfig,
           stocks: body.stocks!,
           history,
-          userMessage,
+          userMessage: agentUserMessage,
+          resolvedSecurities,
           externalStocks,
         })
         contextMs = Date.now() - contextStartedAt
@@ -141,11 +249,15 @@ async function handlePOST(request: Request) {
           const candidatesResult = agent.skillResults.find((r) => r.skillName === 'security.resolve')
             ?? agent.skillResults.find((r) => r.skillName === 'market.resolveCandidate')
           if (candidatesResult?.ok && candidatesResult.data) {
-            const data = candidatesResult.data as { candidates?: Array<{ code: string; name: string; market: string }> }
-            if (data.candidates?.length) {
+            const data = candidatesResult.data as { candidates?: unknown }
+            const candidates = normalizeClarificationCandidates(data.candidates)
+            if (candidates.length) {
+              const question = agent.plan.clarifyQuestion || buildClarificationQuestion(candidates)
               setSessionContext(body.userId!, sessionId, {
                 type: 'clarify',
-                candidates: data.candidates,
+                candidates,
+                question,
+                originalUserMessage: userMessage,
               })
             }
           }

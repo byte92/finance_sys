@@ -1,8 +1,17 @@
 import { getSkillByName } from '@/lib/agent/skills/registry'
-import type { AgentExecutionContext, AgentPlan, AgentSkillCall, AgentSkillResult } from '@/lib/agent/types'
+import type { AgentDataScope, AgentExecutionContext, AgentPlan, AgentSkillCall, AgentSkillResult } from '@/lib/agent/types'
 import { estimateTokens } from '@/lib/ai/chat'
 
 const MAX_ROUNDS = 10
+const DEFAULT_ALLOWED_SCOPES: AgentDataScope[] = [
+  'portfolio.read',
+  'stock.read',
+  'trade.read',
+  'quote.read',
+  'chat.read',
+  'market.read',
+  'network.fetch',
+]
 
 function callKey(call: AgentSkillCall) {
   return `${call.name}::${JSON.stringify(call.args)}`
@@ -17,6 +26,16 @@ async function executeSingleCall(call: AgentSkillCall, ctx: AgentExecutionContex
   const skill = getSkillByName(call.name)
   if (!skill) {
     return { skillName: call.name, ok: false, error: `未注册的 Skill：${call.name}` }
+  }
+
+  const allowedScopes = new Set(ctx.allowedScopes ?? DEFAULT_ALLOWED_SCOPES)
+  const deniedScopes = skill.requiredScopes.filter((scope) => !allowedScopes.has(scope))
+  if (deniedScopes.length) {
+    return {
+      skillName: call.name,
+      ok: false,
+      error: `Skill 权限不足：${call.name} 需要 ${deniedScopes.join(', ')}`,
+    }
   }
 
   try {

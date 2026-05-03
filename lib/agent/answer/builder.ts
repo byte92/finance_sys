@@ -232,6 +232,35 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
     addItem(calculations, '组合交易笔数', portfolioSummary.totalTradeCount, 'portfolio.getSummary')
   }
 
+  for (const result of findResults(skillResults, 'finance.calculate')) {
+    const data = getData(result)
+    if (!data || data.calculationType !== 'dividend.estimate') continue
+
+    const source = isRecord(data.source) ? data.source : null
+    const assumptions = Array.isArray(data.assumptions)
+      ? data.assumptions.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      : []
+    const currency = textValue(data.currency)
+    const note = assumptions.join('；')
+
+    addItem(calculations, '预计分红金额', {
+      amount: data.estimatedAmount,
+      currency,
+      quantity: data.quantity,
+      cashPerShare: data.cashPerShare,
+      grossEstimatedAmount: data.grossEstimatedAmount,
+      netEstimatedAmount: data.netEstimatedAmount,
+      formula: data.formula,
+    }, 'finance.calculate', note)
+
+    addItem(facts, '分红估算口径', {
+      source: source?.kind,
+      tradeDate: source?.tradeDate,
+      grossCashPerShare: data.grossCashPerShare,
+      netCashPerShare: data.netCashPerShare,
+    }, 'finance.calculate', '回答时需要说明税前/实际到账口径，以及是否假设本次分红与历史记录相同。')
+  }
+
   for (const result of findResults(skillResults, 'web.search')) {
     const data = getData(result)
     if (!data) continue

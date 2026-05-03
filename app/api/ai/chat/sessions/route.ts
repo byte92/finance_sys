@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { normalizeChatTitle } from '@/lib/ai/chat'
+import { withApiLogging } from '@/lib/observability/api'
 import { clearAiChatByUserId, deleteAiChatSession, getAiChatSession, listAiChatSessions, saveAiChatSession, updateAiChatSessionTitle } from '@/lib/sqlite/db'
 
 type CreateBody = {
@@ -21,7 +22,7 @@ type PatchBody = {
   title?: string
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get('userId')
   if (!userId) {
     return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ sessions: listAiChatSessions(userId) })
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = await safeReadJsonBody<CreateBody>(request)
     if (!payload.ok) {
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PATCH(request: Request) {
+async function handlePATCH(request: Request) {
   try {
     const payload = await safeReadJsonBody<PatchBody>(request)
     if (!payload.ok) {
@@ -80,7 +81,7 @@ export async function PATCH(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   try {
     const payload = await safeReadJsonBody<DeleteBody>(request)
     if (!payload.ok) {
@@ -110,3 +111,8 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export const GET = withApiLogging('/api/ai/chat/sessions', handleGET)
+export const POST = withApiLogging('/api/ai/chat/sessions', handlePOST)
+export const PATCH = withApiLogging('/api/ai/chat/sessions', handlePATCH)
+export const DELETE = withApiLogging('/api/ai/chat/sessions', handleDELETE)

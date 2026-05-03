@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { safeReadJsonBody } from '@/lib/api/request'
+import { withApiLogging } from '@/lib/observability/api'
 import { clearAiChatMessages, listAiChatMessages } from '@/lib/sqlite/db'
 
 type DeleteBody = {
@@ -7,7 +8,7 @@ type DeleteBody = {
   sessionId?: string
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get('userId')
   const sessionId = request.nextUrl.searchParams.get('sessionId')
   if (!userId || !sessionId) {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ messages: listAiChatMessages(userId, sessionId) })
 }
 
-export async function DELETE(request: Request) {
+async function handleDELETE(request: Request) {
   try {
     const payload = await safeReadJsonBody<DeleteBody>(request)
     if (!payload.ok) {
@@ -35,3 +36,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export const GET = withApiLogging('/api/ai/chat/messages', handleGET)
+export const DELETE = withApiLogging('/api/ai/chat/messages', handleDELETE)

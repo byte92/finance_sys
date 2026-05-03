@@ -1,5 +1,6 @@
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
 
 const API_BASE = 'https://stooq.com/q/l/'
 
@@ -18,9 +19,13 @@ export class StooqSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}?s=aapl.us&i=d`, {
+      const res = await loggedFetch(`${API_BASE}?s=aapl.us&i=d`, {
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.stooq.healthCheck',
+        provider: this.provider,
+        resource: 'aapl.us',
       })
       return res.ok
     } catch {
@@ -33,9 +38,14 @@ export class StooqSource implements StockDataSource {
 
     try {
       const std = `${symbol.trim().toLowerCase()}.us`
-      const res = await fetch(`${API_BASE}?s=${encodeURIComponent(std)}&i=5`, {
+      const res = await loggedFetch(`${API_BASE}?s=${encodeURIComponent(std)}&i=5`, {
         signal: AbortSignal.timeout(6000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.stooq.getQuote',
+        provider: this.provider,
+        resource: std,
+        metadata: { symbol, market },
       })
       if (!res.ok) return null
       const text = (await res.text()).trim()

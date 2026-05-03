@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { buildAnalysisSystemPrompt, PORTFOLIO_ANALYSIS_PROMPT, STOCK_ANALYSIS_PROMPT } from '@/lib/agent/prompts/analysis'
 import { runPortfolioAnalysisAgentTask, runStockAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
+import { logger } from '@/lib/observability/logger'
 import type { PortfolioAnalysisContext, StockAnalysisContext } from '@/lib/agent/skills/analysis'
 import type {
   AiAnalysisHistoryRecord,
@@ -329,7 +330,7 @@ function safeParseJsonObject<T>(raw: string): T | null {
     try {
       return JSON.parse(repaired) as T
     } catch {
-      console.warn('[ai] failed to parse model JSON response', raw.slice(0, 500))
+      logger.warn('ai.analysis.parseJson.failed', { rawPreview: raw.slice(0, 500) })
       return null
     }
   }

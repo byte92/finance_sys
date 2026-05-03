@@ -4,6 +4,7 @@ import { runMarketAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
 import { fetchStockNews } from '@/lib/external/news'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
 import { MARKET_INDEX_DEFINITIONS, fetchMarketIndexSnapshot } from '@/lib/external/marketIndices'
+import { logger } from '@/lib/observability/logger'
 import type {
   AiAnalysisHistoryRecord,
   AiAnalysisResult,
@@ -144,7 +145,7 @@ function safeParseJsonObject<T>(raw: string): T | null {
     try {
       return JSON.parse(repaired) as T
     } catch {
-      console.warn('[market-ai] failed to parse model JSON response', raw.slice(0, 500))
+      logger.warn('ai.market.parseJson.failed', { rawPreview: raw.slice(0, 500) })
       return null
     }
   }

@@ -1,5 +1,7 @@
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 const API_BASE = 'https://api.nasdaq.com/api/quote'
 const REQUEST_HEADERS = {
@@ -43,10 +45,14 @@ export class NasdaqSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/AAPL/chart?assetclass=stocks`, {
+      const res = await loggedFetch(`${API_BASE}/AAPL/chart?assetclass=stocks`, {
         headers: REQUEST_HEADERS,
         signal: AbortSignal.timeout(6000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.nasdaq.healthCheck',
+        provider: this.provider,
+        resource: 'AAPL',
       })
       return res.ok
     } catch {
@@ -58,10 +64,15 @@ export class NasdaqSource implements StockDataSource {
     if (market !== 'US') return null
 
     try {
-      const res = await fetch(`${API_BASE}/${encodeURIComponent(symbol.toUpperCase())}/chart?assetclass=stocks`, {
+      const res = await loggedFetch(`${API_BASE}/${encodeURIComponent(symbol.toUpperCase())}/chart?assetclass=stocks`, {
         headers: REQUEST_HEADERS,
         signal: AbortSignal.timeout(7000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.nasdaq.getQuote',
+        provider: this.provider,
+        resource: symbol.toUpperCase(),
+        metadata: { symbol, market },
       })
       if (!res.ok) return null
 
@@ -91,7 +102,7 @@ export class NasdaqSource implements StockDataSource {
         source: sessionLabel ? `nasdaq-${sessionLabel}` : 'nasdaq',
       }
     } catch (error) {
-      console.warn('[NasdaqSource] 请求失败:', error)
+      logger.warn('quote.nasdaq.getQuote.failed', { error, symbol, market })
       return null
     }
   }

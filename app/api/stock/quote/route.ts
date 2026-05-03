@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 import type { Market } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
 const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 const yahooValuationSource = new YahooFinanceSource({ provider: 'yahoo-finance' })
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')?.trim()
   const market = searchParams.get('market') as Market | null
@@ -33,10 +35,12 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({ quote })
   } catch (error) {
-    console.error('[api/stock/quote] failed:', error)
+    logger.error('api.stock.quote.failed', { error, symbol, market })
     return NextResponse.json({ error: '获取行情失败' }, { status: 500 })
   }
 }
+
+export const GET = withApiLogging('/api/stock/quote', handleGET)
 
 async function enrichQuoteWithValuation(
   quote: StockQuote | null,

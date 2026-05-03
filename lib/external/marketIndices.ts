@@ -1,6 +1,8 @@
 import { buildTechnicalIndicatorSnapshot } from '@/lib/technicalIndicators'
 import type { CandlePoint } from '@/lib/technicalIndicators'
 import type { Market, MarketIndexSnapshot, MarketRegion } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 export type MarketIndexDefinition = {
   id: string
@@ -52,9 +54,14 @@ function parseCandleRows(rows: string[][], market: Market): CandlePoint[] {
 
 async function fetchIndexRawPayload(definition: MarketIndexDefinition, limit = 120) {
   const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${definition.tencentCode},day,,,${limit},qfq`
-  const res = await fetch(url, {
+  const res = await loggedFetch(url, {
     signal: AbortSignal.timeout(7000),
     cache: 'no-store',
+  }, {
+    operation: 'marketIndex.tencent.snapshot',
+    provider: 'tencent',
+    resource: definition.tencentCode,
+    metadata: { indexId: definition.id, market: definition.market, limit },
   })
   if (!res.ok) throw new Error(`获取 ${definition.name} 数据失败`)
   const data = await res.json()
@@ -106,7 +113,12 @@ export async function fetchMarketIndexSnapshot(definition: MarketIndexDefinition
       indicators: options.includeIndicators ? buildTechnicalIndicatorSnapshot(candles) : undefined,
     }
   } catch (error) {
-    console.error(`[marketIndices] Failed to fetch ${definition.name}:`, error)
+    logger.warn('marketIndex.snapshot.failed', {
+      error,
+      indexId: definition.id,
+      name: definition.name,
+      market: definition.market,
+    })
     return null
   }
 }

@@ -7,6 +7,7 @@ import { AlphaVantageDataSource } from '@/lib/dataSources/AlphaVantageSource'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import { StooqSource } from '@/lib/dataSources/StooqSource'
 import { ManualDataSource } from '@/lib/dataSources/ManualSource'
+import { logger } from '@/lib/observability/logger'
 
 const DEFAULT_CONFIG: StockServiceConfig = {
   defaultProvider: 'tencent',
@@ -68,7 +69,7 @@ export class StockPriceService {
           return quote
         }
       } catch (e) {
-        console.warn(`[StockPriceService] ${provider} failed:`, e)
+        logger.warn('quote.provider.failed', { error: e, provider, symbol, market })
       }
     }
     return null

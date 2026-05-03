@@ -1,4 +1,6 @@
 import type { Market, NewsItem } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 function decodeXmlTag(item: string, tag: string) {
   const value = item.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] ?? ''
@@ -23,7 +25,12 @@ export async function fetchStockNews(symbol: string, stockName: string, market: 
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(queryParts.join(' '))}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' })
+    const res = await loggedFetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' }, {
+      operation: 'news.google.rssSearch',
+      provider: 'google-news',
+      resource: queryParts.join(' '),
+      metadata: { symbol, market, limit },
+    })
     if (!res.ok) return []
     const xml = await res.text()
     const items = Array.from(xml.matchAll(/<item>([\s\S]*?)<\/item>/g))
@@ -42,7 +49,8 @@ export async function fetchStockNews(symbol: string, stockName: string, market: 
       if (!deduped.has(item.title)) deduped.set(item.title, item)
     }
     return Array.from(deduped.values()).slice(0, limit)
-  } catch {
+  } catch (error) {
+    logger.warn('news.google.rssSearch.failed', { error, symbol, market })
     return []
   }
 }

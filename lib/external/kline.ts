@@ -1,4 +1,6 @@
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 export type KlineInterval = '1d' | '5m' | '15m' | '30m' | '60m'
 
@@ -122,7 +124,12 @@ async function fetchTencentKline(symbol: string, market: Market, interval: Kline
 
 async function fetchTencentDailyKline(code: string, limit = 800): Promise<KlineItem[]> {
   const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,${limit},qfq`
-  const res = await fetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE })
+  const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
+    operation: 'kline.tencent.daily',
+    provider: 'tencent',
+    resource: code,
+    metadata: { limit },
+  })
   if (!res.ok) return []
 
   const data = await res.json()
@@ -140,7 +147,12 @@ async function fetchTencentMinuteKline(code: string, interval: KlineInterval, da
   const safeDays = Number.isFinite(days) ? Math.max(7, Math.min(days, 370)) : 180
   const bars = Math.min(CONFIG.MAX_TENCENT_BARS, safeDays * barsPerDay)
   const url = `https://ifzq.gtimg.cn/appstock/app/kline/mkline?param=${code},${gtInterval},,${bars}`
-  const res = await fetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE })
+  const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
+    operation: 'kline.tencent.minute',
+    provider: 'tencent',
+    resource: code,
+    metadata: { interval, days, bars },
+  })
   if (!res.ok) return []
 
   const data = await res.json()
@@ -162,7 +174,12 @@ async function fetchStooqKline(symbol: string, market: Market): Promise<KlineIte
   if (market !== 'US') return []
   const std = `${symbol.trim().toLowerCase()}.us`
   const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(std)}&i=d`
-  const res = await fetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE })
+  const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
+    operation: 'kline.stooq.daily',
+    provider: 'stooq',
+    resource: std,
+    metadata: { symbol, market },
+  })
   if (!res.ok) return []
 
   const text = await res.text()
@@ -180,7 +197,7 @@ async function fetchNasdaqKline(symbol: string, market: Market, interval: KlineI
   if (market !== 'US' || interval !== '1d') return []
   const fromDate = formatUsDateForNasdaq(days)
   const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol.toUpperCase())}/historical?assetclass=stocks&limit=500&fromdate=${fromDate}`
-  const res = await fetch(url, {
+  const res = await loggedFetch(url, {
     headers: {
       'Accept': 'application/json, text/plain, */*',
       'Origin': 'https://www.nasdaq.com',
@@ -189,6 +206,11 @@ async function fetchNasdaqKline(symbol: string, market: Market, interval: KlineI
     },
     signal: AbortSignal.timeout(CONFIG.TIMEOUT),
     cache: CONFIG.CACHE,
+  }, {
+    operation: 'kline.nasdaq.historical',
+    provider: 'nasdaq',
+    resource: symbol.toUpperCase(),
+    metadata: { symbol, market, days, fromDate },
   })
   if (!res.ok) return []
 
@@ -228,9 +250,14 @@ async function fetchAlphaVantageKline(symbol: string, market: Market, interval: 
   })
   if (isMinute) params.set('interval', interval)
 
-  const res = await fetch(`https://www.alphavantage.co/query?${params}`, {
+  const res = await loggedFetch(`https://www.alphavantage.co/query?${params}`, {
     signal: AbortSignal.timeout(CONFIG.ALPHA_VANTAGE_TIMEOUT),
     cache: CONFIG.CACHE,
+  }, {
+    operation: 'kline.alphaVantage.timeSeries',
+    provider: 'alpha-vantage',
+    resource: std,
+    metadata: { symbol, market, interval, isMinute },
   })
   if (!res.ok) return []
 
@@ -300,7 +327,8 @@ export async function fetchKline(symbol: string, market: Market, options: { inte
       if (filtered.length >= 2) {
         return { candles: filtered, source, interval, range }
       }
-    } catch {
+    } catch (error) {
+      logger.warn('kline.fetch.sourceFailed', { error, source, symbol, market, interval, range })
       continue
     }
   }

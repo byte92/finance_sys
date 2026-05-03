@@ -1,14 +1,16 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { safeReadJsonBody } from '@/lib/api/request'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 
 const HISTORY_ERROR_MESSAGE = 'AI 分析历史服务暂时不可用，请稍后重试。'
 
 function historyErrorResponse(error: unknown) {
-  console.error('AI history API failed:', error)
+  logger.error('api.ai.history.failed', { error })
   return NextResponse.json({ error: HISTORY_ERROR_MESSAGE }, { status: 500 })
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   try {
     const userId = request.nextUrl.searchParams.get('userId')
     if (!userId) {
@@ -38,7 +40,7 @@ type DeleteBody = {
   id?: string
 }
 
-export async function DELETE(request: NextRequest) {
+async function handleDELETE(request: NextRequest) {
   try {
     const payload = await safeReadJsonBody<DeleteBody>(request)
     if (!payload.ok) {
@@ -61,3 +63,6 @@ export async function DELETE(request: NextRequest) {
     return historyErrorResponse(error)
   }
 }
+
+export const GET = withApiLogging('/api/ai/history', handleGET)
+export const DELETE = withApiLogging('/api/ai/history', handleDELETE)

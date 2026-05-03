@@ -1,4 +1,5 @@
 import { detectStockCode } from '@/lib/agent/entity/stockMatcher'
+import { loggedFetch } from '@/lib/observability/fetch'
 import type { Market } from '@/types'
 
 export type ExternalCandidateSource = 'tencent.smartbox' | 'code.inference'
@@ -155,12 +156,16 @@ export async function resolveExternalCandidates(query: string, limit = 5): Promi
   const timeout = setTimeout(() => controller.abort(), 2500)
   try {
     for (const candidateQuery of queries) {
-      const response = await fetch(`https://smartbox.gtimg.cn/s3/?t=all&q=${encodeURIComponent(candidateQuery)}`, {
+      const response = await loggedFetch(`https://smartbox.gtimg.cn/s3/?t=all&q=${encodeURIComponent(candidateQuery)}`, {
         signal: controller.signal,
         headers: {
           Accept: 'text/plain,*/*',
           'User-Agent': 'StockTracker/1.0',
         },
+      }, {
+        operation: 'security.externalCandidate.smartbox',
+        provider: 'tencent.smartbox',
+        resource: candidateQuery,
       })
       if (!response.ok) continue
       const raw = await response.text()

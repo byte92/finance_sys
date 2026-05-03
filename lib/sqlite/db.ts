@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { logger } from "@/lib/observability/logger";
 import type { AiAgentRun, AiAnalysisHistoryRecord, AiAnalysisResult, AiChatMessage, AiChatSession, AiChatRole, AppConfig, Market, Stock } from "@/types";
 
 export type StoredPayload = {
@@ -296,7 +297,7 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
       const parsed = JSON.parse(row.payload) as Partial<StoredPayload>;
       return normalizePayload(parsed);
     } catch (error) {
-      console.error("Failed to parse SQLite payload:", error);
+      logger.error("sqlite.portfolio.parse.failed", { error, userId });
       return { stocks: [], config: DEFAULT_APP_CONFIG };
     }
   }
@@ -325,7 +326,7 @@ export function createPortfolioStore(dbPath = resolveFinanceDbPath()) {
         recovered: true,
       };
     } catch (error) {
-      console.error("Failed to parse fallback SQLite payload:", error);
+      logger.error("sqlite.portfolio.fallbackParse.failed", { error, userId: row.user_id });
       return null;
     }
   }

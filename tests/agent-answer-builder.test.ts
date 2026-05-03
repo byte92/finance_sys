@@ -126,3 +126,128 @@ test('answer builder exposes web search sources and searched time', () => {
     point: '证监会发布资本市场相关安排，市场关注后续政策落地节奏。',
   }])
 })
+
+test('answer builder exposes web fetch content', () => {
+  const draft = buildAgentAnswerDraft({
+    intent: 'market_question',
+    entities: [{ type: 'market', raw: '外部页面', confidence: 0.8 }],
+    requiredSkills: [],
+    responseMode: 'answer',
+  }, [
+    {
+      skillName: 'web.fetch',
+      ok: true,
+      data: {
+        url: 'https://www.cninfo.com.cn/new/disclosure',
+        status: 200,
+        summary: '按照要求从页面提取公告要点。',
+        body: '原始公告页面正文',
+      },
+    },
+  ])
+
+  const fetchFact = draft.facts.find((item) => item.label === '公开页面抓取')
+  assert.deepEqual(fetchFact?.value, {
+    url: 'https://www.cninfo.com.cn/new/disclosure',
+    status: 200,
+    summary: '按照要求从页面提取公告要点。',
+  })
+  assert.equal(fetchFact?.source, 'web.fetch')
+})
+
+test('answer builder exposes external quote facts', () => {
+  const draft = buildAgentAnswerDraft({
+    intent: 'stock_analysis',
+    entities: [{ type: 'stock', raw: '588000', code: '588000', market: 'A', confidence: 0.8 }],
+    requiredSkills: [],
+    responseMode: 'answer',
+  }, [
+    {
+      skillName: 'stock.getExternalQuote',
+      ok: true,
+      data: {
+        symbol: '588000',
+        name: '华夏科创50ETF',
+        market: 'A',
+        inPortfolio: false,
+        quote: {
+          symbol: '588000',
+          name: '华夏科创50ETF',
+          price: 1.02,
+          change: 0.01,
+          changePercent: 0.99,
+          peTtm: null,
+          pb: null,
+          timestamp: '2026-05-04T10:00:00+08:00',
+          currency: 'CNY',
+          source: 'tencent',
+        },
+      },
+    },
+  ])
+
+  const externalQuote = draft.facts.find((item) => item.label === '未持仓标的行情')
+
+  assert.equal(draft.answerType, 'stock_holding_review')
+  assert.deepEqual(externalQuote?.value, {
+    symbol: '588000',
+    name: '华夏科创50ETF',
+    market: 'A',
+    price: 1.02,
+    changePercent: 0.99,
+    peTtm: null,
+    pb: null,
+    timestamp: '2026-05-04T10:00:00+08:00',
+    source: 'tencent',
+  })
+})
+
+test('answer builder exposes external technical facts for multiple candidates', () => {
+  const draft = buildAgentAnswerDraft({
+    intent: 'stock_analysis',
+    entities: [
+      { type: 'stock', raw: '科创50ETF', code: '588000', name: '华夏科创50ETF', market: 'A', confidence: 0.9 },
+      { type: 'stock', raw: '科创50ETF', code: '588080', name: '易方达科创50ETF', market: 'A', confidence: 0.82 },
+    ],
+    requiredSkills: [],
+    responseMode: 'answer',
+  }, [
+    {
+      skillName: 'stock.getTechnicalSnapshot',
+      ok: true,
+      data: {
+        symbol: '588000',
+        name: '华夏科创50ETF',
+        market: 'A',
+        indicators: {
+          trendBias: 'neutral',
+          rsi14: 52.1,
+          supportLevel: 0.98,
+          resistanceLevel: 1.08,
+        },
+        candleCount: 120,
+      },
+    },
+    {
+      skillName: 'stock.getTechnicalSnapshot',
+      ok: true,
+      data: {
+        symbol: '588080',
+        name: '易方达科创50ETF',
+        market: 'A',
+        indicators: {
+          trendBias: 'bullish',
+          rsi14: 61.4,
+          supportLevel: 0.92,
+          resistanceLevel: 1.01,
+        },
+        candleCount: 120,
+      },
+    },
+  ])
+
+  const externalTechnicals = draft.facts.filter((item) => item.label === '未持仓技术指标')
+
+  assert.equal(externalTechnicals.length, 2)
+  assert.deepEqual(externalTechnicals.map((item) => (item.value as { symbol: string }).symbol), ['588000', '588080'])
+})

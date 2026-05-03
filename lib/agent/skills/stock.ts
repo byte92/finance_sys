@@ -2,6 +2,7 @@ import { buildTechnicalIndicatorSnapshot } from '@/lib/technicalIndicators'
 import { calcStockSummary } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { matchStocks } from '@/lib/agent/entity/stockMatcher'
+import { resolveSecurityCandidates } from '@/lib/agent/entity/securityResolver'
 import { fetchDailyCandles } from '@/lib/external/kline'
 import type { AgentSkill } from '@/lib/agent/types'
 import type { Market, Stock } from '@/types'
@@ -136,13 +137,41 @@ export const stockGetQuoteSkill: AgentSkill<Record<string, unknown>> = {
   },
 }
 
-export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: Market }> = {
+export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: Market; query?: string; keyword?: string; name?: string }> = {
   name: 'stock.getExternalQuote',
   description: '读取未持仓股票的行情和估值数据。',
-  inputSchema: { symbol: 'string', market: 'Market' },
+  inputSchema: { symbol: 'string', market: 'Market', query: 'string', keyword: 'string', name: 'string' },
   requiredScopes: ['quote.read'],
   async execute(args, ctx) {
-    if (!args.symbol || !args.market) return { skillName: 'stock.getExternalQuote', ok: false, error: '缺少标的代码或市场' }
+    if (!args.symbol || !args.market) {
+      const query = String(args.query ?? args.keyword ?? args.name ?? args.symbol ?? '')
+      const candidates = (await resolveSecurityCandidates(query, ctx.stocks, 3)).slice(0, 3)
+      if (!candidates.length) return { skillName: 'stock.getExternalQuote', ok: false, error: '缺少标的代码或市场' }
+
+      const resolved = await Promise.all(candidates.map(async (candidate) => {
+        const quote = await stockPriceService.getQuote(candidate.code, candidate.market).catch(() => null)
+        return {
+          symbol: candidate.code,
+          name: candidate.name,
+          market: candidate.market,
+          inPortfolio: candidate.inPortfolio,
+          stockId: candidate.stockId,
+          quote: quoteToContext(quote),
+        }
+      }))
+      return {
+        skillName: 'stock.getExternalQuote',
+        ok: true,
+        data: { query, candidates: resolved },
+        needsFollowUp: true,
+        suggestedSkills: candidates.map((candidate) => ({
+          name: 'stock.getTechnicalSnapshot',
+          args: { symbol: candidate.code, market: candidate.market },
+          reason: '已解析出未持仓标的，继续抓取外部 K 线并计算技术指标',
+        })),
+      }
+    }
+
     const quote = await stockPriceService.getQuote(args.symbol, args.market).catch(() => null)
     return { skillName: 'stock.getExternalQuote', ok: true, data: { symbol: args.symbol, market: args.market, inPortfolio: false, quote: quoteToContext(quote) } }
   },
@@ -151,11 +180,46 @@ export const stockGetExternalQuoteSkill: AgentSkill<{ symbol?: string; market?: 
 export const stockGetTechnicalSnapshotSkill: AgentSkill<Record<string, unknown>> = {
   name: 'stock.getTechnicalSnapshot',
   description: '读取单只股票的技术指标摘要。',
-  inputSchema: { stockId: 'string' },
+  inputSchema: { stockId: 'string', symbol: 'string', market: 'Market', query: 'string' },
   requiredScopes: ['quote.read'],
   async execute(args, ctx) {
     const stock = findStock(ctx.stocks, args)
-    if (!stock) return { skillName: 'stock.getTechnicalSnapshot', ok: false, error: '未找到对应持仓' }
+    if (!stock) {
+      const symbol = typeof args.symbol === 'string' ? args.symbol : ''
+      const market = typeof args.market === 'string' ? args.market as Market : null
+      if (symbol && market) {
+        const candles = await fetchDailyCandles(symbol, market)
+        return {
+          skillName: 'stock.getTechnicalSnapshot',
+          ok: true,
+          data: {
+            symbol,
+            market,
+            indicators: buildTechnicalIndicatorSnapshot(candles),
+            candleCount: candles.length,
+          },
+        }
+      }
+
+      const query = String(args.query ?? args.keyword ?? args.name ?? args.symbol ?? '')
+      const candidates = (await resolveSecurityCandidates(query, ctx.stocks, 2)).slice(0, 2)
+      if (candidates.length) {
+        const resolved = await Promise.all(candidates.map(async (candidate) => {
+          const candles = await fetchDailyCandles(candidate.code, candidate.market).catch(() => [])
+          return {
+            symbol: candidate.code,
+            name: candidate.name,
+            market: candidate.market,
+            indicators: candles.length ? buildTechnicalIndicatorSnapshot(candles) : null,
+            candleCount: candles.length,
+          }
+        }))
+        return { skillName: 'stock.getTechnicalSnapshot', ok: true, data: { query, candidates: resolved } }
+      }
+
+      return { skillName: 'stock.getTechnicalSnapshot', ok: false, error: '未找到对应持仓或外部标的' }
+    }
+
     const candles = await fetchDailyCandles(stock.code, stock.market)
     return {
       skillName: 'stock.getTechnicalSnapshot',
@@ -169,7 +233,12 @@ export const stockGetTechnicalSnapshotSkill: AgentSkill<Record<string, unknown>>
   },
 }
 
-export type FinancialsInput = { symbol: string; market: Market }
+export type FinancialsInput = {
+  symbol: string
+  market: Market
+  researchQuery?: string
+  sourceHints?: string[]
+}
 
 export type FinancialsData = {
   symbol: string
@@ -263,14 +332,17 @@ async function fetchSinaAStockFinancials(symbol: string): Promise<FinancialsData
 export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData> = {
   name: 'stock.getFinancials',
   description: '获取股票最近财报数据（EPS、营收增长等），支持美股/A股/港股。',
-  inputSchema: { symbol: 'string', market: 'Market' },
+  inputSchema: { symbol: 'string', market: 'Market', researchQuery: 'string?', sourceHints: 'string[]?' },
   requiredScopes: ['quote.read', 'network.fetch'],
   async execute(args, ctx) {
     const { symbol, market } = args
     if (!symbol) return { skillName: 'stock.getFinancials', ok: false, error: '缺少标的代码' }
     const stock = ctx.stocks.find((item) => item.code === symbol || item.code.toUpperCase() === String(symbol).toUpperCase())
     const displayName = stock?.name ? `${stock.name} ${symbol}` : String(symbol)
-    const year = new Date().getFullYear()
+    const researchQuery = String(args.researchQuery || displayName).replace(/\s+/g, ' ').trim()
+    const sourceHints = Array.isArray(args.sourceHints)
+      ? args.sourceHints.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+      : []
 
     // A 股：通过 Google 搜索最新财报
     if (market === 'A') {
@@ -289,19 +361,18 @@ export const stockGetFinancialsSkill: AgentSkill<FinancialsInput, FinancialsData
         error: 'A 股财报需通过搜索引擎查找',
         needsFollowUp: true,
         suggestedSkills: [
-          { name: 'web.search', args: { query: `${displayName} ${year} 最新财报 一季报 营业收入 净利润 同比增长`, limit: 5 }, reason: '通过搜索引擎查找该股票最新财报信息' },
+          { name: 'web.search', args: { query: researchQuery, ...(sourceHints.length ? { sourceHints } : {}), limit: 5 }, reason: '结构化财报不可用，按模型提供的检索语句补充公开信息' },
         ],
       }
     }
 
-    // 美股 / 港股：Google 搜索英文财报
     return {
       skillName: 'stock.getFinancials',
       ok: false,
       error: '美股/港股财报需通过搜索引擎查找',
       needsFollowUp: true,
       suggestedSkills: [
-        { name: 'web.search', args: { query: `${displayName} ${year} latest quarterly earnings EPS revenue net income`, limit: 5 }, reason: '通过搜索引擎查找该股票最新财报信息' },
+        { name: 'web.search', args: { query: researchQuery, ...(sourceHints.length ? { sourceHints } : {}), limit: 5 }, reason: '结构化财报不可用，按模型提供的检索语句补充公开信息' },
       ],
     }
   },

@@ -1,6 +1,6 @@
 ---
 name: market.resolveCandidate
-description: 根据用户输入的名称或代码，返回候选标的列表（含市场推断）。
+description: 旧版兼容解析 Skill，内部转发到 security.resolve。
 version: 1
 scopes:
   - quote.read
@@ -13,7 +13,8 @@ script: lib/agent/skills/market.ts#marketResolveCandidateSkill
 
 # 使用场景
 
-当用户输入股票名称、代码或简称，但该标的未在当前持仓中、或存在多市场歧义时使用。
+旧版兼容入口。新计划应优先使用 `security.resolve`。
+当用户输入股票名称、代码或简称，但该标的未在当前持仓中、或存在多市场歧义时，可返回候选列表。
 返回候选列表供 Planner 决定是否需要澄清或直接抓取行情。
 
 # 不适用场景

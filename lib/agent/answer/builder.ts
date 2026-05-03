@@ -33,6 +33,39 @@ function getIndicators(data: Record<string, unknown> | null) {
   return isRecord(data?.indicators) ? data.indicators : null
 }
 
+function quoteSummary(data: Record<string, unknown>) {
+  const quote = getQuote(data)
+  if (!quote) return null
+
+  return {
+    symbol: textValue(data.symbol) || textValue(quote.symbol),
+    name: textValue(data.name) || textValue(quote.name),
+    market: textValue(data.market),
+    price: quote.price,
+    changePercent: quote.changePercent,
+    peTtm: quote.peTtm ?? null,
+    pb: quote.pb ?? null,
+    timestamp: quote.timestamp,
+    source: quote.source,
+  }
+}
+
+function indicatorSummary(data: Record<string, unknown>) {
+  const indicators = getIndicators(data)
+  if (!indicators) return null
+
+  return {
+    symbol: textValue(data.symbol),
+    name: textValue(data.name),
+    market: textValue(data.market),
+    trendBias: indicators.trendBias,
+    rsi14: indicators.rsi14,
+    supportLevel: indicators.supportLevel,
+    resistanceLevel: indicators.resistanceLevel,
+    candleCount: data.candleCount,
+  }
+}
+
 function hasSkill(skillResults: AgentSkillResult[], name: string) {
   return skillResults.some((result) => result.skillName === name)
 }
@@ -54,6 +87,18 @@ function toWebSearchSource(item: Record<string, unknown>) {
     source: textValue(item.source) || 'web',
     summary: (snippet || content).slice(0, 280),
     point: content && content !== snippet ? content.slice(0, 360) : undefined,
+  }
+}
+
+function toWebFetchSource(data: Record<string, unknown>) {
+  const url = textValue(data.url)
+  if (!url) return null
+  const summary = textValue(data.summary)
+  const body = textValue(data.body)
+  return {
+    url,
+    status: data.status,
+    summary: (summary || body).slice(0, 720),
   }
 }
 
@@ -130,6 +175,24 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
     addItem(facts, '行情时间', quote.timestamp, 'stock.getQuote')
   }
 
+  for (const result of findResults(skillResults, 'stock.getExternalQuote')) {
+    const data = getData(result)
+    if (!data) continue
+
+    const candidateSummaries = Array.isArray(data.candidates)
+      ? data.candidates.filter(isRecord).map(quoteSummary).filter((item): item is NonNullable<ReturnType<typeof quoteSummary>> => item !== null)
+      : []
+    const singleSummary = quoteSummary(data)
+
+    if (singleSummary) {
+      addItem(facts, '未持仓标的行情', singleSummary, 'stock.getExternalQuote')
+    } else if (candidateSummaries.length) {
+      addItem(facts, '未持仓候选行情', candidateSummaries, 'stock.getExternalQuote')
+    } else if (hasSkill(skillResults, 'stock.getExternalQuote')) {
+      addItem(missingData, '外部行情', '行情源未返回可用报价。', 'stock.getExternalQuote')
+    }
+  }
+
   const indicators = getIndicators(getData(findResult(skillResults, 'stock.getTechnicalSnapshot')))
   if (indicators) {
     addItem(facts, '技术趋势', indicators.trendBias, 'stock.getTechnicalSnapshot')
@@ -138,6 +201,24 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
     addItem(facts, '阻力位', indicators.resistanceLevel, 'stock.getTechnicalSnapshot')
     if (answerType === 'trade_review') {
       addItem(qualityWarnings, '时间口径提醒', '技术指标是当前快照，只能用于事后复盘，不能直接当作交易发生当天的依据。', 'stock.getTechnicalSnapshot')
+    }
+  }
+
+  for (const result of findResults(skillResults, 'stock.getTechnicalSnapshot')) {
+    const data = getData(result)
+    if (!data) continue
+
+    const singleExternalSummary = !data.stockId ? indicatorSummary(data) : null
+    if (singleExternalSummary) {
+      addItem(facts, '未持仓技术指标', singleExternalSummary, 'stock.getTechnicalSnapshot')
+      continue
+    }
+
+    const candidateSummaries = Array.isArray(data.candidates)
+      ? data.candidates.filter(isRecord).map(indicatorSummary).filter((item): item is NonNullable<ReturnType<typeof indicatorSummary>> => item !== null)
+      : []
+    if (candidateSummaries.length) {
+      addItem(facts, '未持仓技术指标', candidateSummaries, 'stock.getTechnicalSnapshot')
     }
   }
 
@@ -167,6 +248,18 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
     addItem(facts, '公开搜索来源', sources, 'web.search', '回答新闻、公告或政策问题时应列出标题、链接、摘要/要点和搜索时间，并使用“公开搜索结果显示/检索到”一类表述。')
     if (!sources.length) {
       addItem(missingData, '公开搜索结果', '没有检索到可用于引用的公开网页结果。', 'web.search')
+    }
+  }
+
+  for (const result of findResults(skillResults, 'web.fetch')) {
+    const data = getData(result)
+    if (!data) continue
+
+    const source = toWebFetchSource(data)
+    if (source) {
+      addItem(facts, '公开页面抓取', source, 'web.fetch', '这是受控抓取到的外部页面内容，应按页面来源和抓取状态引用。')
+    } else {
+      addItem(missingData, '公开页面抓取', '未抓取到可用页面内容。', 'web.fetch')
     }
   }
 

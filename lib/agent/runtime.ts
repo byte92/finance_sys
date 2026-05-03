@@ -3,7 +3,7 @@ import { executeAgentPlan } from '@/lib/agent/executor'
 import { planAgentResponse } from '@/lib/agent/planner'
 import type { AgentRunInput, AgentRunResult } from '@/lib/agent/types'
 
-const CLARIFY_DATA_SKILLS = new Set(['market.resolveCandidate'])
+const CLARIFY_DATA_SKILLS = new Set(['security.resolve', 'market.resolveCandidate'])
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const maxContextTokens = Math.max(4096, input.aiConfig.maxContextTokens || 128000)

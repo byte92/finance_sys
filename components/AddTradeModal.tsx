@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { useStockStore } from '@/store/useStockStore'
 import { autoCalcFees, calcStockSummary, todayStr } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
-import { getMarketAssetUnit, getMarketMinQuantity, getMarketQuantityStep } from '@/config/defaults'
+import { getMarketMinQuantity, getMarketQuantityStep } from '@/config/defaults'
+import { useI18n } from '@/lib/i18n'
 import type { Market, TradeType, Trade } from '@/types'
 
 interface AddTradeModalProps {
@@ -24,6 +25,7 @@ interface AddTradeModalProps {
 
 export default function AddTradeModal({ stockId, stockCode, stockName, market, editTrade, onClose }: AddTradeModalProps) {
   const { addTrade, updateTrade, stocks, config } = useStockStore()
+  const { t, getAssetUnit, numberLocale } = useI18n()
   const isEdit = !!editTrade
   const currentStock = stocks.find((stock) => stock.id === stockId)
   const stockWithoutEditingTrade = currentStock
@@ -52,11 +54,11 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   const [error, setError] = useState('')
   const marketCurrency = MARKET_CURRENCY[market] || 'CNY'
   const currencySymbol = CURRENCY_SYMBOLS[marketCurrency]
-  const currencyUnitLabel = getCurrencyUnitLabel(marketCurrency)
-  const assetUnit = getMarketAssetUnit(market)
+  const currencyUnitLabel = getCurrencyUnitLabel(marketCurrency, t)
+  const assetUnit = getAssetUnit(market)
   const quantityStep = getMarketQuantityStep(market)
   const minQuantity = getMarketMinQuantity(market)
-  const incomeLabel = market === 'CRYPTO' ? '收益' : '分红'
+  const incomeLabel = market === 'CRYPTO' ? t('收益') : t('分红')
 
   // 编辑模式：初始化表单数据
   useEffect(() => {
@@ -138,15 +140,15 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
 
     if (type === 'DIVIDEND') {
       if (!dividendPerShare || dividendPerShareNum <= 0) {
-        setError(`请填写有效的每${assetUnit}${incomeLabel}金额`)
+        setError(t('请填写有效的每{unit}{incomeLabel}金额', { unit: assetUnit, incomeLabel }))
         return
       }
       if (!dividendShares || dividendSharesNum <= 0) {
-        setError(`请填写${incomeLabel}时的持有数量`)
+        setError(t('请填写{incomeLabel}时的持有数量', { incomeLabel }))
         return
       }
       if (dividendSharesNum > availableHolding) {
-        setError(`${incomeLabel}数量不能超过当前持仓 ${formatQuantity(availableHolding)} ${assetUnit}`)
+        setError(t('{incomeLabel}数量不能超过当前持仓 {quantity} {unit}', { incomeLabel, quantity: formatQuantity(availableHolding, numberLocale), unit: assetUnit }))
         return
       }
       // 收益记录：price=每单位收益, quantity=持有数量, netAmount=税后实收
@@ -156,14 +158,19 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
       tradeData.tax = dividendTaxAmount
       tradeData.totalAmount = grossDividend
       tradeData.netAmount = netDividend
-      tradeData.note = note || `每${assetUnit}${incomeLabel}${currencySymbol}${dividendPerShareNum}，税率${dividendTax}%`
+      tradeData.note = note || t('每{unit}{incomeLabel}{amount}，税率{rate}%', {
+        unit: assetUnit,
+        incomeLabel,
+        amount: `${currencySymbol}${dividendPerShareNum}`,
+        rate: dividendTax,
+      })
     } else {
       if (!price || !quantity || priceNum <= 0 || quantityNum <= 0) {
-        setError('请填写有效的价格和数量')
+        setError(t('请填写有效的价格和数量'))
         return
       }
       if (type === 'SELL' && quantityNum > availableHolding) {
-        setError(`当前最多可卖出 ${formatQuantity(availableHolding)} ${assetUnit}，请先检查持仓或交易顺序`)
+        setError(t('当前最多可卖出 {quantity} {unit}，请先检查持仓或交易顺序', { quantity: formatQuantity(availableHolding, numberLocale), unit: assetUnit }))
         return
       }
       tradeData.price = priceNum
@@ -193,7 +200,7 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
         <div className="flex items-center justify-between border-b border-border p-5">
           <div>
             <h2 className="text-base font-semibold text-foreground">
-              {isEdit ? '编辑交易记录' : '添加交易记录'}
+              {isEdit ? t('编辑交易记录') : t('添加交易记录')}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">{stockName}（{stockCode}）</p>
           </div>
@@ -209,13 +216,13 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all border ${
                 type === 'BUY' ? 'border-profit bg-profit/10 text-profit' : 'border-border bg-transparent text-muted-foreground hover:bg-secondary'
               }`}>
-              <TrendingUp className="inline h-4 w-4 mr-1.5" />买入
+              <TrendingUp className="inline h-4 w-4 mr-1.5" />{t('买入')}
             </button>
             <button type="button" onClick={() => setType('SELL')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all border ${
                 type === 'SELL' ? 'border-loss bg-loss/10 text-loss' : 'border-border bg-transparent text-muted-foreground hover:bg-secondary'
               }`}>
-              <TrendingDown className="inline h-4 w-4 mr-1.5" />卖出
+              <TrendingDown className="inline h-4 w-4 mr-1.5" />{t('卖出')}
             </button>
             <button type="button" onClick={() => setType('DIVIDEND')}
               className={`flex-1 h-10 rounded-lg text-sm font-medium transition-all border ${
@@ -227,8 +234,8 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
 
           {/* 日期（通用） */}
           <div className="space-y-1.5">
-            <Label htmlFor="date">交易日期</Label>
-            <DatePicker id="date" value={date} onChange={setDate} placeholder="选择交易日期" />
+            <Label htmlFor="date">{t('交易日期')}</Label>
+            <DatePicker id="date" value={date} onChange={setDate} placeholder={t('选择交易日期')} />
           </div>
 
           {/* 买入/卖出表单 */}
@@ -236,19 +243,19 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="price">成交价格（{currencyUnitLabel}）</Label>
+                  <Label htmlFor="price">{t('成交价格（{unit}）', { unit: currencyUnitLabel })}</Label>
                   <Input id="price" type="number" step="0.001" min="0" placeholder="0.00"
                     value={price} onChange={(e) => setPrice(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="quantity">成交数量（{assetUnit}）</Label>
+                  <Label htmlFor="quantity">{t('成交数量（{unit}）', { unit: assetUnit })}</Label>
                   <Input id="quantity" type="number" min={minQuantity} step={quantityStep} placeholder={market === 'CRYPTO' ? '0.01' : '100'}
                     value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
                 </div>
                 <div className="space-y-1.5 col-span-2">
-                  <Label>成交金额</Label>
+                  <Label>{t('成交金额')}</Label>
                   <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted text-sm text-foreground font-mono">
-                    {currencySymbol}{totalAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                    {currencySymbol}{totalAmount.toLocaleString(numberLocale, { minimumFractionDigits: 2 })}
                   </div>
                 </div>
               </div>
@@ -256,22 +263,22 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
               {/* 手续费区域 */}
               <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-muted-foreground">手续费</span>
+                  <span className="text-xs font-medium text-muted-foreground">{t('手续费')}</span>
                   <label className="flex items-center gap-1.5 cursor-pointer">
-                    <span className="text-xs text-muted-foreground">自动计算</span>
+                    <span className="text-xs text-muted-foreground">{t('自动计算')}</span>
                     <input type="checkbox" checked={autoFee} onChange={(e) => setAutoFee(e.target.checked)} className="rounded accent-primary" />
                   </label>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">佣金（{currencyUnitLabel}）</Label>
+                    <Label className="text-xs">{t('佣金（{unit}）', { unit: currencyUnitLabel })}</Label>
                     <Input type="number" step="0.01" min="0" placeholder="0.00"
                       value={autoFee ? fees.commission.toFixed(2) : commission}
                       onChange={(e) => setCommission(e.target.value)}
                       disabled={autoFee} className="h-8 text-xs" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">税费（{currencyUnitLabel}）</Label>
+                    <Label className="text-xs">{t('税费（{unit}）', { unit: currencyUnitLabel })}</Label>
                     <Input type="number" step="0.01" min="0" placeholder="0.00"
                       value={autoFee ? fees.tax.toFixed(2) : tax}
                       onChange={(e) => setTax(e.target.value)}
@@ -280,10 +287,10 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-border">
                   <span className="text-xs text-muted-foreground">
-                    {type === 'BUY' ? '实际买入成本' : '实际到账金额'}
+                    {type === 'BUY' ? t('实际买入成本') : t('实际到账金额')}
                   </span>
                   <span className={`text-sm font-bold font-mono ${type === 'BUY' ? 'text-profit' : 'text-loss'}`}>
-                    {currencySymbol}{fees.netAmount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                    {currencySymbol}{fees.netAmount.toLocaleString(numberLocale, { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -295,29 +302,29 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
             <div className="space-y-3">
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="text-xs text-muted-foreground mb-2">
-                  录入{incomeLabel}后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本
+                  {t('录入{incomeLabel}后，系统会把税后到账计入已实现收益，不再重复摊薄持仓成本', { incomeLabel })}
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
-                  当前可记录数量：{formatQuantity(availableHolding)} {assetUnit}
+                  {t('当前可记录数量：{quantity} {unit}', { quantity: formatQuantity(availableHolding, numberLocale), unit: assetUnit })}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="dps">每{assetUnit}{incomeLabel}（{currencyUnitLabel}）</Label>
+                    <Label htmlFor="dps">{t('每{unit}{incomeLabel}（{currencyUnit}）', { unit: assetUnit, incomeLabel, currencyUnit: currencyUnitLabel })}</Label>
                     <Input id="dps" type="number" step="0.0001" min="0" placeholder="0.10"
                       value={dividendPerShare} onChange={(e) => setDividendPerShare(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="dshares">持有数量（{assetUnit}）</Label>
+                    <Label htmlFor="dshares">{t('持有数量（{unit}）', { unit: assetUnit })}</Label>
                     <Input id="dshares" type="number" min={minQuantity} step={quantityStep} placeholder={market === 'CRYPTO' ? '0.01' : '1000'}
                       value={dividendShares} onChange={(e) => setDividendShares(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="dtax">{incomeLabel}税率（%）</Label>
+                    <Label htmlFor="dtax">{t('{incomeLabel}税率（%）', { incomeLabel })}</Label>
                     <Input id="dtax" type="number" step="1" min="0" max="100" placeholder="20"
                       value={dividendTax} onChange={(e) => setDividendTax(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>税额（{currencyUnitLabel}）</Label>
+                    <Label>{t('税额（{unit}）', { unit: currencyUnitLabel })}</Label>
                     <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted text-sm font-mono text-muted-foreground">
                       {currencySymbol}{dividendTaxAmount.toFixed(2)}
                     </div>
@@ -327,11 +334,11 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
                 {grossDividend > 0 && (
                   <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-muted-foreground">税前{incomeLabel}</span>
+                      <span className="text-muted-foreground">{t('税前{incomeLabel}', { incomeLabel })}</span>
                       <div className="font-mono text-foreground font-medium">{currencySymbol}{grossDividend.toFixed(2)}</div>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">税后实收</span>
+                      <span className="text-muted-foreground">{t('税后实收')}</span>
                       <div className="font-mono text-primary font-bold">{currencySymbol}{netDividend.toFixed(2)}</div>
                     </div>
                   </div>
@@ -341,21 +348,21 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="note">备注（可选）</Label>
-            <Textarea id="note" placeholder="记录交易理由、策略等..." value={note}
+            <Label htmlFor="note">{t('备注（可选）')}</Label>
+            <Textarea id="note" placeholder={t('记录交易理由、策略等...')} value={note}
               onChange={(e) => setNote(e.target.value)} className="h-16 resize-none" />
           </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <div className="flex gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">取消</Button>
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">{t('取消')}</Button>
             <Button type="submit" className={`flex-1 ${
               type === 'BUY' ? 'bg-profit hover:bg-profit/90 text-black'
               : type === 'SELL' ? 'bg-loss hover:bg-loss/90 text-white'
               : 'bg-primary hover:bg-primary/90'
             }`}>
-              {isEdit ? '保存修改' : `确认${type === 'BUY' ? '买入' : type === 'SELL' ? '卖出' : `录入${incomeLabel}`}`}
+              {isEdit ? t('保存修改') : type === 'BUY' ? t('确认买入') : type === 'SELL' ? t('确认卖出') : t('确认录入{incomeLabel}', { incomeLabel })}
             </Button>
           </div>
         </form>
@@ -364,15 +371,15 @@ export default function AddTradeModal({ stockId, stockCode, stockName, market, e
   )
 }
 
-function getCurrencyUnitLabel(currency: keyof typeof CURRENCY_SYMBOLS) {
-  if (currency === 'USD') return '美元'
-  if (currency === 'HKD') return '港元'
+function getCurrencyUnitLabel(currency: keyof typeof CURRENCY_SYMBOLS, t: (key: string) => string) {
+  if (currency === 'USD') return t('美元')
+  if (currency === 'HKD') return t('港元')
   if (currency === 'USDT') return 'USDT'
-  return '元'
+  return t('元')
 }
 
-function formatQuantity(value: number) {
-  return value.toLocaleString('zh-CN', {
+function formatQuantity(value: number, locale: string) {
+  return value.toLocaleString(locale, {
     maximumFractionDigits: 8,
   })
 }

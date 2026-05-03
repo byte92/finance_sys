@@ -2,13 +2,16 @@
 
 import PageHeader from '@/components/layout/PageHeader'
 import SettingsContent from '@/components/SettingsContent'
+import { useI18n } from '@/lib/i18n'
 
 export default function SettingsPage() {
+  const { t } = useI18n()
+
   return (
     <div className="min-h-screen">
       <PageHeader
-        title="设置"
-        description="管理默认市场、费率、本地数据备份，以及 AI provider / model / token 配置。"
+        title={t('设置')}
+        description={t('管理默认市场、费率、本地数据备份，以及 AI provider / model / token 配置。')}
       />
 
       <div className="px-4 py-6 lg:px-6">

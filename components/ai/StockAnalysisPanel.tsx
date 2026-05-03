@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
+import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiAnalysisResult, Stock } from '@/types'
 
@@ -12,6 +13,7 @@ const AI_ANALYSIS_UNAVAILABLE_MESSAGE = '服务暂时不可用，请稍后重试
 
 export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
   const { config, userId } = useStockStore()
+  const { t, formatDateTime } = useI18n()
   const [result, setResult] = useState<AiAnalysisResult | null>(null)
   const [restoredFromHistory, setRestoredFromHistory] = useState(false)
   const [now, setNow] = useState(() => Date.now())
@@ -46,8 +48,8 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         })
         const res = await fetch(`/api/ai/history?${params.toString()}`, { signal: controller.signal })
         const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
-          fallbackMessage: '读取标的 AI 历史失败',
-          unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+          fallbackMessage: t('读取标的 AI 历史失败'),
+          unavailableMessage: t(AI_ANALYSIS_UNAVAILABLE_MESSAGE),
         })
         const latest = (data.records as AiAnalysisHistoryRecord[] | undefined)?.[0]
         if (latest) {
@@ -57,7 +59,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         console.error('Load stock AI analysis history failed:', err)
-        setError(describeClientRequestError(err, '读取标的 AI 历史失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
+        setError(describeClientRequestError(err, t('读取标的 AI 历史失败'), t(AI_ANALYSIS_UNAVAILABLE_MESSAGE)))
       } finally {
         if (!controller.signal.aborted) setHistoryLoading(false)
       }
@@ -82,14 +84,14 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         }),
       })
       const data = await readJsonResponse<{ result: AiAnalysisResult }>(res, {
-        fallbackMessage: '标的 AI 分析失败',
-        unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
+        fallbackMessage: t('标的 AI 分析失败'),
+        unavailableMessage: t(AI_ANALYSIS_UNAVAILABLE_MESSAGE),
       })
       setResult(data.result as AiAnalysisResult)
       setRestoredFromHistory(false)
     } catch (err) {
       console.error('Run stock AI analysis failed:', err)
-      setError(describeClientRequestError(err, '标的 AI 分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
+      setError(describeClientRequestError(err, t('标的 AI 分析失败'), t(AI_ANALYSIS_UNAVAILABLE_MESSAGE)))
     } finally {
       setLoading(false)
     }
@@ -100,17 +102,17 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium text-foreground">AI 深度分析</div>
-            <div className="mt-1 text-xs text-muted-foreground">结合持仓、技术指标、估值和新闻驱动给出短中期观察建议。</div>
+            <div className="text-sm font-medium text-foreground">{t('AI 深度分析')}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{t('结合持仓、技术指标、估值和新闻驱动给出短中期观察建议。')}</div>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => runAnalysis(true)} disabled={loading}>
               <RefreshCw className={`mr-1 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-              强制刷新
+              {t('强制刷新')}
             </Button>
             <Button size="sm" onClick={() => runAnalysis(false)} disabled={loading}>
               <Sparkles className="mr-1 h-3.5 w-3.5" />
-              {result ? '重新分析' : '开始分析'}
+              {result ? t('重新分析') : t('开始分析')}
             </Button>
           </div>
         </div>
@@ -123,7 +125,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
 
         {!result && !error && (
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            {historyLoading ? '正在读取最近一次标的 AI 分析...' : '点击“开始分析”后，系统会结合最新行情、估值、K 线技术指标和相关新闻生成结构化报告。'}
+            {historyLoading ? t('正在读取最近一次标的 AI 分析...') : t('点击“开始分析”后，系统会结合最新行情、估值、K 线技术指标和相关新闻生成结构化报告。')}
           </div>
         )}
 
@@ -131,28 +133,28 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
           <>
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">AI 结论</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t('AI 结论')}</div>
                 <SnapshotAgeBadge generatedAt={result.generatedAt} now={now} />
               </div>
               <div className="mt-2 text-base font-medium text-foreground leading-7">{result.summary}</div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span>分析时间：{new Date(result.generatedAt).toLocaleString('zh-CN')}</span>
-                {result.cached && <span>命中缓存</span>}
-                {restoredFromHistory && <span>刷新后自动恢复最近一次结果</span>}
+                <span>{t('分析时间：{time}', { time: formatDateTime(result.generatedAt) })}</span>
+                {result.cached && <span>{t('命中缓存')}</span>}
+                {restoredFromHistory && <span>{t('刷新后自动恢复最近一次结果')}</span>}
               </div>
             </div>
 
             <div className="grid gap-3 lg:grid-cols-2">
-              <Block title="行动建议" items={result.actionPlan} />
-              <Block title="持仓建议" items={result.positionAdvice ?? []} />
-              <Block title="事实依据" items={result.facts} />
-              <Block title="核心判断" items={result.inferences} />
-              <Block title="失效信号" items={result.invalidationSignals} />
-              <Block title="概率分析" items={result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%：${item.rationale}`)} />
-              <Block title="技术信号" items={result.technicalSignals.map((item) => `${item.name}：${item.value}，${item.interpretation}`)} />
-              <Block title="关键价位" items={result.keyLevels} />
-              <Block title="新闻驱动" items={result.newsDrivers.map((item) => `${item.headline}（${item.source}）：${item.impact}`)} />
-              <Block title="风险提示" items={result.risks} />
+              <Block title={t('行动建议')} items={result.actionPlan} />
+              <Block title={t('持仓建议')} items={result.positionAdvice ?? []} />
+              <Block title={t('事实依据')} items={result.facts} />
+              <Block title={t('核心判断')} items={result.inferences} />
+              <Block title={t('失效信号')} items={result.invalidationSignals} />
+              <Block title={t('概率分析')} items={result.probabilityAssessment.map((item) => `${item.label} ${item.probability}%：${item.rationale}`)} />
+              <Block title={t('技术信号')} items={result.technicalSignals.map((item) => `${item.name}：${item.value}，${item.interpretation}`)} />
+              <Block title={t('关键价位')} items={result.keyLevels} />
+              <Block title={t('新闻驱动')} items={result.newsDrivers.map((item) => `${item.headline}（${item.source}）：${item.impact}`)} />
+              <Block title={t('风险提示')} items={result.risks} />
             </div>
 
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
@@ -167,11 +169,12 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
 }
 
 function SnapshotAgeBadge({ generatedAt, now }: { generatedAt: string; now: number }) {
+  const { t } = useI18n()
   const generatedTime = new Date(generatedAt).getTime()
   if (!Number.isFinite(generatedTime)) return null
 
   const ageMs = Math.max(0, now - generatedTime)
-  const { label, stale } = formatSnapshotAge(ageMs)
+  const { label, stale } = formatSnapshotAge(ageMs, t)
   return (
     <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium normal-case tracking-normal ${
       stale
@@ -184,24 +187,26 @@ function SnapshotAgeBadge({ generatedAt, now }: { generatedAt: string; now: numb
   )
 }
 
-function formatSnapshotAge(ageMs: number) {
+function formatSnapshotAge(ageMs: number, t: (key: string, params?: Record<string, string | number>) => string) {
   const hourMs = 60 * 60 * 1000
   const dayMs = 24 * hourMs
-  if (ageMs < hourMs) return { label: '有效期内', stale: false }
+  if (ageMs < hourMs) return { label: t('有效期内'), stale: false }
 
   const hourCount = Math.floor(ageMs / hourMs)
-  if (ageMs < dayMs) return { label: `${hourCount} 小时前 · 非实时`, stale: true }
+  if (ageMs < dayMs) return { label: t('{count} 小时前 · 非实时', { count: hourCount }), stale: true }
 
   const dayCount = Math.floor(ageMs / dayMs)
-  if (dayCount < 30) return { label: `${dayCount} 天前 · 非实时`, stale: true }
+  if (dayCount < 30) return { label: t('{count} 天前 · 非实时', { count: dayCount }), stale: true }
 
   const monthCount = Math.floor(dayCount / 30)
-  if (monthCount < 12) return { label: `${monthCount} 个月前 · 非实时`, stale: true }
+  if (monthCount < 12) return { label: t('{count} 个月前 · 非实时', { count: monthCount }), stale: true }
 
-  return { label: `${Math.floor(dayCount / 365)} 年前 · 非实时`, stale: true }
+  return { label: t('{count} 年前 · 非实时', { count: Math.floor(dayCount / 365) }), stale: true }
 }
 
 function Block({ title, items }: { title: string; items: string[] }) {
+  const { t } = useI18n()
+
   return (
     <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
@@ -209,7 +214,7 @@ function Block({ title, items }: { title: string; items: string[] }) {
         {items.length > 0 ? (
           items.map((item) => <div key={item} className="text-sm text-foreground leading-6">{item}</div>)
         ) : (
-          <div className="text-sm text-muted-foreground">暂无内容</div>
+          <div className="text-sm text-muted-foreground">{t('暂无内容')}</div>
         )}
       </div>
     </div>

@@ -13,7 +13,7 @@ import {
 } from 'lightweight-charts'
 import type { Market, Trade, TradeMatchMode } from '@/types'
 import { calcPerShareCost, add, mul, sub } from '@/lib/money'
-import { getMarketAssetUnit } from '@/config/defaults'
+import { useI18n } from '@/lib/i18n'
 
 type KlineItem = {
   time: number
@@ -108,6 +108,7 @@ export default function StockKline({
     ma5: true, ma10: true, ma20: true,
     cost: true, holding: true,
   })
+  const { t: tr, getAssetUnit } = useI18n()
 
   const seriesRefMap: Record<string, React.RefObject<any>> = {
     ma5: ma5Ref,
@@ -118,8 +119,8 @@ export default function StockKline({
   }
 
   const minuteSupported = market === 'A' || market === 'FUND' || market === 'CRYPTO'
-  const assetUnit = getMarketAssetUnit(market)
-  const incomeLabel = market === 'CRYPTO' ? '收益' : '分红'
+  const assetUnit = getAssetUnit(market)
+  const incomeLabel = market === 'CRYPTO' ? tr('收益') : tr('分红')
 
   useEffect(() => {
     if (!minuteSupported && interval !== '1d') {
@@ -177,13 +178,13 @@ export default function StockKline({
           position: t.type === 'BUY' ? 'belowBar' : 'aboveBar',
           color: t.type === 'BUY' ? '#ef4444' : '#22c55e',
           shape: t.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-          text: `${t.type === 'BUY' ? '买' : '卖'} ${fmtNum(t.quantity)}`,
+          text: `${t.type === 'BUY' ? tr('买入') : tr('卖出')} ${fmtNum(t.quantity)}`,
         })
       }
     }
 
     return markers
-  }, [mappedTrades, incomeLabel])
+  }, [mappedTrades, incomeLabel, tr])
 
   const ma5Data = useMemo(() => calcMA(data, 5), [data])
   const ma10Data = useMemo(() => calcMA(data, 10), [data])
@@ -269,14 +270,14 @@ export default function StockKline({
     )
       .then(async (res) => {
         const payload = await res.json()
-        if (!res.ok) throw new Error(payload?.error || '获取K线失败')
+        if (!res.ok) throw new Error(tr(payload?.error || '获取K线失败'))
         if (!mounted) return
         setData((payload?.candles || []) as KlineItem[])
         setSource(payload?.source || '')
       })
       .catch((e) => {
         if (!mounted) return
-        setError(e instanceof Error ? e.message : '获取K线失败')
+        setError(e instanceof Error ? e.message : tr('获取K线失败'))
         setData([])
       })
       .finally(() => {
@@ -491,10 +492,10 @@ export default function StockKline({
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="mb-3 space-y-2">
-        <div className="text-sm text-foreground font-medium">K 线图</div>
+        <div className="text-sm text-foreground font-medium">{tr('K 线图')}</div>
         <div className="flex items-center justify-start gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">范围</span>
+            <span className="text-xs text-muted-foreground">{tr('范围')}</span>
             {RANGES.map((r) => (
               <button
                 key={r.value}
@@ -505,12 +506,12 @@ export default function StockKline({
                     : 'border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {r.label}
+                {tr(r.label)}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground">粒度</span>
+            <span className="text-xs text-muted-foreground">{tr('粒度')}</span>
             {INTERVALS.map((i) => {
               const disabled = !minuteSupported && i.value !== '1d'
               return (
@@ -526,7 +527,7 @@ export default function StockKline({
                       : 'border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  {i.label}
+                  {tr(i.label)}
                 </button>
               )
             })}
@@ -554,7 +555,7 @@ export default function StockKline({
       )}
 
       {!minuteSupported && (
-        <div className="mb-2 text-xs text-muted-foreground">当前市场暂仅支持日 K，分钟级将自动使用 1D。</div>
+        <div className="mb-2 text-xs text-muted-foreground">{tr('当前市场暂仅支持日 K，分钟级将自动使用 1D。')}</div>
       )}
 
       <div className="relative">
@@ -575,10 +576,10 @@ export default function StockKline({
               return (
                 <div className="mt-1 font-mono text-xs space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span><span style={{ color: '#94a3b8' }}>开</span> <span className="text-foreground">{c.open.toFixed(2)}</span></span>
-                    <span><span style={{ color: '#ef4444' }}>高</span> <span className="text-foreground">{c.high.toFixed(2)}</span></span>
-                    <span><span style={{ color: '#22c55e' }}>低</span> <span className="text-foreground">{c.low.toFixed(2)}</span></span>
-                    <span><span style={{ color: closeColor }}>收</span> <span className="text-foreground">{c.close.toFixed(2)}</span></span>
+                    <span><span style={{ color: '#94a3b8' }}>{tr('开')}</span> <span className="text-foreground">{c.open.toFixed(2)}</span></span>
+                    <span><span style={{ color: '#ef4444' }}>{tr('高')}</span> <span className="text-foreground">{c.high.toFixed(2)}</span></span>
+                    <span><span style={{ color: '#22c55e' }}>{tr('低')}</span> <span className="text-foreground">{c.low.toFixed(2)}</span></span>
+                    <span><span style={{ color: closeColor }}>{tr('收')}</span> <span className="text-foreground">{c.close.toFixed(2)}</span></span>
                   </div>
                   {(hover.ma5 !== undefined || hover.ma10 !== undefined || hover.ma20 !== undefined) && (
                     <div className="flex items-center gap-2 flex-wrap">
@@ -587,7 +588,7 @@ export default function StockKline({
                       {hover.ma20 !== undefined && <span><span style={{ color: '#a855f7' }}>MA20</span> <span className="text-foreground">{hover.ma20.toFixed(2)}</span></span>}
                     </div>
                   )}
-                  <div><span style={{ color: '#64748b' }}>成交量</span> <span className="text-foreground">{fmtNum(c.volume)} {assetUnit}</span></div>
+                  <div><span style={{ color: '#64748b' }}>{tr('成交量')}</span> <span className="text-foreground">{fmtNum(c.volume)} {assetUnit}</span></div>
                 </div>
               )
             })()}
@@ -600,8 +601,8 @@ export default function StockKline({
                       <div key={t.id} className="flex items-center justify-between gap-2">
                         <span className="text-[#f97316]">{incomeLabel}</span>
                         <span className="text-muted-foreground font-mono text-right">
-                          每{assetUnit}{fmtNum(perShare)} · {fmtNum(t.quantity)}{assetUnit}<br />
-                          税前{t.totalAmount.toFixed(2)} 税{t.tax.toFixed(2)} 实收{t.netAmount.toFixed(2)}
+                          {tr('每{unit}{amount} · {quantity}{unit2}', { unit: assetUnit, amount: fmtNum(perShare), quantity: fmtNum(t.quantity), unit2: assetUnit })}<br />
+                          {tr('税前{gross} 税{tax} 实收{net}', { gross: t.totalAmount.toFixed(2), tax: t.tax.toFixed(2), net: t.netAmount.toFixed(2) })}
                         </span>
                       </div>
                     )
@@ -609,10 +610,10 @@ export default function StockKline({
                   return (
                     <div key={t.id} className="flex items-center justify-between gap-2">
                       <span className={t.type === 'BUY' ? 'profit-text' : 'loss-text'}>
-                        {t.type === 'BUY' ? '买入' : '卖出'} {fmtNum(t.quantity)} {assetUnit}
+                        {t.type === 'BUY' ? tr('买入') : tr('卖出')} {fmtNum(t.quantity)} {assetUnit}
                       </span>
                       <span className="text-muted-foreground font-mono">
-                        @{t.price} 费{(t.commission + t.tax).toFixed(2)}
+                        {tr('@{price} 费{fee}', { price: t.price, fee: (t.commission + t.tax).toFixed(2) })}
                       </span>
                     </div>
                   )
@@ -628,14 +629,14 @@ export default function StockKline({
           {LEGEND_ITEMS.map((item) => (
             <LegendDot
               key={item.key}
-              label={item.label}
+              label={tr(item.label)}
               color={item.color}
               active={visibility[item.key]}
               onClick={() => setVisibility((prev) => ({ ...prev, [item.key]: !prev[item.key] }))}
             />
           ))}
         </div>
-        <span>{loading ? '加载中...' : error ? error : `数据源: ${source || '-'} · 级别: ${interval.toUpperCase()}`}</span>
+        <span>{loading ? tr('加载中...') : error ? error : tr('数据源: {source} · 级别: {interval}', { source: source || '-', interval: interval.toUpperCase() })}</span>
       </div>
     </div>
   )

@@ -2,6 +2,7 @@
 
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/lib/i18n'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -17,11 +18,13 @@ export default function ConfirmDialog({
   open,
   title,
   description,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   onConfirm,
   onOpenChange,
 }: ConfirmDialogProps) {
+  const { t } = useI18n()
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm">
@@ -35,10 +38,10 @@ export default function ConfirmDialog({
           )}
           <DialogFooter className="mt-5 border-t border-border pt-4">
             <Button className="min-w-20" variant="outline" onClick={() => onOpenChange(false)}>
-              {cancelText}
+              {cancelText ?? t('取消')}
             </Button>
             <Button className="min-w-20" variant="destructive" onClick={onConfirm}>
-              {confirmText}
+              {confirmText ?? t('确认')}
             </Button>
           </DialogFooter>
         </div>

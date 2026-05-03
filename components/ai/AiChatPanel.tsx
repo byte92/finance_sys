@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAiDebugMode } from '@/hooks/useAiDebugMode'
+import { useI18n } from '@/lib/i18n'
 import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiChatContextStats, AiChatMessage, AiChatSession } from '@/types'
@@ -30,6 +31,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { userId, stocks, config } = useStockStore()
+  const { t, formatDateTime } = useI18n()
   const [sessions, setSessions] = useState<AiChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<AiChatMessage[]>([])
@@ -51,7 +53,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const activeSession = sessions.find((session) => session.id === activeSessionId)
   const aiReady = Boolean(aiEnvStatus?.configured) || (config.aiConfig.enabled && config.aiConfig.baseUrl.trim() && config.aiConfig.model.trim() && config.aiConfig.apiKey.trim())
   const currentModelName = aiEnvStatus?.configured ? aiEnvStatus.model : config.aiConfig.model
-  const currentTitle = activeSession?.title ?? (activeSessionId ? 'AI 对话' : '新对话')
+  const currentTitle = activeSession?.title ?? (activeSessionId ? t('AI 对话') : t('新对话'))
   const { debugEnabled, setDebugEnabled } = useAiDebugMode()
   const suggestions = buildAiChatSuggestions({
     stocks,
@@ -94,13 +96,13 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     if (!userId) return
     const res = await fetch(`/api/ai/chat/sessions?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
     const data = await res.json()
-    if (!res.ok) throw new Error(data?.error ?? '获取 AI 对话失败')
+    if (!res.ok) throw new Error(t(data?.error ?? '获取 AI 对话失败'))
     const nextSessions = (data.sessions ?? []) as AiChatSession[]
     setSessions(nextSessions)
     if (options.autoSelect && !activeSessionId && nextSessions[0]) {
       setActiveSessionId(nextSessions[0].id)
     }
-  }, [activeSessionId, userId])
+  }, [activeSessionId, t, userId])
 
   const refreshMessages = useCallback(async (sessionId: string | null) => {
     if (!userId || !sessionId) {
@@ -109,19 +111,19 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
     const res = await fetch(`/api/ai/chat/messages?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
     const data = await res.json()
-    if (!res.ok) throw new Error(data?.error ?? '获取 AI 消息失败')
+    if (!res.ok) throw new Error(t(data?.error ?? '获取 AI 消息失败'))
     setMessages((data.messages ?? []) as AiChatMessage[])
-  }, [userId])
+  }, [t, userId])
 
   useEffect(() => {
     if (mode !== 'full') return
-    void refreshSessions({ autoSelect: true }).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 对话失败'))
-  }, [mode, refreshSessions])
+    void refreshSessions({ autoSelect: true }).catch((err) => setError(err instanceof Error ? err.message : t('获取 AI 对话失败')))
+  }, [mode, refreshSessions, t])
 
   useEffect(() => {
     if (mode !== 'full') return
-    void refreshMessages(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 消息失败'))
-  }, [activeSessionId, mode, refreshMessages])
+    void refreshMessages(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : t('获取 AI 消息失败')))
+  }, [activeSessionId, mode, refreshMessages, t])
 
   useEffect(() => {
     const el = messagesRef.current
@@ -158,7 +160,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       body: JSON.stringify({ userId }),
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data?.error ?? '创建 AI 对话失败')
+    if (!res.ok) throw new Error(t(data?.error ?? '创建 AI 对话失败'))
     const session = data.session as AiChatSession
     await refreshSessions()
     setActiveSessionId(session.id)
@@ -168,7 +170,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const startSend = async (content: string) => {
     if (!content.trim() || !userId || loading) return
     if (!aiReady) {
-      setError('请先在 .env.local 或设置页配置 AI Provider、Base URL、模型和 API Key。')
+      setError(t('请先在 .env.local 或设置页配置 AI Provider、Base URL、模型和 API Key。'))
       return
     }
 
@@ -216,7 +218,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error ?? 'AI 对话失败')
+        throw new Error(t(data?.error ?? 'AI 对话失败'))
       }
 
       const reader = res.body.getReader()
@@ -234,7 +236,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           setActiveSessionId(data.sessionId)
           if (data.stats) setContextStats(data.stats)
         } else if (event === 'status') {
-          setStreamStatus(data.phase === 'external-data' ? '正在获取行情数据' : '')
+          setStreamStatus(data.phase === 'external-data' ? t('正在获取行情数据') : '')
         } else if (event === 'token') {
           assistantText += data.token ?? ''
           setStreamStatus('')
@@ -242,7 +244,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
             message.id === optimisticAssistant.id ? { ...message, content: assistantText } : message
           )))
         } else if (event === 'error') {
-          throw new Error(data.error ?? 'AI 对话失败')
+          throw new Error(data.error ?? t('AI 对话失败'))
         }
       }
 
@@ -265,7 +267,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           return [{
             id: resolvedSessionId,
             userId,
-            title: content.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || '新对话',
+            title: content.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || t('新对话'),
             scope: 'portfolio',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -279,12 +281,12 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         setMessages((current) => current.map((message) => (
           message.id === optimisticAssistant.id
-            ? { ...message, content: assistantText || '已停止生成。' }
+            ? { ...message, content: assistantText || t('已停止生成。') }
             : message
         )))
         return
       }
-      setError(err instanceof Error ? err.message : 'AI 对话失败')
+      setError(err instanceof Error ? err.message : t('AI 对话失败'))
       setMessages((current) => current.filter((message) => message.id !== optimisticAssistant.id))
     } finally {
       if (abortControllerRef.current === abortController) {
@@ -301,7 +303,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   const stopGeneration = () => {
     if (!loading) return
-    setStreamStatus('正在停止')
+    setStreamStatus(t('正在停止'))
     abortControllerRef.current?.abort()
   }
 
@@ -314,7 +316,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => null)
-      setError(data?.error ?? '清空 AI 对话失败')
+      setError(t(data?.error ?? '清空 AI 对话失败'))
       return
     }
     setClearOpen(false)
@@ -331,7 +333,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     })
     if (!res.ok) {
       const data = await res.json().catch(() => null)
-      setError(data?.error ?? '删除 AI 对话失败')
+      setError(t(data?.error ?? '删除 AI 对话失败'))
       return
     }
     setDeleteOpen(false)
@@ -350,7 +352,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       setEditingTitle(false)
       return
     }
-    const nextTitle = titleDraft.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || '新对话'
+    const nextTitle = titleDraft.trim().slice(0, CHAT_TITLE_MAX_LENGTH) || t('新对话')
     setEditingTitle(false)
     if (nextTitle === activeSession?.title) return
 
@@ -361,7 +363,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     })
     const data = await res.json().catch(() => null)
     if (!res.ok) {
-      setError(data?.error ?? '更新对话名称失败')
+      setError(t(data?.error ?? '更新对话名称失败'))
       return
     }
     if (mode === 'full') await refreshSessions()
@@ -384,8 +386,8 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
         <aside className="flex h-full min-h-0 flex-col rounded-lg border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border p-4">
             <div>
-              <div className="text-sm font-semibold">对话历史</div>
-              <div className="text-xs text-muted-foreground">本地保存</div>
+              <div className="text-sm font-semibold">{t('对话历史')}</div>
+              <div className="text-xs text-muted-foreground">{t('本地保存')}</div>
             </div>
             <Button type="button" size="icon" variant="ghost" onClick={() => void createSession()}>
               <Plus className="h-4 w-4" />
@@ -404,13 +406,13 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                       <button
                         type="button"
                         onClick={() => setActiveSessionId(session.id)}
-                        aria-label={`打开对话：${session.title}`}
+                        aria-label={t('打开对话：{title}', { title: session.title })}
                         className="block w-full text-left"
                       >
                         <div className="truncate">{session.title}</div>
                         <div className="mt-1 flex items-center gap-1 text-[11px] opacity-75">
                           <Clock className="h-3 w-3" />
-                          {new Date(session.updatedAt).toLocaleString('zh-CN')}
+                          {formatDateTime(session.updatedAt)}
                         </div>
                       </button>
                     </div>
@@ -419,7 +421,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                 </Tooltip>
               ))}
             </TooltipProvider>
-            {!sessions.length && <div className="px-3 py-8 text-sm text-muted-foreground">暂无对话</div>}
+            {!sessions.length && <div className="px-3 py-8 text-sm text-muted-foreground">{t('暂无对话')}</div>}
           </div>
         </aside>
       )}
@@ -460,7 +462,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                     className="h-6 w-6 shrink-0 text-muted-foreground"
                     onClick={startEditTitle}
                     disabled={!activeSessionId}
-                    title="修改对话名称"
+                    title={t('修改对话名称')}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -471,32 +473,32 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               href="/settings#ai-settings"
               onClick={onClose}
               className="inline-block max-w-full truncate text-xs text-muted-foreground transition-colors hover:text-primary hover:underline"
-              title={currentModelName || '前往 AI 设置'}
+              title={currentModelName || t('前往 AI 设置')}
             >
-              {currentModelName || '配置 AI 模型'}
+              {currentModelName || t('配置 AI 模型')}
             </Link>
           </div>
           {mode === 'floating' && (
-            <Button type="button" variant="ghost" size="icon" onClick={goFull} title="放大">
+            <Button type="button" variant="ghost" size="icon" onClick={goFull} title={t('放大')}>
               <Maximize2 className="h-4 w-4" />
             </Button>
           )}
           {mode === 'full' && (debugEnabled || showTraceLink) && (
-            <Button type="button" variant="ghost" size="sm" title={debugEnabled ? '打开 Trace' : '启用 Debug 并打开 Trace'} className="gap-2" onClick={goTrace}>
+            <Button type="button" variant="ghost" size="sm" title={debugEnabled ? t('打开 Trace') : t('启用 Debug 并打开 Trace')} className="gap-2" onClick={goTrace}>
               <GitBranch className="h-4 w-4" />
               Trace
             </Button>
           )}
-          <Button type="button" variant="ghost" size="icon" onClick={() => setClearOpen(true)} disabled={!activeSessionId || !messages.length} title="清空对话">
+          <Button type="button" variant="ghost" size="icon" onClick={() => setClearOpen(true)} disabled={!activeSessionId || !messages.length} title={t('清空对话')}>
             <Eraser className="h-4 w-4" />
           </Button>
           {mode === 'full' && (
-            <Button type="button" variant="ghost" size="icon" onClick={() => setDeleteOpen(true)} disabled={!activeSessionId} title="删除会话">
+            <Button type="button" variant="ghost" size="icon" onClick={() => setDeleteOpen(true)} disabled={!activeSessionId} title={t('删除会话')}>
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
           {mode === 'floating' && (
-            <Button type="button" variant="ghost" size="icon" onClick={onClose} title="关闭">
+            <Button type="button" variant="ghost" size="icon" onClick={onClose} title={t('关闭')}>
               <X className="h-4 w-4" />
             </Button>
           )}
@@ -504,8 +506,8 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
         {!aiReady && (
           <div className="shrink-0 border-b border-border bg-secondary/50 p-4 text-sm text-muted-foreground">
-            请先在 .env.local 或 AI 设置中完成模型连接配置后再开始对话。
-            <Link href="/settings" className="ml-2 text-primary hover:underline" onClick={onClose}>去设置</Link>
+            {t('请先在 .env.local 或 AI 设置中完成模型连接配置后再开始对话。')}
+            <Link href="/settings" className="ml-2 text-primary hover:underline" onClick={onClose}>{t('去设置')}</Link>
           </div>
         )}
 
@@ -518,9 +520,9 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
             <div className="space-y-3">
               <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-200">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>AI 分析基于你的持仓和交易数据生成，仅供参考，不构成任何投资建议。市场有风险，交易需谨慎。</span>
+                <span>{t('AI 分析基于你的持仓和交易数据生成，仅供参考，不构成任何投资建议。市场有风险，交易需谨慎。')}</span>
               </div>
-              <div className="text-sm text-muted-foreground">可以直接问我与你的持仓、交易复盘、估值或风险管理相关的问题。</div>
+              <div className="text-sm text-muted-foreground">{t('可以直接问我与你的持仓、交易复盘、估值或风险管理相关的问题。')}</div>
               <div className="grid gap-2">
                 {suggestions.map((suggestion) => (
                   <button
@@ -553,7 +555,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                     ) : (message.role === 'assistant' && loading ? (
                       <span className="inline-flex items-center gap-2 text-muted-foreground">
                         {streamStatus && <span>{streamStatus}</span>}
-                        <span className="inline-flex items-center gap-1" aria-label={streamStatus || 'AI 正在生成'}>
+                        <span className="inline-flex items-center gap-1" aria-label={streamStatus || t('AI 正在生成')}>
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:120ms]" />
                           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:240ms]" />
@@ -575,7 +577,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               value={input}
               disabled={!aiReady || loading}
               rows={mode === 'full' ? 2 : 1}
-              placeholder={aiReady ? '输入与标的、持仓或交易相关的问题...' : '请先配置 AI'}
+              placeholder={aiReady ? t('输入与标的、持仓或交易相关的问题...') : t('请先配置 AI')}
               onChange={(event) => setInput(event.target.value)}
               onCompositionStart={() => {
                 composingRef.current = true
@@ -605,8 +607,8 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               className={`shrink-0 rounded-lg p-1.5 transition-colors disabled:opacity-30 ${
                 loading ? 'text-destructive hover:bg-destructive/10 hover:text-destructive' : 'text-muted-foreground hover:text-primary'
               }`}
-              title={loading ? '停止生成' : '发送'}
-              aria-label={loading ? '停止生成' : '发送消息'}
+              title={loading ? t('停止生成') : t('发送')}
+              aria-label={loading ? t('停止生成') : t('发送消息')}
             >
               {loading ? <Square className="h-4 w-4 fill-current" /> : <Send className="h-4 w-4" />}
             </button>
@@ -616,17 +618,17 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
       <ConfirmDialog
         open={clearOpen}
-        title="确认清空对话"
-        description="确定清空当前会话的所有消息吗？该操作不可恢复。"
-        confirmText="清空"
+        title={t('确认清空对话')}
+        description={t('确定清空当前会话的所有消息吗？该操作不可恢复。')}
+        confirmText={t('清空')}
         onOpenChange={setClearOpen}
         onConfirm={clearMessages}
       />
       <ConfirmDialog
         open={deleteOpen}
-        title="确认删除会话"
-        description="确定删除当前 AI 对话会话吗？该操作不可恢复。"
-        confirmText="删除"
+        title={t('确认删除会话')}
+        description={t('确定删除当前 AI 对话会话吗？该操作不可恢复。')}
+        confirmText={t('删除')}
         onOpenChange={setDeleteOpen}
         onConfirm={deleteSession}
       />

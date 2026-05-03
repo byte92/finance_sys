@@ -6,21 +6,23 @@ import { useEffect, useState } from 'react'
 import { BriefcaseBusiness, Bug, ChartNoAxesCombined, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, Settings, Sparkles, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FloatingAiChat from '@/components/ai/FloatingAiChat'
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher'
 import { useTheme } from '@/hooks/useTheme'
 import { useAiDebugMode } from '@/hooks/useAiDebugMode'
+import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 
 const NAV_ITEMS = [
-  { href: '/', label: '总览', icon: LayoutDashboard, match: (pathname: string) => pathname === '/' },
-  { href: '/portfolio', label: '持仓', icon: BriefcaseBusiness, match: (pathname: string) => pathname === '/portfolio' || pathname.startsWith('/stock/') },
-  { href: '/markets', label: '大盘指标', icon: ChartNoAxesCombined, match: (pathname: string) => pathname === '/markets' },
+  { href: '/', labelKey: '总览', icon: LayoutDashboard, match: (pathname: string) => pathname === '/' },
+  { href: '/portfolio', labelKey: '持仓', icon: BriefcaseBusiness, match: (pathname: string) => pathname === '/portfolio' || pathname.startsWith('/stock/') },
+  { href: '/markets', labelKey: '大盘指标', icon: ChartNoAxesCombined, match: (pathname: string) => pathname === '/markets' },
 ] as const
 
 const AI_SUB_ITEMS = [
-  { href: '/ai/chat', label: 'AI 对话', match: (pathname: string) => pathname.startsWith('/ai/chat') },
-  { href: '/ai', label: '分析中心', match: (pathname: string) => pathname === '/ai' },
-  { href: '/ai/history', label: '分析历史', match: (pathname: string) => pathname.startsWith('/ai/history') },
-  { href: '/ai/debug', label: 'Debug', match: (pathname: string) => pathname.startsWith('/ai/debug') },
+  { href: '/ai/chat', labelKey: 'AI 对话', match: (pathname: string) => pathname.startsWith('/ai/chat') },
+  { href: '/ai', labelKey: '分析中心', match: (pathname: string) => pathname === '/ai' },
+  { href: '/ai/history', labelKey: '分析历史', match: (pathname: string) => pathname.startsWith('/ai/history') },
+  { href: '/ai/debug', labelKey: 'Debug', match: (pathname: string) => pathname.startsWith('/ai/debug') },
 ] as const
 
 const SIDEBAR_COLLAPSED_KEY = 'stock-tracker-sidebar-collapsed'
@@ -30,6 +32,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { theme, toggleTheme, mounted } = useTheme()
   const { debugEnabled } = useAiDebugMode()
+  const { t } = useI18n()
   const { init } = useStockStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -99,7 +102,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-4 w-4" />
             </Button>
             <div className="text-sm font-semibold">StockTracker</div>
-            <div className="ml-auto text-xs text-muted-foreground">本地优先</div>
+            <div className="ml-auto text-xs text-muted-foreground">{t('本地优先')}</div>
           </div>
 
           <main className="min-w-0 flex-1">{children}</main>
@@ -156,6 +159,7 @@ function SidebarContent({
   onToggleCollapsed?: () => void
 }) {
   const aiSectionActive = pathname.startsWith('/ai')
+  const { t } = useI18n()
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -163,11 +167,12 @@ function SidebarContent({
         {NAV_ITEMS.map((item) => {
           const active = item.match(pathname)
           const Icon = item.icon
+          const label = t(item.labelKey)
           return (
             <Link
               key={item.href}
               href={item.href}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? label : undefined}
               className={`flex items-center rounded-lg py-2.5 text-sm transition-colors ${
                 collapsed ? 'justify-center px-2' : 'gap-3 px-3'
               } ${
@@ -177,7 +182,7 @@ function SidebarContent({
               }`}
             >
               <Icon className="h-4 w-4" />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span>{label}</span>}
             </Link>
           )
         })}
@@ -220,7 +225,7 @@ function SidebarContent({
                           : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                       }`}
                     >
-                      {item.label}
+                      {t(item.labelKey)}
                     </Link>
                   )
                 })}
@@ -238,13 +243,15 @@ function SidebarContent({
               size="icon"
               className="h-9 w-9 rounded-lg border border-border/70 text-muted-foreground hover:text-foreground"
               onClick={toggleTheme}
-              title={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
+              title={theme === 'dark' ? t('切换到亮色模式') : t('切换到暗色模式')}
             >
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
           )}
 
-          <Link href="/settings" title="设置">
+          <LanguageSwitcher compact={collapsed} />
+
+          <Link href="/settings" title={t('设置')}>
             <Button
               type="button"
               variant="ghost"
@@ -282,7 +289,7 @@ function SidebarContent({
             variant="ghost"
             className={`w-full border border-border/70 ${collapsed ? 'justify-center px-2' : 'justify-between'}`}
             onClick={onToggleCollapsed}
-            title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            title={collapsed ? t('展开侧边栏') : t('收起侧边栏')}
           >
             {collapsed ? (
               <>
@@ -290,7 +297,7 @@ function SidebarContent({
               </>
             ) : (
               <>
-                <span className="text-xs text-muted-foreground">收起侧边栏</span>
+                <span className="text-xs text-muted-foreground">{t('收起侧边栏')}</span>
                 <ChevronLeft className="h-4 w-4" />
               </>
             )}

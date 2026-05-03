@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Select } from '@/components/ui/select'
 import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
+import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
 
@@ -27,6 +28,7 @@ const HISTORY_UNAVAILABLE_MESSAGE = 'AI 分析历史服务暂时不可用，请�
 
 export default function AiHistoryView() {
   const { userId } = useStockStore()
+  const { t, formatDateTime } = useI18n()
   const [records, setRecords] = useState<AiAnalysisHistoryRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,13 +55,13 @@ export default function AiHistoryView() {
         if (dateTo) params.set('dateTo', dateTo)
         const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
         const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
-          fallbackMessage: '获取历史失败',
-          unavailableMessage: HISTORY_UNAVAILABLE_MESSAGE,
+          fallbackMessage: t('获取历史失败'),
+          unavailableMessage: t(HISTORY_UNAVAILABLE_MESSAGE),
         })
         setRecords(data.records ?? [])
       } catch (err) {
         console.error('Load AI analysis history failed:', err)
-        setError(describeClientRequestError(err, '获取历史失败', HISTORY_UNAVAILABLE_MESSAGE))
+        setError(describeClientRequestError(err, t('获取历史失败'), t(HISTORY_UNAVAILABLE_MESSAGE)))
       } finally {
         setLoading(false)
       }
@@ -153,14 +155,14 @@ export default function AiHistoryView() {
         body: JSON.stringify({ userId, id: deleteTarget.id }),
       })
       await readJsonResponse<{ ok: true }>(res, {
-        fallbackMessage: '删除分析记录失败',
-        unavailableMessage: HISTORY_UNAVAILABLE_MESSAGE,
+        fallbackMessage: t('删除分析记录失败'),
+        unavailableMessage: t(HISTORY_UNAVAILABLE_MESSAGE),
       })
       setRecords((current) => current.filter((record) => record.id !== deleteTarget.id))
       setDeleteTarget(null)
     } catch (err) {
       console.error('Delete AI analysis history failed:', err)
-      setError(describeClientRequestError(err, '删除分析记录失败', HISTORY_UNAVAILABLE_MESSAGE))
+      setError(describeClientRequestError(err, t('删除分析记录失败'), t(HISTORY_UNAVAILABLE_MESSAGE)))
     }
   }
 
@@ -168,13 +170,13 @@ export default function AiHistoryView() {
     <div className="space-y-5">
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="最近分析"
-          value={overviewStats.latestGeneratedAt ? formatRelativeTime(overviewStats.latestGeneratedAt) : '暂无'}
-          detail={overviewStats.latestGeneratedAt ? new Date(overviewStats.latestGeneratedAt).toLocaleString('zh-CN') : '尚未生成报告'}
+          label={t('最近分析')}
+          value={overviewStats.latestGeneratedAt ? formatRelativeTime(overviewStats.latestGeneratedAt, t) : t('暂无')}
+          detail={overviewStats.latestGeneratedAt ? formatDateTime(overviewStats.latestGeneratedAt) : t('尚未生成报告')}
         />
-        <StatCard label="有效期内" value={`${overviewStats.fresh}`} detail="1 小时内生成的报告" />
-        <StatCard label="待刷新" value={`${overviewStats.stale}`} detail="超过 1 小时的历史快照" />
-        <StatCard label="覆盖标的" value={`${overviewStats.stockCoverage}`} detail="有过标的分析的资产" />
+        <StatCard label={t('有效期内')} value={`${overviewStats.fresh}`} detail={t('1 小时内生成的报告')} />
+        <StatCard label={t('待刷新')} value={`${overviewStats.stale}`} detail={t('超过 1 小时的历史快照')} />
+        <StatCard label={t('覆盖标的')} value={`${overviewStats.stockCoverage}`} detail={t('有过标的分析的资产')} />
       </section>
 
       <Card className="border-border bg-card">
@@ -182,8 +184,8 @@ export default function AiHistoryView() {
           <div className="grid gap-2 md:grid-cols-3">
             <ViewTab
               active={activeView === 'recent'}
-              title="最近报告"
-              detail="按时间查看所有分析结论"
+              title={t('最近报告')}
+              detail={t('按时间查看所有分析结论')}
               count={records.length}
               onClick={() => {
                 setActiveView('recent')
@@ -192,8 +194,8 @@ export default function AiHistoryView() {
             />
             <ViewTab
               active={activeView === 'stocks'}
-              title="标的档案"
-              detail="按资产查看结论变化"
+              title={t('标的档案')}
+              detail={t('按资产查看结论变化')}
               count={stockDossiers.length}
               onClick={() => {
                 setActiveView('stocks')
@@ -202,8 +204,8 @@ export default function AiHistoryView() {
             />
             <ViewTab
               active={activeView === 'review'}
-              title="组合复盘"
-              detail="回看组合和大盘判断"
+              title={t('组合复盘')}
+              detail={t('回看组合和大盘判断')}
               count={records.filter((record) => record.type === 'portfolio' || record.type === 'market').length}
               onClick={() => {
                 setActiveView('review')
@@ -220,12 +222,12 @@ export default function AiHistoryView() {
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-primary" />
               <div>
-                <div className="text-sm font-medium text-foreground">筛选报告</div>
-                <div className="mt-1 text-xs text-muted-foreground">按对象、状态、动作和时间快速缩小历史范围。</div>
+                <div className="text-sm font-medium text-foreground">{t('筛选报告')}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{t('按对象、状态、动作和时间快速缩小历史范围。')}</div>
               </div>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={resetFilters}>
-              重置筛选
+              {t('重置筛选')}
             </Button>
           </div>
 
@@ -236,7 +238,7 @@ export default function AiHistoryView() {
                 type="text"
                 value={stockQuery}
                 onChange={(e) => setStockQuery(e.target.value)}
-                placeholder="搜索标的、代码或结论关键词"
+                placeholder={t('搜索标的、代码或结论关键词')}
                 className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -246,19 +248,19 @@ export default function AiHistoryView() {
               className="h-10 bg-background"
               disabled={activeView === 'stocks'}
             >
-              <option value="ALL">全部类型</option>
-              <option value="stock">标的</option>
-              <option value="portfolio">组合</option>
-              <option value="market">大盘</option>
+              <option value="ALL">{t('全部类型')}</option>
+              <option value="stock">{t('标的')}</option>
+              <option value="portfolio">{t('组合')}</option>
+              <option value="market">{t('大盘')}</option>
             </Select>
             <Select
               value={freshnessFilter}
               onChange={(e) => setFreshnessFilter(e.target.value as FreshnessFilter)}
               className="h-10 bg-background"
             >
-              <option value="ALL">全部时效</option>
-              <option value="fresh">有效期内</option>
-              <option value="stale">待刷新</option>
+              <option value="ALL">{t('全部时效')}</option>
+              <option value="fresh">{t('有效期内')}</option>
+              <option value="stale">{t('待刷新')}</option>
             </Select>
             <Select
               value={actionFilter}
@@ -266,7 +268,7 @@ export default function AiHistoryView() {
               className="h-10 bg-background"
             >
               {ACTION_OPTIONS.map((action) => (
-                <option key={action} value={action}>{action === 'ALL' ? '全部动作' : action}</option>
+                <option key={action} value={action}>{action === 'ALL' ? t('全部动作') : t(action)}</option>
               ))}
             </Select>
             <Select
@@ -274,16 +276,16 @@ export default function AiHistoryView() {
               onChange={(e) => setConfidenceFilter(e.target.value as typeof confidenceFilter)}
               className="h-10 bg-background"
             >
-              <option value="ALL">全部信心</option>
-              <option value="high">高信心</option>
-              <option value="medium">中等信心</option>
-              <option value="low">低信心</option>
+              <option value="ALL">{t('全部信心')}</option>
+              <option value="high">{t('高信心')}</option>
+              <option value="medium">{t('中等信心')}</option>
+              <option value="low">{t('低信心')}</option>
             </Select>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
-            <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
+            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('开始日期')} allowClear />
+            <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('结束日期')} allowClear />
           </div>
         </div>
       </Card>
@@ -292,22 +294,22 @@ export default function AiHistoryView() {
         <div className="space-y-4 p-5">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <div className="text-sm font-medium text-foreground">{getViewTitle(activeView)}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{getViewDescription(activeView)}</div>
+              <div className="text-sm font-medium text-foreground">{t(getViewTitle(activeView))}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{t(getViewDescription(activeView))}</div>
             </div>
             <div className="text-xs text-muted-foreground">
-              {loading ? '加载中...' : activeView === 'stocks' ? `${stockDossiers.length} 个标的` : `共 ${visibleRecords.length} 条`}
+              {loading ? t('加载中...') : activeView === 'stocks' ? t('{count} 个标的', { count: stockDossiers.length }) : t('共 {count} 条', { count: visibleRecords.length })}
             </div>
           </div>
 
           {error && <div className="text-sm text-destructive">{error}</div>}
 
           {!error && activeView === 'stocks' && stockDossiers.length === 0 && (
-            <EmptyState text="当前筛选条件下暂无标的档案。" />
+            <EmptyState text={t('当前筛选条件下暂无标的档案。')} />
           )}
 
           {!error && activeView !== 'stocks' && visibleRecords.length === 0 && (
-            <EmptyState text="当前筛选条件下暂无分析报告。" />
+            <EmptyState text={t('当前筛选条件下暂无分析报告。')} />
           )}
 
           {activeView === 'stocks' ? (
@@ -342,9 +344,9 @@ export default function AiHistoryView() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="确认删除分析记录"
-        description={deleteTarget ? `确定删除 ${getRecordTitle(deleteTarget)} 吗？删除后无法恢复。` : undefined}
-        confirmText="删除"
+        title={t('确认删除分析记录')}
+        description={deleteTarget ? t('确定删除 {title} 吗？删除后无法恢复。', { title: getRecordTitle(deleteTarget) }) : undefined}
+        confirmText={t('删除')}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
         }}
@@ -407,6 +409,7 @@ function ReportSummaryCard({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const { t, formatDateTime } = useI18n()
   const reasons = getReasons(record)
   const actions = getActions(record)
   const risks = getRisks(record)
@@ -419,17 +422,17 @@ function ReportSummaryCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">{getRecordTitle(record)}</span>
             <FreshnessTag generatedAt={record.generatedAt} />
-            <StaticTag>{CONFIDENCE_LABELS[record.confidence]}</StaticTag>
-            <ActionTag action={primaryAction} />
+            <StaticTag>{t(CONFIDENCE_LABELS[record.confidence])}</StaticTag>
+            <ActionTag action={t(primaryAction)} />
           </div>
           <div className="mt-2 text-xs text-muted-foreground">
-            {new Date(record.generatedAt).toLocaleString('zh-CN')} · {record.result.stance}
+            {formatDateTime(record.generatedAt)} · {record.result.stance}
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onToggle}>
-            {expanded ? '收起' : '展开详情'}
+            {expanded ? t('收起') : t('展开详情')}
           </Button>
           <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
@@ -440,15 +443,15 @@ function ReportSummaryCard({
       <div className="mt-3 text-sm leading-6 text-foreground">{record.result.summary}</div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <SmallBlock title="关键理由" items={reasons.slice(0, 2)} />
-        <SmallBlock title="操作计划" items={actions.slice(0, 2)} />
-        <SmallBlock title="风险提醒" items={risks.slice(0, 1)} />
+        <SmallBlock title={t('关键理由')} items={reasons.slice(0, 2)} />
+        <SmallBlock title={t('操作计划')} items={actions.slice(0, 2)} />
+        <SmallBlock title={t('风险提醒')} items={risks.slice(0, 1)} />
       </div>
 
       {expanded && (
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <SmallBlock title="失效条件" items={record.result.invalidationSignals.slice(0, 3)} />
-          <SmallBlock title="关键价位/指标" items={record.result.keyLevels.concat(record.result.technicalSignals.map((signal) => `${signal.name}: ${signal.value}，${signal.interpretation}`)).slice(0, 4)} />
+          <SmallBlock title={t('失效条件')} items={record.result.invalidationSignals.slice(0, 3)} />
+          <SmallBlock title={t('关键价位/指标')} items={record.result.keyLevels.concat(record.result.technicalSignals.map((signal) => `${signal.name}: ${signal.value}，${signal.interpretation}`)).slice(0, 4)} />
         </div>
       )}
     </div>
@@ -470,8 +473,9 @@ function StockDossierCard({
   onToggle: () => void
   onDelete: () => void
 }) {
+  const { t, formatDateTime } = useI18n()
   const latestAction = getPrimaryAction(latest)
-  const previousAction = previous ? getPrimaryAction(previous) : '暂无'
+  const previousAction = previous ? getPrimaryAction(previous) : t('暂无')
   const changed = previous ? latestAction !== previousAction : false
 
   return (
@@ -480,18 +484,18 @@ function StockDossierCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
-              {latest.stockName ?? '标的'} · {latest.stockCode ?? ''}
+              {latest.stockName ?? t('标的')} · {latest.stockCode ?? ''}
             </span>
             <FreshnessTag generatedAt={latest.generatedAt} />
-            <StaticTag>{CONFIDENCE_LABELS[latest.confidence]}</StaticTag>
+            <StaticTag>{t(CONFIDENCE_LABELS[latest.confidence])}</StaticTag>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">
-            共 {count} 次分析 · 最近 {new Date(latest.generatedAt).toLocaleString('zh-CN')}
+            {t('共 {count} 次分析 · 最近 {time}', { count, time: formatDateTime(latest.generatedAt) })}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onToggle}>
-            {expanded ? '收起' : '展开详情'}
+            {expanded ? t('收起') : t('展开详情')}
           </Button>
           <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
@@ -500,11 +504,11 @@ function StockDossierCard({
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <ConclusionBox label="当前结论" value={latestAction} detail={latest.result.stance} />
+        <ConclusionBox label={t('当前结论')} value={t(latestAction)} detail={latest.result.stance} />
         <ConclusionBox
-          label="上次结论"
-          value={previousAction}
-          detail={previous ? (changed ? `${previousAction} -> ${latestAction}` : '结论未变化') : '暂无可比记录'}
+          label={t('上次结论')}
+          value={t(previousAction)}
+          detail={previous ? (changed ? `${t(previousAction)} -> ${t(latestAction)}` : t('结论未变化')) : t('暂无可比记录')}
           highlight={changed}
         />
       </div>
@@ -513,9 +517,9 @@ function StockDossierCard({
 
       {expanded && (
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          <SmallBlock title="关键理由" items={getReasons(latest).slice(0, 2)} />
-          <SmallBlock title="操作计划" items={getActions(latest).slice(0, 2)} />
-          <SmallBlock title="风险提醒" items={getRisks(latest).slice(0, 2)} />
+          <SmallBlock title={t('关键理由')} items={getReasons(latest).slice(0, 2)} />
+          <SmallBlock title={t('操作计划')} items={getActions(latest).slice(0, 2)} />
+          <SmallBlock title={t('风险提醒')} items={getRisks(latest).slice(0, 2)} />
         </div>
       )}
     </div>
@@ -543,6 +547,7 @@ function ConclusionBox({
 }
 
 function FreshnessTag({ generatedAt }: { generatedAt: string }) {
+  const { t } = useI18n()
   const fresh = isFresh(generatedAt)
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs ${
@@ -551,7 +556,7 @@ function FreshnessTag({ generatedAt }: { generatedAt: string }) {
         : 'border-amber-500/30 bg-amber-500/15 text-amber-100'
     }`}>
       {fresh ? <Clock className="mr-1 h-3.5 w-3.5" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
-      {fresh ? '有效期内' : `${formatRelativeTime(generatedAt)} · 待刷新`}
+      {fresh ? t('有效期内') : `${formatRelativeTime(generatedAt, t)} · ${t('待刷新')}`}
     </span>
   )
 }
@@ -574,6 +579,8 @@ function StaticTag({ children }: { children: React.ReactNode }) {
 }
 
 function SmallBlock({ title, items }: { title: string; items: string[] }) {
+  const { t } = useI18n()
+
   return (
     <div className="rounded-lg border border-border/70 bg-card/60 p-3">
       <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
@@ -585,7 +592,7 @@ function SmallBlock({ title, items }: { title: string; items: string[] }) {
             </div>
           ))
         ) : (
-          <div className="text-sm text-muted-foreground">暂无内容</div>
+          <div className="text-sm text-muted-foreground">{t('暂无内容')}</div>
         )}
       </div>
     </div>
@@ -643,22 +650,22 @@ function isFresh(generatedAt: string) {
   return Date.now() - time < 60 * 60 * 1000
 }
 
-function formatRelativeTime(generatedAt: string) {
+function formatRelativeTime(generatedAt: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const time = new Date(generatedAt).getTime()
-  if (!Number.isFinite(time)) return '时间未知'
+  if (!Number.isFinite(time)) return t('时间未知')
   const ageMs = Math.max(0, Date.now() - time)
   const minuteMs = 60 * 1000
   const hourMs = 60 * minuteMs
   const dayMs = 24 * hourMs
 
-  if (ageMs < minuteMs) return '刚刚'
-  if (ageMs < hourMs) return `${Math.floor(ageMs / minuteMs)} 分钟前`
-  if (ageMs < dayMs) return `${Math.floor(ageMs / hourMs)} 小时前`
+  if (ageMs < minuteMs) return t('刚刚')
+  if (ageMs < hourMs) return t('{count} 分钟前', { count: Math.floor(ageMs / minuteMs) })
+  if (ageMs < dayMs) return t('{count} 小时前', { count: Math.floor(ageMs / hourMs) })
   const dayCount = Math.floor(ageMs / dayMs)
-  if (dayCount < 30) return `${dayCount} 天前`
+  if (dayCount < 30) return t('{count} 天前', { count: dayCount })
   const monthCount = Math.floor(dayCount / 30)
-  if (monthCount < 12) return `${monthCount} 个月前`
-  return `${Math.floor(dayCount / 365)} 年前`
+  if (monthCount < 12) return t('{count} 个月前', { count: monthCount })
+  return t('{count} 年前', { count: Math.floor(dayCount / 365) })
 }
 
 function getPrimaryAction(record: AiAnalysisHistoryRecord): Exclude<ActionFilter, 'ALL'> | string {

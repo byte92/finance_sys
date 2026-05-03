@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Bot, Sparkles } from 'lucide-react'
 import AiChatPanel from '@/components/ai/AiChatPanel'
+import { useI18n } from '@/lib/i18n'
 
 export default function FloatingAiChat() {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [scrolling, setScrolling] = useState(false)
@@ -88,7 +90,7 @@ export default function FloatingAiChat() {
         </span>
         {/* hover 文案提示 */}
         <span className="pointer-events-none absolute right-16 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-card border border-border px-3 py-1.5 text-xs text-foreground shadow-lg opacity-0 translate-x-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-x-0">
-          AI 智能助手
+          {t('AI 智能助手')}
         </span>
       </button>
     </>

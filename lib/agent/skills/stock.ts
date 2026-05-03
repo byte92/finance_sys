@@ -4,6 +4,7 @@ import { stockPriceService } from '@/lib/StockPriceService'
 import { matchStocks } from '@/lib/agent/entity/stockMatcher'
 import { resolveSecurityCandidates } from '@/lib/agent/entity/securityResolver'
 import { fetchDailyCandles } from '@/lib/external/kline'
+import { loggedFetch } from '@/lib/observability/fetch'
 import type { AgentSkill } from '@/lib/agent/types'
 import type { Market, Stock } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
@@ -283,9 +284,13 @@ function extractFinancialRow(text: string, label: string, count: number) {
 async function fetchSinaAStockFinancials(symbol: string): Promise<FinancialsData | null> {
   const iconv = await import('iconv-lite')
   const url = `https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_ProfitStatement/stockid/${encodeURIComponent(symbol)}/ctrl/part/displaytype/4.phtml`
-  const res = await fetch(url, {
+  const res = await loggedFetch(url, {
     headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
     signal: AbortSignal.timeout(15_000),
+  }, {
+    operation: 'financials.sina.profitStatement',
+    provider: 'sina-finance',
+    resource: symbol,
   })
   if (!res.ok) return null
 

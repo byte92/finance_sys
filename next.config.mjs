@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
   allowedDevOrigins: [
     '127.0.0.1',
     '127.0.0.1:3218',

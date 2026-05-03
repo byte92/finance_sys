@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server'
 import { fetchMarketOverview } from '@/lib/marketOverview'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 
-export async function GET() {
+async function handleGET() {
   try {
     const overview = await fetchMarketOverview()
     return NextResponse.json(overview)
   } catch (error) {
-    console.error('[api/market/overview] failed:', error)
+    logger.error('api.market.overview.failed', { error })
     return NextResponse.json({ error: '获取大盘数据失败' }, { status: 500 })
   }
 }
+
+export const GET = withApiLogging('/api/market/overview', handleGET)

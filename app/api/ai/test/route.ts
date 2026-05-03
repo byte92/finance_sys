@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { testAiConnection } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
+import { withApiLogging } from '@/lib/observability/api'
 import type { AiConfig } from '@/types'
 
 type Body = {
   aiConfig?: AiConfig
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = await safeReadJsonBody<Body>(request)
     if (!payload.ok) {
@@ -25,3 +26,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export const POST = withApiLogging('/api/ai/test', handlePOST)

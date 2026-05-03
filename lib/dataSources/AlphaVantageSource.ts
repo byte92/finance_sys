@@ -1,6 +1,7 @@
 // Alpha Vantage 数据源实现
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
 
 const API_BASE = 'https://www.alphavantage.co/query'
 
@@ -17,7 +18,11 @@ export class AlphaVantageDataSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}?function=GLOBAL_QUOTE&symbol=IBM&apikey=demo`)
+      const res = await loggedFetch(`${API_BASE}?function=GLOBAL_QUOTE&symbol=IBM&apikey=demo`, {}, {
+        operation: 'quote.alphaVantage.healthCheck',
+        provider: this.provider,
+        resource: 'IBM',
+      })
       return res.ok
     } catch { return false }
   }
@@ -27,9 +32,14 @@ export class AlphaVantageDataSource implements StockDataSource {
     try {
       const std = toAlphaSymbol(symbol, market)
       const url = `${API_BASE}?function=GLOBAL_QUOTE&symbol=${std}&apikey=${this.config.apiKey}`
-      const res = await fetch(url, {
+      const res = await loggedFetch(url, {
         signal: AbortSignal.timeout(8000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.alphaVantage.getQuote',
+        provider: this.provider,
+        resource: std,
+        metadata: { symbol, market },
       })
       if (!res.ok) return null
       const data = await res.json()

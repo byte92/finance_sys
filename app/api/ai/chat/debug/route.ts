@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { withApiLogging } from '@/lib/observability/api'
 import { getAiAgentRun, getAiChatMessage, getAiChatSession, listAiAgentRuns, listAiChatMessages } from '@/lib/sqlite/db'
 import type { AiAgentRun, AiChatMessage } from '@/types'
 
@@ -17,7 +18,7 @@ function findRelatedRuns(target: AiChatMessage | null, messages: AiChatMessage[]
   return []
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get('userId')
   const id = request.nextUrl.searchParams.get('id')?.trim()
 
@@ -75,3 +76,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ error: '未找到对应的对话、消息或调用链路' }, { status: 404 })
 }
+
+export const GET = withApiLogging('/api/ai/chat/debug', handleGET)

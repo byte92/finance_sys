@@ -4,6 +4,8 @@ import { safeReadJsonBody } from '@/lib/api/request'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildChatTitle, estimateTokens, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
 import { runAgent } from '@/lib/agent/runtime'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 import { getAiChatSession, getSessionContext, listAiChatMessages, saveAiAgentRun, saveAiChatMessage, saveAiChatSession, setSessionContext, updateAiChatSessionTitle } from '@/lib/sqlite/db'
 import type { AiConfig, Market, Stock } from '@/types'
 
@@ -37,7 +39,7 @@ function matchesCandidateAnswer(answer: string, candidate: { code: string; name:
     || (MARKET_ALIASES[market] ?? []).some((alias) => upperAnswer.includes(alias.toUpperCase()))
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const startedAt = Date.now()
   const payload = await safeReadJsonBody<Body>(request)
   if (!payload.ok) {
@@ -189,7 +191,7 @@ export async function POST(request: Request) {
         })
 
         const totalMs = Date.now() - startedAt
-        console.info('[ai-chat] request timings', {
+        logger.info('api.ai.chat.stream.done', {
           sessionId,
           contextMs,
           firstTokenMs,
@@ -205,6 +207,13 @@ export async function POST(request: Request) {
         controller.close()
       } catch (error) {
         if (request.signal.aborted || isAbortError(error)) {
+          logger.info('api.ai.chat.stream.aborted', {
+            sessionId,
+            contextMs,
+            firstTokenMs,
+            totalMs: Date.now() - startedAt,
+            assistantChars: assistantContent.length,
+          })
           if (assistantContent.trim()) {
             saveAiChatMessage({
               id: randomUUID(),
@@ -223,6 +232,14 @@ export async function POST(request: Request) {
           }
           return
         }
+        logger.error('api.ai.chat.stream.failed', {
+          error,
+          sessionId,
+          contextMs,
+          firstTokenMs,
+          totalMs: Date.now() - startedAt,
+          assistantChars: assistantContent.length,
+        })
         const message = error instanceof Error ? error.message : 'AI 对话失败'
         controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`))
         controller.close()
@@ -238,3 +255,5 @@ export async function POST(request: Request) {
     },
   })
 }
+
+export const POST = withApiLogging('/api/ai/chat', handlePOST)

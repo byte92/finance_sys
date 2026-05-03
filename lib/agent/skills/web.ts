@@ -1,4 +1,5 @@
 import type { AgentSkill, AgentSkillCall } from '@/lib/agent/types'
+import { loggedFetch } from '@/lib/observability/fetch'
 
 export type WebFetchInput = {
   url: string
@@ -75,7 +76,7 @@ export const webFetchSkill: AgentSkill<WebFetchInput, WebFetchResult> = {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
-      const res = await fetch(url.toString(), {
+      const res = await loggedFetch(url.toString(), {
         method,
         headers: {
           'User-Agent': 'StockTracker/2.0 (finance-agent)',
@@ -84,6 +85,10 @@ export const webFetchSkill: AgentSkill<WebFetchInput, WebFetchResult> = {
         },
         body: method !== 'GET' && method !== 'HEAD' ? args.body : undefined,
         signal: controller.signal,
+      }, {
+        operation: 'agent.web.fetch',
+        provider: url.hostname,
+        resource: url.pathname,
       })
 
       clearTimeout(timer)

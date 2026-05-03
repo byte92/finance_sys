@@ -3,6 +3,8 @@ import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { generateId } from '@/lib/finance'
 import { generateMarketAnalysis, buildAnalysisTags } from '@/lib/marketOverview'
 import { safeReadJsonBody } from '@/lib/api/request'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 import type { AiConfig } from '@/types'
 
 type MarketAnalysisBody = {
@@ -11,7 +13,7 @@ type MarketAnalysisBody = {
   forceRefresh?: boolean
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   try {
     const payload = await safeReadJsonBody<MarketAnalysisBody>(request)
     if (!payload.ok) {
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
         market: null,
       })
     } catch (error) {
-      console.error('Failed to persist market AI analysis:', error)
+      logger.error('api.ai.market-analysis.persist.failed', { error, userId: body.userId })
     }
 
     return NextResponse.json({ result })
@@ -52,3 +54,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export const POST = withApiLogging('/api/ai/market-analysis', handlePOST)

@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildAnalysisTags, generatePortfolioAnalysis } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
+import { withApiLogging } from '@/lib/observability/api'
+import { logger } from '@/lib/observability/logger'
 import type { AiConfig, Stock } from '@/types'
 
 type Body = {
@@ -12,7 +14,7 @@ type Body = {
   forceRefresh?: boolean
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   try {
     const payload = await safeReadJsonBody<Body>(request)
     if (!payload.ok) {
@@ -45,7 +47,7 @@ export async function POST(request: Request) {
         result,
       })
     } catch (error) {
-      console.error('Failed to persist portfolio AI analysis:', error)
+      logger.error('api.ai.portfolio-analysis.persist.failed', { error, userId: body.userId })
     }
     return NextResponse.json({ result })
   } catch (error) {
@@ -53,3 +55,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+export const POST = withApiLogging('/api/ai/portfolio-analysis', handlePOST)

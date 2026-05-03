@@ -1,4 +1,6 @@
 import type { AiConfig } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 export type LlmProviderMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -58,7 +60,7 @@ function parseStreamPayload(data: string) {
 function assertNormalFinish(finishReason: string | null, receivedText: boolean, onChunk: (chunk: string) => void) {
   if (!finishReason) {
     if (receivedText) {
-      console.warn('[llm-provider] stream ended without finish_reason')
+      logger.warn('llm.stream.missingFinishReason')
       return
     }
     throw new Error('AI 未返回有效内容')
@@ -84,7 +86,7 @@ function assertNormalFinish(finishReason: string | null, receivedText: boolean, 
 export async function callJsonCompletion(config: AiConfig, systemPrompt: string, userPrompt: string, signal?: AbortSignal) {
   if (config.provider === 'anthropic-compatible') {
     const baseUrl = ensureApiBase(config.baseUrl)
-    const res = await fetch(`${baseUrl}/messages`, {
+    const res = await loggedFetch(`${baseUrl}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -99,6 +101,10 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
         messages: [{ role: 'user', content: userPrompt }],
       }),
       signal,
+    }, {
+      operation: 'llm.jsonCompletion',
+      provider: config.provider,
+      resource: config.model,
     })
 
     if (!res.ok) {
@@ -120,7 +126,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
   }
 
   const baseUrl = ensureApiBase(config.baseUrl)
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await loggedFetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -136,6 +142,10 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
       ],
     }),
     signal,
+  }, {
+    operation: 'llm.jsonCompletion',
+    provider: config.provider,
+    resource: config.model,
   })
 
   if (!res.ok) {
@@ -151,7 +161,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
 
 async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
   const baseUrl = ensureApiBase(config.baseUrl)
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await loggedFetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -164,6 +174,10 @@ async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMes
       messages,
     }),
     signal,
+  }, {
+    operation: 'llm.streamCompletion',
+    provider: config.provider,
+    resource: config.model,
   })
 
   if (!res.ok || !res.body) {
@@ -212,7 +226,7 @@ async function streamAnthropicCompatible(config: AiConfig, messages: LlmProvider
       content: message.content,
     }))
 
-  const res = await fetch(`${baseUrl}/messages`, {
+  const res = await loggedFetch(`${baseUrl}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -228,6 +242,10 @@ async function streamAnthropicCompatible(config: AiConfig, messages: LlmProvider
       messages: rest,
     }),
     signal,
+  }, {
+    operation: 'llm.streamCompletion',
+    provider: config.provider,
+    resource: config.model,
   })
 
   if (!res.ok || !res.body) {

@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
 import { safeReadJsonBody } from "@/lib/api/request";
+import { withApiLogging } from "@/lib/observability/api";
+import { logger } from "@/lib/observability/logger";
 import type { AppConfig, Stock } from "@/types";
 
 export const runtime = "nodejs";
@@ -14,11 +16,11 @@ type Body = {
 };
 
 function storageErrorResponse(error: unknown) {
-  console.error("Storage API failed:", error);
+  logger.error("api.storage.failed", { error });
   return NextResponse.json({ error: STORAGE_ERROR_MESSAGE }, { status: 500 });
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   try {
     const userId = request.nextUrl.searchParams.get("userId");
     if (!userId) {
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function handlePUT(request: NextRequest) {
   try {
     const payload = await safeReadJsonBody<Body>(request);
     if (!payload.ok) {
@@ -56,3 +58,6 @@ export async function PUT(request: NextRequest) {
     return storageErrorResponse(error);
   }
 }
+
+export const GET = withApiLogging("/api/storage", handleGET);
+export const PUT = withApiLogging("/api/storage", handlePUT);

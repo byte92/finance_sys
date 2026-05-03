@@ -1,6 +1,8 @@
 // 汇率服务 - 获取实时汇率
 // 使用免费的汇率API (exchangerate-api.com)
 import { mul, div, roundTo } from './money'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 export type Currency = 'CNY' | 'HKD' | 'USD' | 'USDT'
 
@@ -48,7 +50,11 @@ class ExchangeRateService {
     }
 
     try {
-      const response = await fetch(this.apiUrl)
+      const response = await loggedFetch(this.apiUrl, {}, {
+        operation: 'exchangeRate.fetchLatest',
+        provider: 'exchangerate-api',
+        resource: 'USD',
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch exchange rates')
       }
@@ -69,7 +75,7 @@ class ExchangeRateService {
 
       return result
     } catch (error) {
-      console.error('Failed to fetch exchange rates:', error)
+      logger.warn('exchangeRate.fetchLatest.failed', { error })
 
       // 返回默认汇率（仅供参考）
       const defaultRates: ExchangeRates & Record<string, number> = {

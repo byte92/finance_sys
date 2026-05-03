@@ -1,6 +1,8 @@
 // Yahoo Finance 数据源实现（免费，无需API key）
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 const API_BASES = [
   'https://query1.finance.yahoo.com/v7/finance/quote',
@@ -75,7 +77,7 @@ export class YahooFinanceSource implements StockDataSource {
         source: 'yahoo-finance',
       }
     } catch (e) {
-      console.warn('[YahooFinanceSource] Error:', e)
+      logger.warn('quote.yahoo.getQuote.failed', { error: e, symbol, market })
       return null
     }
   }
@@ -113,7 +115,7 @@ export class YahooFinanceSource implements StockDataSource {
           source: 'yahoo-finance',
         }))
     } catch (e) {
-      console.warn('[YahooFinanceSource] Batch error:', e)
+      logger.warn('quote.yahoo.getBatchQuotes.failed', { error: e, count: symbols.length, market })
       return []
     }
   }
@@ -126,13 +128,17 @@ export class YahooFinanceSource implements StockDataSource {
   private async fetchQuoteResults(query: string): Promise<any[]> {
     for (const base of API_BASES) {
       try {
-        const res = await fetch(`${base}?${query}`, {
+        const res = await loggedFetch(`${base}?${query}`, {
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0',
           },
           signal: AbortSignal.timeout(6000),
           cache: 'no-store',
+        }, {
+          operation: 'quote.yahoo.fetchQuoteResults',
+          provider: this.provider,
+          resource: new URL(base).host,
         })
         if (!res.ok) {
           if (res.status === 429 || res.status >= 500) continue
@@ -141,7 +147,8 @@ export class YahooFinanceSource implements StockDataSource {
         const data = await res.json()
         const list = data?.quoteResponse?.result
         if (Array.isArray(list) && list.length > 0) return list
-      } catch {
+      } catch (error) {
+        logger.warn('quote.yahoo.fetchQuoteResults.failed', { error, providerHost: new URL(base).host })
         continue
       }
     }
@@ -150,13 +157,18 @@ export class YahooFinanceSource implements StockDataSource {
 
   private async fetchChartQuote(symbol: string, market: Market, yahooSymbol: string): Promise<StockQuote | null> {
     try {
-      const res = await fetch(`${CHART_BASE}/${encodeURIComponent(yahooSymbol)}?range=1d&interval=1d`, {
+      const res = await loggedFetch(`${CHART_BASE}/${encodeURIComponent(yahooSymbol)}?range=1d&interval=1d`, {
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'Mozilla/5.0',
         },
         signal: AbortSignal.timeout(6000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.yahoo.fetchChartQuote',
+        provider: this.provider,
+        resource: yahooSymbol,
+        metadata: { symbol, market },
       })
       if (!res.ok) return null
 
@@ -183,7 +195,8 @@ export class YahooFinanceSource implements StockDataSource {
         currency: meta?.currency || getCurrency(market),
         source: 'yahoo-finance-chart',
       }
-    } catch {
+    } catch (error) {
+      logger.warn('quote.yahoo.fetchChartQuote.failed', { error, symbol, market, yahooSymbol })
       return null
     }
   }

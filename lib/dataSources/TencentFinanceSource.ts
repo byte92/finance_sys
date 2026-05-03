@@ -3,6 +3,8 @@
 
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { loggedFetch } from '@/lib/observability/fetch'
+import { logger } from '@/lib/observability/logger'
 
 const API_BASE = 'https://qt.gtimg.cn'
 
@@ -70,7 +72,11 @@ export class TencentFinanceSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/q=sh000001`, { mode: 'cors' })
+      const res = await loggedFetch(`${API_BASE}/q=sh000001`, { mode: 'cors' }, {
+        operation: 'quote.tencent.healthCheck',
+        provider: this.provider,
+        resource: 'sh000001',
+      })
       return res.ok
     } catch {
       return false
@@ -84,17 +90,22 @@ export class TencentFinanceSource implements StockDataSource {
       const code = toTencentCode(symbol, market)
       // 使用 jsonp-like 的文本接口（浏览器可直接请求）
       const url = `${API_BASE}/q=${code}&r=${Date.now()}`
-      const res = await fetch(url, {
+      const res = await loggedFetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.tencent.getQuote',
+        provider: this.provider,
+        resource: code,
+        metadata: { symbol, market },
       })
       if (!res.ok) return null
 
       const text = await decodeGBK(res)
       return parseTencentResponse(text, symbol, market)
     } catch (e) {
-      console.warn('[TencentFinance] 请求失败:', e)
+      logger.warn('quote.tencent.getQuote.failed', { error: e, symbol, market })
       return null
     }
   }
@@ -104,10 +115,14 @@ export class TencentFinanceSource implements StockDataSource {
     try {
       const codes = symbols.map((s) => toTencentCode(s, market)).join(',')
       const url = `${API_BASE}/q=${codes}&r=${Date.now()}`
-      const res = await fetch(url, {
+      const res = await loggedFetch(url, {
         headers: { Referer: 'https://finance.qq.com' },
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
+      }, {
+        operation: 'quote.tencent.getBatchQuotes',
+        provider: this.provider,
+        metadata: { count: symbols.length, market },
       })
       if (!res.ok) return []
       const text = await decodeGBK(res)
@@ -118,7 +133,8 @@ export class TencentFinanceSource implements StockDataSource {
         if (q) quotes.push(q)
       })
       return quotes
-    } catch {
+    } catch (error) {
+      logger.warn('quote.tencent.getBatchQuotes.failed', { error, count: symbols.length, market })
       return []
     }
   }
@@ -136,7 +152,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
 
     // 检查是否返回了有效数据（第一个字段应该不是空）
     if (parts[0] === '' || parts[0] === '-') {
-      console.warn('[TencentFinance] 股票不存在或已退市:', symbol)
+      logger.warn('quote.tencent.parse.missingSymbol', { symbol, market })
       return null
     }
 
@@ -147,7 +163,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
 
     // 检查价格是否有效
     if (isNaN(price) || price <= 0) {
-      console.warn('[TencentFinance] 价格无效:', symbol, price)
+      logger.warn('quote.tencent.parse.invalidPrice', { symbol, market, price })
       return null
     }
 
@@ -179,7 +195,7 @@ function parseTencentResponse(text: string, symbol: string, market: Market): Sto
       source: 'tencent',
     }
   } catch (e) {
-    console.error('[TencentFinance] 解析失败:', e)
+    logger.error('quote.tencent.parse.failed', { error: e, symbol, market })
     return null
   }
 }

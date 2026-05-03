@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { fetchKline, VALID_KLINE_INTERVALS, type KlineFetchResult, type KlineInterval } from '@/lib/external/kline'
+import { withApiLogging } from '@/lib/observability/api'
 import type { Market } from '@/types'
 
 const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 
-export async function GET(request: Request): Promise<NextResponse<KlineFetchResult>> {
+async function handleGET(request: Request): Promise<NextResponse<KlineFetchResult>> {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')?.trim()
   const market = searchParams.get('market') as Market | null
@@ -25,3 +26,5 @@ export async function GET(request: Request): Promise<NextResponse<KlineFetchResu
   if (result.error) return NextResponse.json(result, { status: 404 })
   return NextResponse.json(result)
 }
+
+export const GET = withApiLogging('/api/stock/kline', handleGET)

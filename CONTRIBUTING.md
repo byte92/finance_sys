@@ -31,7 +31,9 @@ pnpm dev
 
 默认访问：
 
-- [http://localhost:3000](http://localhost:3000)
+- [http://localhost:3218](http://localhost:3218)
+
+如果 `3218` 已被占用，`pnpm dev` 会自动向后查找可用端口，并在终端输出实际访问地址。
 
 ## 提交前检查
 

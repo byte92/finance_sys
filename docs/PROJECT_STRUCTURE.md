@@ -7,7 +7,7 @@
 | 目录 | 职责 |
 | --- | --- |
 | `app/` | Next.js App Router 页面和 API Route。页面负责组装视图，API Route 负责参数校验和调用领域服务。 |
-| `components/` | React 组件。通用 UI 放在 `components/ui`，业务组件按领域放在 `ai`、`market`、`portfolio` 等子目录。 |
+| `components/` | React 组件。通用 UI 放在 `components/ui`，业务组件按领域放在 `ai`、`market`、`portfolio`、`i18n` 等子目录。 |
 | `config/` | 默认配置和静态配置，例如市场、手续费、数据源默认值。 |
 | `docs/` | 产品、架构、接口清单和维护文档。 |
 | `hooks/` | 浏览器侧 React hooks。 |
@@ -28,10 +28,19 @@
 | `lib/ai/` | AI 对话、配置、建议问题和历史分析服务。 |
 | `lib/sqlite/` | 本地 SQLite 读写。 |
 | `lib/api/` | 内部 API 请求辅助函数。 |
+| `lib/i18n/` | UI 国际化 Provider、翻译表、市场标签和日期/数字 locale helper。 |
+| `lib/observability/` | 服务端 API 和第三方 fetch 的结构化日志埋点。 |
 | `lib/finance.ts` | 交易、手续费、持仓和盈亏计算。 |
 | `lib/marketOverview.ts` | 大盘业务聚合。外部请求应通过 `lib/external/*` 完成。 |
 | `lib/StockPriceService.ts` | 当前报价聚合、fallback 和缓存。后续可继续拆成 registry/cache/service。 |
 | `lib/ExchangeRateService.ts` | 汇率服务。后续如继续统一外部 API，可迁移到 `lib/external/exchangeRates.ts`。 |
+
+## 国际化边界
+
+- UI 文案统一通过 `lib/i18n` 暴露的 `useI18n()` 接入。
+- 语言切换组件位于 `components/i18n/LanguageSwitcher.tsx`。
+- AI 分析输出语言由 AI 配置控制，不和 UI 语言强绑定。
+- 详细维护规则见 [国际化说明](./I18N.md)。
 
 ## 清理规则
 

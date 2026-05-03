@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { BriefcaseBusiness, ChartNoAxesCombined, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, Settings, Sparkles, Sun, X } from 'lucide-react'
+import { BriefcaseBusiness, Bug, ChartNoAxesCombined, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, Settings, Sparkles, Sun, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import FloatingAiChat from '@/components/ai/FloatingAiChat'
 import { useTheme } from '@/hooks/useTheme'
+import { useAiDebugMode } from '@/hooks/useAiDebugMode'
 import { useStockStore } from '@/store/useStockStore'
 
 const NAV_ITEMS = [
@@ -28,6 +29,7 @@ const AI_NAV_EXPANDED_KEY = 'stock-tracker-ai-nav-expanded'
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { theme, toggleTheme, mounted } = useTheme()
+  const { debugEnabled } = useAiDebugMode()
   const { init } = useStockStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -85,6 +87,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             mounted={mounted}
             collapsed={sidebarCollapsed}
             aiNavExpanded={aiNavExpanded}
+            debugEnabled={debugEnabled}
             onToggleAiNavExpanded={toggleAiNavExpanded}
             onToggleCollapsed={toggleSidebarCollapsed}
           />
@@ -120,6 +123,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               mounted={mounted}
               collapsed={false}
               aiNavExpanded={aiNavExpanded}
+              debugEnabled={debugEnabled}
               onToggleAiNavExpanded={toggleAiNavExpanded}
             />
           </div>
@@ -137,6 +141,7 @@ function SidebarContent({
   mounted,
   collapsed,
   aiNavExpanded,
+  debugEnabled,
   onToggleAiNavExpanded,
   onToggleCollapsed,
 }: {
@@ -146,6 +151,7 @@ function SidebarContent({
   mounted: boolean
   collapsed: boolean
   aiNavExpanded: boolean
+  debugEnabled: boolean
   onToggleAiNavExpanded?: () => void
   onToggleCollapsed?: () => void
 }) {
@@ -200,22 +206,24 @@ function SidebarContent({
 
           {!collapsed && aiNavExpanded && (
             <div className="ml-3 space-y-1 border-l border-border/70 pl-3">
-              {AI_SUB_ITEMS.map((item) => {
-                const active = item.match(pathname)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
-                      active
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                )
-              })}
+              {AI_SUB_ITEMS
+                .filter((item) => item.href !== '/ai/debug' || debugEnabled)
+                .map((item) => {
+                  const active = item.match(pathname)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  )
+                })}
             </div>
           )}
         </div>
@@ -250,6 +258,23 @@ function SidebarContent({
               <Settings className="h-4 w-4" />
             </Button>
           </Link>
+
+          {debugEnabled && (
+            <Link href="/ai/debug" title="Debug">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={`h-9 w-9 rounded-lg border border-border/70 ${
+                  pathname.startsWith('/ai/debug')
+                    ? 'border-primary/20 bg-primary/12 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Bug className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
         </div>
 
         {onToggleCollapsed && (

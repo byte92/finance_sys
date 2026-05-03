@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Bot, Bug, Clock, Eraser, GitBranch, Info, Maximize2, Pencil, Plus, Send, Square, Trash2, X } from 'lucide-react'
+import { Bot, Clock, Eraser, GitBranch, Info, Maximize2, Pencil, Plus, Send, Square, Trash2, X } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import MarkdownMessage from '@/components/ai/MarkdownMessage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import JsonViewer from '@/components/ui/json-viewer'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAiDebugMode } from '@/hooks/useAiDebugMode'
 import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
-import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession } from '@/types'
+import type { AiChatContextStats, AiChatMessage, AiChatSession } from '@/types'
 
 type AiChatPanelProps = {
   mode: 'floating' | 'full'
@@ -24,23 +24,6 @@ const CHAT_TITLE_MAX_LENGTH = 24
 type AiEnvStatus = {
   configured: boolean
   model?: string
-}
-
-function getContextLevelLabel(value: unknown) {
-  if (value === 'near-limit') return '接近上限'
-  if (value === 'long') return '长'
-  if (value === 'medium') return '中'
-  return '短'
-}
-
-function getSkillName(result: unknown) {
-  if (!result || typeof result !== 'object') return 'unknown'
-  const item = result as Record<string, unknown>
-  return typeof item.skillName === 'string' ? item.skillName : 'unknown'
-}
-
-function isSkillOk(result: unknown) {
-  return Boolean(result && typeof result === 'object' && (result as Record<string, unknown>).ok === true)
 }
 
 export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
@@ -58,14 +41,10 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [aiEnvStatus, setAiEnvStatus] = useState<AiEnvStatus | null>(null)
   const [streamStatus, setStreamStatus] = useState('')
-  const [debugEnabled, setDebugEnabled] = useState(false)
-  const [agentRuns, setAgentRuns] = useState<AiAgentRun[]>([])
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
-  const [showIds, setShowIds] = useState(false)
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showTraceLink, setShowTraceLink] = useState(false)
   const messagesRef = useRef<HTMLDivElement | null>(null)
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const composingRef = useRef(false)
 
@@ -73,6 +52,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const aiReady = Boolean(aiEnvStatus?.configured) || (config.aiConfig.enabled && config.aiConfig.baseUrl.trim() && config.aiConfig.model.trim() && config.aiConfig.apiKey.trim())
   const currentModelName = aiEnvStatus?.configured ? aiEnvStatus.model : config.aiConfig.model
   const currentTitle = activeSession?.title ?? (activeSessionId ? 'AI 对话' : '新对话')
+  const { debugEnabled, setDebugEnabled } = useAiDebugMode()
   const suggestions = buildAiChatSuggestions({
     stocks,
     pathname,
@@ -133,17 +113,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     setMessages((data.messages ?? []) as AiChatMessage[])
   }, [userId])
 
-  const refreshAgentRuns = useCallback(async (sessionId: string | null) => {
-    if (!userId || !sessionId || !debugEnabled) {
-      setAgentRuns([])
-      return
-    }
-    const res = await fetch(`/api/ai/chat/runs?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.error ?? '获取 Agent Debug 信息失败')
-    setAgentRuns((data.runs ?? []) as AiAgentRun[])
-  }, [debugEnabled, userId])
-
   useEffect(() => {
     if (mode !== 'full') return
     void refreshSessions({ autoSelect: true }).catch((err) => setError(err instanceof Error ? err.message : '获取 AI 对话失败'))
@@ -155,11 +124,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   }, [activeSessionId, mode, refreshMessages])
 
   useEffect(() => {
-    if (mode !== 'full') return
-    void refreshAgentRuns(activeSessionId).catch((err) => setError(err instanceof Error ? err.message : '获取 Agent Debug 信息失败'))
-  }, [activeSessionId, mode, refreshAgentRuns])
-
-  useEffect(() => {
     const el = messagesRef.current
     if (!el) return
     requestAnimationFrame(() => {
@@ -169,12 +133,12 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Alt') setShowIds(true)
+      if (event.key === 'Alt') setShowTraceLink(true)
     }
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Alt') setShowIds(false)
+      if (event.key === 'Alt') setShowTraceLink(false)
     }
-    const handleBlur = () => setShowIds(false)
+    const handleBlur = () => setShowTraceLink(false)
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
@@ -183,20 +147,8 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('blur', handleBlur)
-      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
     }
   }, [])
-
-  const copyId = async (id: string) => {
-    try {
-      await navigator.clipboard.writeText(id)
-      setCopiedId(id)
-      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
-      copiedTimerRef.current = setTimeout(() => setCopiedId(null), 1200)
-    } catch {
-      setError('复制 ID 失败，请检查浏览器剪贴板权限。')
-    }
-  }
 
   const createSession = async () => {
     if (!userId) return
@@ -306,7 +258,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       if (mode === 'full') {
         await refreshSessions()
         await refreshMessages(nextSessionId)
-        await refreshAgentRuns(nextSessionId)
       } else if (nextSessionId) {
         const resolvedSessionId = nextSessionId
         setSessions((current) => {
@@ -368,7 +319,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
     setClearOpen(false)
     setMessages([])
-    setAgentRuns([])
     if (mode === 'full') await refreshSessions({ autoSelect: true })
   }
 
@@ -386,7 +336,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     }
     setDeleteOpen(false)
     setMessages([])
-    setAgentRuns([])
     setActiveSessionId(null)
     if (mode === 'full') await refreshSessions({ autoSelect: true })
   }
@@ -424,9 +373,9 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     onClose?.()
   }
 
-  const getDebugRunForAssistant = (messageIndex: number) => {
-    const assistantIndex = messages.slice(0, messageIndex + 1).filter((message) => message.role === 'assistant').length - 1
-    return assistantIndex >= 0 ? agentRuns[assistantIndex] : null
+  const goTrace = () => {
+    if (!debugEnabled) setDebugEnabled(true)
+    router.push(`/ai/debug${activeSessionId ? `?id=${encodeURIComponent(activeSessionId)}` : ''}`)
   }
 
   return (
@@ -464,16 +413,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                           {new Date(session.updatedAt).toLocaleString('zh-CN')}
                         </div>
                       </button>
-                      {showIds && (
-                        <button
-                          type="button"
-                          onClick={() => void copyId(session.id)}
-                          className="absolute bottom-1 right-2 z-10 max-w-[calc(100%-1rem)] truncate rounded border border-border bg-background/95 px-2 py-0.5 font-mono text-[11px] text-muted-foreground shadow-lg backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
-                          title="复制对话 ID"
-                        >
-                          {copiedId === session.id ? '已复制' : session.id}
-                        </button>
-                      )}
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" align="start">{session.title}</TooltipContent>
@@ -536,42 +475,17 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
             >
               {currentModelName || '配置 AI 模型'}
             </Link>
-            {showIds && activeSessionId && (
-              <button
-                type="button"
-                onClick={() => void copyId(activeSessionId)}
-                className="absolute left-0 top-full z-20 mt-1 max-w-[260px] truncate rounded border border-border bg-background/95 px-2 py-0.5 font-mono text-[11px] text-muted-foreground shadow-lg backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
-                title="复制当前对话 ID"
-              >
-                {copiedId === activeSessionId ? '已复制' : activeSessionId}
-              </button>
-            )}
           </div>
           {mode === 'floating' && (
             <Button type="button" variant="ghost" size="icon" onClick={goFull} title="放大">
               <Maximize2 className="h-4 w-4" />
             </Button>
           )}
-          {mode === 'full' && (
-            <>
-              <Link href={`/ai/debug${activeSessionId ? `?id=${encodeURIComponent(activeSessionId)}` : ''}`}>
-                <Button type="button" variant="ghost" size="sm" title="打开 Debug 页面" className="gap-2">
-                  <GitBranch className="h-4 w-4" />
-                  Trace
-                </Button>
-              </Link>
-              <Button
-                type="button"
-                variant={debugEnabled ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => setDebugEnabled((current) => !current)}
-                title="Agent Debug"
-                className="gap-2"
-              >
-                <Bug className="h-4 w-4" />
-                Debug
-              </Button>
-            </>
+          {mode === 'full' && (debugEnabled || showTraceLink) && (
+            <Button type="button" variant="ghost" size="sm" title={debugEnabled ? '打开 Trace' : '启用 Debug 并打开 Trace'} className="gap-2" onClick={goTrace}>
+              <GitBranch className="h-4 w-4" />
+              Trace
+            </Button>
           )}
           <Button type="button" variant="ghost" size="icon" onClick={() => setClearOpen(true)} disabled={!activeSessionId || !messages.length} title="清空对话">
             <Eraser className="h-4 w-4" />
@@ -624,11 +538,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           )}
 
           <div className="space-y-4">
-            {messages.map((message, index) => {
-              const debugRun = debugEnabled && mode === 'full' && message.role === 'assistant'
-                ? getDebugRunForAssistant(index)
-                : null
-              return (
+            {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`relative min-w-0 max-w-[82%] ${message.role === 'assistant' ? 'space-y-2' : ''}`}>
                   <div className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-6 ${
@@ -651,76 +561,9 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                       </span>
                     ) : '')}
                   </div>
-                  {showIds && (
-                    <button
-                      type="button"
-                      onClick={() => void copyId(message.id)}
-                      className={`absolute top-0 z-10 max-w-full -translate-y-1/2 truncate rounded border border-border bg-background/95 px-2 py-0.5 font-mono text-[11px] text-muted-foreground shadow-lg backdrop-blur transition-colors hover:border-primary/50 hover:text-primary ${
-                        message.role === 'user' ? 'right-0' : 'left-0'
-                      }`}
-                      title="复制消息 ID"
-                    >
-                      {copiedId === message.id ? '已复制' : message.id}
-                    </button>
-                  )}
-                  {debugRun && (
-                    <details className="min-w-0 rounded-lg border border-dashed border-border bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                      <summary className="cursor-pointer select-none font-medium text-foreground">Agent Debug</summary>
-                      <div className="mt-2 grid min-w-0 gap-2">
-                        <div className="grid min-w-0 grid-cols-2 gap-2">
-                          <div className="min-w-0">
-                            <span className="text-muted-foreground">Intent：</span>
-                            <span className="break-words font-mono text-foreground">{debugRun.intent}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-muted-foreground">Mode：</span>
-                            <span className="break-words font-mono text-foreground">{debugRun.responseMode}</span>
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-muted-foreground">Context：</span>
-                            <span className="font-mono text-foreground">
-                              {getContextLevelLabel(debugRun.contextStats.level)}
-                              {typeof debugRun.contextStats.tokenEstimate === 'number' ? ` / ${debugRun.contextStats.tokenEstimate}` : ''}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-muted-foreground">Run：</span>
-                            <span className="font-mono text-foreground">{debugRun.id.slice(0, 8)}</span>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-foreground">Skills</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {debugRun.skillResults.map((result, skillIndex) => (
-                              <span
-                                key={`${debugRun.id}-${skillIndex}`}
-                                className={`rounded border px-2 py-0.5 font-mono ${isSkillOk(result) ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-destructive/30 bg-destructive/10 text-destructive'}`}
-                              >
-                                {getSkillName(result)}
-                              </span>
-                            ))}
-                            {!debugRun.skillResults.length && <span>无 Skill 调用</span>}
-                          </div>
-                        </div>
-                        <details>
-                          <summary className="cursor-pointer select-none">Raw trace</summary>
-                          <div className="mt-2 rounded-md bg-secondary">
-                            <JsonViewer value={{
-                              plan: debugRun.plan,
-                              skillCalls: debugRun.skillCalls,
-                              skillResults: debugRun.skillResults,
-                              contextStats: debugRun.contextStats,
-                              error: debugRun.error,
-                            }} />
-                          </div>
-                        </details>
-                      </div>
-                    </details>
-                  )}
                 </div>
               </div>
-              )
-            })}
+            ))}
           </div>
         </div>
 

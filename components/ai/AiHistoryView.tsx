@@ -174,7 +174,7 @@ export default function AiHistoryView() {
         />
         <StatCard label="有效期内" value={`${overviewStats.fresh}`} detail="1 小时内生成的报告" />
         <StatCard label="待刷新" value={`${overviewStats.stale}`} detail="超过 1 小时的历史快照" />
-        <StatCard label="覆盖标的" value={`${overviewStats.stockCoverage}`} detail="有过个股分析的股票" />
+        <StatCard label="覆盖标的" value={`${overviewStats.stockCoverage}`} detail="有过标的分析的资产" />
       </section>
 
       <Card className="border-border bg-card">
@@ -192,8 +192,8 @@ export default function AiHistoryView() {
             />
             <ViewTab
               active={activeView === 'stocks'}
-              title="个股档案"
-              detail="按股票查看结论变化"
+              title="标的档案"
+              detail="按资产查看结论变化"
               count={stockDossiers.length}
               onClick={() => {
                 setActiveView('stocks')
@@ -236,7 +236,7 @@ export default function AiHistoryView() {
                 type="text"
                 value={stockQuery}
                 onChange={(e) => setStockQuery(e.target.value)}
-                placeholder="搜索股票、代码或结论关键词"
+                placeholder="搜索标的、代码或结论关键词"
                 className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -247,7 +247,7 @@ export default function AiHistoryView() {
               disabled={activeView === 'stocks'}
             >
               <option value="ALL">全部类型</option>
-              <option value="stock">个股</option>
+              <option value="stock">标的</option>
               <option value="portfolio">组合</option>
               <option value="market">大盘</option>
             </Select>
@@ -296,14 +296,14 @@ export default function AiHistoryView() {
               <div className="mt-1 text-xs text-muted-foreground">{getViewDescription(activeView)}</div>
             </div>
             <div className="text-xs text-muted-foreground">
-              {loading ? '加载中...' : activeView === 'stocks' ? `${stockDossiers.length} 只股票` : `共 ${visibleRecords.length} 条`}
+              {loading ? '加载中...' : activeView === 'stocks' ? `${stockDossiers.length} 个标的` : `共 ${visibleRecords.length} 条`}
             </div>
           </div>
 
           {error && <div className="text-sm text-destructive">{error}</div>}
 
           {!error && activeView === 'stocks' && stockDossiers.length === 0 && (
-            <EmptyState text="当前筛选条件下暂无个股档案。" />
+            <EmptyState text="当前筛选条件下暂无标的档案。" />
           )}
 
           {!error && activeView !== 'stocks' && visibleRecords.length === 0 && (
@@ -480,7 +480,7 @@ function StockDossierCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
-              {latest.stockName ?? '个股'} · {latest.stockCode ?? ''}
+              {latest.stockName ?? '标的'} · {latest.stockCode ?? ''}
             </span>
             <FreshnessTag generatedAt={latest.generatedAt} />
             <StaticTag>{CONFIDENCE_LABELS[latest.confidence]}</StaticTag>
@@ -601,13 +601,13 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function getViewTitle(view: HistoryView) {
-  if (view === 'stocks') return '个股档案'
+  if (view === 'stocks') return '标的档案'
   if (view === 'review') return '组合复盘'
   return '最近报告'
 }
 
 function getViewDescription(view: HistoryView) {
-  if (view === 'stocks') return '按股票聚合最近分析，重点看当前结论、上次结论和判断变化。'
+  if (view === 'stocks') return '按资产聚合最近分析，重点看当前结论、上次结论和判断变化。'
   if (view === 'review') return '集中回看组合与大盘分析，关注仓位建议、风险暴露和市场节奏。'
   return '按时间倒序查看 AI 历史报告，重点看动作结论、关键理由和风险提醒。'
 }
@@ -615,7 +615,7 @@ function getViewDescription(view: HistoryView) {
 function getRecordTitle(record: AiAnalysisHistoryRecord) {
   if (record.type === 'portfolio') return '组合分析'
   if (record.type === 'market') return '大盘分析'
-  return `${record.stockName ?? '个股'} · ${record.stockCode ?? ''}`
+  return `${record.stockName ?? '标的'} · ${record.stockCode ?? ''}`
 }
 
 function getReasons(record: AiAnalysisHistoryRecord) {

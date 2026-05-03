@@ -54,7 +54,7 @@ export default function StockDetailPage() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground text-sm">正在加载股票数据...</p>
+          <p className="text-muted-foreground text-sm">正在加载资产数据...</p>
         </div>
       </div>
     )
@@ -64,7 +64,7 @@ export default function StockDetailPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground mb-4">未找到该股票 (ID: {stockId.slice(0, 8)}...)</p>
+          <p className="text-muted-foreground mb-4">未找到该资产 (ID: {stockId.slice(0, 8)}...)</p>
           <div className="flex gap-2 justify-center">
             <Button
               variant="outline"

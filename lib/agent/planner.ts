@@ -1,26 +1,20 @@
 import { detectStockCode, formatStockCandidate, matchStocks } from '@/lib/agent/entity/stockMatcher'
 import { resolveSecurityCandidates, type SecurityCandidate } from '@/lib/agent/entity/securityResolver'
+import { MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
 import type { AgentPlan, AgentSkillCall } from '@/lib/agent/types'
 import type { AiChatMessage, AiConfig, Market, Stock } from '@/types'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
 
 const PORTFOLIO_KEYWORDS = ['组合', '仓位', '持仓', '风险', '亏损', '盈利', '收益', '回撤', '集中', '配置', '哪只', '哪些']
-const TRADE_KEYWORDS = ['交易', '复盘', '买入', '卖出', '分红', '成本', '加仓', '减仓']
+const TRADE_KEYWORDS = ['交易', '复盘', '买入', '卖出', '分红', '派息', '成本', '加仓', '减仓']
 const OUT_OF_SCOPE_KEYWORDS = ['天气', '菜谱', '写代码', '编程', '电影', '小说', '医疗', '法律', '旅游', '翻译']
-const MARKET_OPTIONS: Array<{ market: Market; label: string }> = [
-  { market: 'A', label: 'A 股' },
-  { market: 'HK', label: '港股' },
-  { market: 'US', label: '美股' },
-  { market: 'FUND', label: '基金' },
-  { market: 'CRYPTO', label: '加密资产' },
-]
 
 function includesAny(content: string, keywords: string[]) {
   return keywords.some((keyword) => content.includes(keyword))
 }
 
 const EXPLICIT_PORTFOLIO_KEYWORDS = ['组合', '全部', '整体', '所有', '每只', '哪些', '哪只', '仓位', '配置']
-const FOLLOW_UP_STOCK_KEYWORDS = ['收益', '盈利', '亏损', '成本', '均价', '平均', '持仓', '分红', '手续费', '操作', '建议', '怎么看', '怎么样', '多少']
+const FOLLOW_UP_STOCK_KEYWORDS = ['收益', '盈利', '亏损', '成本', '均价', '平均', '持仓', '分红', '派息', '手续费', '操作', '建议', '怎么看', '怎么样', '多少']
 const LLM_PLANNER_TIMEOUT_MS = 8_000
 
 function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
@@ -30,9 +24,9 @@ function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall
 
 function buildDefaultStockSkillCalls(stock: Stock): AgentSkillCall[] {
   return [
-    { name: 'stock.getHolding', args: { stockId: stock.id }, reason: '用户询问单只股票，需要读取本地持仓摘要' },
-    { name: 'stock.getRecentTrades', args: { stockId: stock.id, limit: 8 }, reason: '单只股票分析需要结合最近交易节奏' },
-    { name: 'stock.getQuote', args: { stockId: stock.id }, reason: '单只股票分析需要读取最新行情和估值数据' },
+    { name: 'stock.getHolding', args: { stockId: stock.id }, reason: '用户询问单个标的，需要读取本地持仓摘要' },
+    { name: 'stock.getRecentTrades', args: { stockId: stock.id, limit: 8 }, reason: '单个标的分析需要结合最近交易节奏' },
+    { name: 'stock.getQuote', args: { stockId: stock.id }, reason: '单个标的分析需要读取最新行情和估值数据' },
     { name: 'stock.getTechnicalSnapshot', args: { stockId: stock.id }, reason: '走势健康度需要技术指标摘要' },
   ]
 }
@@ -79,13 +73,13 @@ function inferMarketFromUserIntent(content: string, code: string): Market | null
   if (/(美股|美国|纳斯达克|纽交所|nyse|nasdaq)/i.test(content)) return 'US'
   if (/(港股|香港|港交所|hk\b)/i.test(content)) return 'HK'
   if (/(A股|A 股|沪深|上证|深交所|上交所)/i.test(content)) return 'A'
-  if (/(加密|数字货币|crypto|币)/i.test(content)) return 'CRYPTO'
+  if (/(加密|数字货币|虚拟货币|crypto|币|usdt|usdc|[-_/](usd|usdt|usdc)\b)/i.test(content)) return 'CRYPTO'
   if (/(基金|场内基金|ETF)/i.test(content) && /^\d{6}$/.test(code)) return 'FUND'
   return inferMarketFromCode(code)
 }
 
 function marketOptionsText() {
-  return MARKET_OPTIONS.map((item) => `${item.label}（${item.market}）`).join('、')
+  return SUPPORTED_MARKETS.map((market) => `${MARKET_LABELS[market]}（${market}）`).join('、')
 }
 
 const PLANNER_SYSTEM_PROMPT = [
@@ -100,12 +94,12 @@ const PLANNER_SYSTEM_PROMPT = [
   '}',
   '',
   '可用的 Skill：',
-  '- stock.match: 匹配持仓中的股票名称或代码',
-  '- stock.getHolding: 读取某只股票的持仓摘要',
+  '- stock.match: 匹配持仓中的标的名称或代码',
+  '- stock.getHolding: 读取某个标的的持仓摘要',
   '- stock.getRecentTrades: 读取最近交易记录',
   '- stock.getQuote: 读取行情和估值',
   '- stock.getTechnicalSnapshot: 读取技术指标摘要',
-  '- stock.getExternalQuote: 抓取未持仓股票行情',
+  '- stock.getExternalQuote: 抓取未持仓标的行情',
   '- portfolio.getSummary: 读取组合总览',
   '- portfolio.getTopPositions: 读取最大仓位/盈亏',
   '- security.resolve: 基础证券实体解析，将名称/代码/简称解析为标准 code、name、market 和持仓状态',
@@ -115,7 +109,7 @@ const PLANNER_SYSTEM_PROMPT = [
   '- web.fetch: 抓取用户明确给出的 URL 或白名单金融接口。args 支持 { url, method?, headers?, body?, extractPrompt? }',
   '',
   '规则：',
-  '- 如果用户问题与股票投资无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
+  '- 如果用户问题与投资标的、持仓、交易或市场无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
   '- 如果标的不明确，responseMode 设为 clarify',
   '- 如果用户询问新闻、公告、政策、财报、利好利空、今日发生了什么、外部页面内容或任何当前上下文没有的数据，必须规划 web.search 或 web.fetch 补充上下文',
   '- 如果用户给了明确 URL，优先规划 web.fetch，并用 extractPrompt 写清楚要从页面提取什么',

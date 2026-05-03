@@ -66,12 +66,12 @@ function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputCon
       },
       outputRules: [
         '必须先得出结论，再给出证据依据；summary 第一句话必须包含明确主动作。',
-        '个股主动作只能从“买入 / 加仓 / 继续持有 / 减仓 / 卖出 / 观望 / 回避”中选择；组合主动作只能从“继续持有 / 分批减仓 / 控制仓位 / 暂不加仓 / 调整结构 / 等待确认”中选择。',
+        '标的主动作只能从“买入 / 加仓 / 继续持有 / 减仓 / 卖出 / 观望 / 回避”中选择；组合主动作只能从“继续持有 / 分批减仓 / 控制仓位 / 暂不加仓 / 调整结构 / 等待确认”中选择。',
         '不能把“仅供参考”“结合自身情况”“继续观察”作为主结论；若选择观望或等待确认，必须说明等待的具体信号、当前不操作的原因和后续触发动作。',
         'actionPlan 必须是可执行清单，每条都要包含动作、触发条件或原因，不能只写泛泛提醒。',
         '禁止输出“不要只凭单一信号操作”“避免情绪化买卖”“投资有风险”这类用户已经知道的常识句，必须替换为当前标的或组合的具体条件。',
         '凡是提到“支撑”“阻力”“新闻情绪”“趋势确认”“风险边界”，必须给出具体数值、方向、依据或明确说明当前数据缺失。',
-        '个股 actionPlan 至少包含一条买入/加仓触发条件、一条减仓/卖出触发条件，以及一条继续持有或观望的前提。',
+        '标的 actionPlan 至少包含一条买入/加仓触发条件、一条减仓/卖出触发条件，以及一条继续持有或观望的前提。',
         '必须把事实与推断分开表达。',
         '必须给出概率分析，且概率总和为 100。',
         '高强度模式下必须给明确倾向，且必须回答“现在更应该做什么”“现在不该做什么”。',
@@ -164,7 +164,7 @@ function buildPortfolioFallbackPayload(context: PortfolioAnalysisContext): Parti
       : `当前组合仍有正向缓冲，但更适合继续持有并观察结构变化，不适合在现阶段盲目放大风险。当前更应该保持优势仓位的稳定性，而不是急着做高频切换。`
 
   const facts = [
-    `当前组合共有 ${context.summaries.length} 只持仓，按当前持仓成本口径计算，最大仓位占比 ${(context.largestPositionWeight * 100).toFixed(1)}%。`,
+    `当前组合共有 ${context.summaries.length} 个持仓，按当前持仓成本口径计算，最大仓位占比 ${(context.largestPositionWeight * 100).toFixed(1)}%。`,
     `当前在投本金约 ${context.totalCurrentCost.toFixed(2)} ${context.baseCurrency}，已实现收益约 ${context.totalRealizedPnl.toFixed(2)} ${context.baseCurrency}，未实现盈亏约 ${context.totalUnrealizedPnl.toFixed(2)} ${context.baseCurrency}。`,
     `历史累计买入额约 ${context.totalHistoricalBuyAmount.toFixed(2)} ${context.baseCurrency}，今日组合盈亏约 ${context.totalDailyPnl.toFixed(2)} ${context.baseCurrency}，当前盈利持仓 ${context.profitableCount} 只，亏损持仓 ${context.losingCount} 只。`,
   ]
@@ -390,7 +390,7 @@ function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
       evidence: ['string'],
       disclaimer: 'string',
     },
-    '请对这只股票从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出买入、卖出、继续持有、减仓或观望等明确操作建议。',
+    '请对这个标的从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出买入、卖出、继续持有、减仓或观望等明确操作建议。',
     context,
   )
 }
@@ -637,7 +637,7 @@ export function buildAnalysisTags(
   stock?: Pick<Stock, 'market' | 'code' | 'name'>,
 ) {
   const tags = [
-    type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析',
+    type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '标的分析',
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',
   ]
   if (stock) {

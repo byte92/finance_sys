@@ -200,10 +200,10 @@ export default function PortfolioSummarySection() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">资产概览</h2>
-          <div className="mt-1 text-xs text-muted-foreground">默认展示核心资产状态，展开可查看费用、分红和持仓数量</div>
+          <div className="mt-1 text-xs text-muted-foreground">默认展示核心资产状态，展开可查看费用、现金收益和持仓数量</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="hidden text-xs text-muted-foreground sm:block">共 {portfolio.stockCount} 只资产</div>
+          <div className="hidden text-xs text-muted-foreground sm:block">共 {portfolio.stockCount} 个资产</div>
           <Button
             type="button"
             variant="outline"
@@ -230,7 +230,7 @@ export default function PortfolioSummarySection() {
             {todayPnlLoading
               ? '正在刷新当日行情'
               : todayPnl.activeDaily > 0
-                ? `${todayPnl.gainers} 只上涨 · ${todayPnl.losers} 只下跌${todayPnl.flat > 0 ? ` · ${todayPnl.flat} 只平盘` : ''}`
+                ? `${todayPnl.gainers} 个上涨 · ${todayPnl.losers} 个下跌${todayPnl.flat > 0 ? ` · ${todayPnl.flat} 个平盘` : ''}`
                 : todayPnl.quoted > 0 && todayPnl.closed > 0
                   ? '今日休市 · 最近行情不计入今日盈亏'
                   : todayPnl.quoted > 0 && todayPnl.stale > 0
@@ -245,7 +245,7 @@ export default function PortfolioSummarySection() {
             {formatWithCurrency(todayPnl.marketValue)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            {todayPnlLoading ? '正在刷新行情' : todayPnl.quoted > 0 ? `${todayPnl.quoted} 只持仓有最近行情` : '暂无可用行情'}
+            {todayPnlLoading ? '正在刷新行情' : todayPnl.quoted > 0 ? `${todayPnl.quoted} 个持仓有最近行情` : '暂无可用行情'}
           </div>
         </Card>
 
@@ -284,7 +284,7 @@ export default function PortfolioSummarySection() {
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">累计分红</div>
+            <div className="text-xs text-muted-foreground mb-1">累计现金收益</div>
             <div className="stat-value text-foreground">
               {formatWithCurrency(portfolio.totalDividend)}
             </div>
@@ -292,7 +292,7 @@ export default function PortfolioSummarySection() {
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">持仓股数</div>
+            <div className="text-xs text-muted-foreground mb-1">持仓数量</div>
             <div className="stat-value text-foreground">
               {portfolio.totalHolding.toLocaleString()}
             </div>

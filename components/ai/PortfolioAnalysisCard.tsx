@@ -112,7 +112,7 @@ export default function PortfolioAnalysisCard({ compact = false }: { compact?: b
       <Card className="border-border bg-card">
         <div className="p-5 space-y-4">
           {stocks.length === 0 && (
-            <div className="text-sm text-muted-foreground">当前没有持仓，先添加股票或交易后再进行组合分析。</div>
+            <div className="text-sm text-muted-foreground">当前没有持仓，先添加资产或交易后再进行组合分析。</div>
           )}
 
           {error && (

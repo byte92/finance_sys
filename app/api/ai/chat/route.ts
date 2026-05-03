@@ -23,7 +23,7 @@ const MARKET_ALIASES: Record<Market, string[]> = {
   HK: ['HK', '港股', '香港', '港交所'],
   US: ['US', '美股', '美国', '纳斯达克', '纽交所', 'NYSE', 'NASDAQ'],
   FUND: ['FUND', '基金', 'ETF'],
-  CRYPTO: ['CRYPTO', '加密', '币', '数字货币'],
+  CRYPTO: ['CRYPTO', '加密', '币', '数字货币', '虚拟货币', 'USDT', 'USDC'],
 }
 
 function isAbortError(error: unknown) {

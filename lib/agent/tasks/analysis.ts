@@ -107,7 +107,7 @@ export async function runStockAnalysisAgentTask(
       {
         name: 'stock.getAnalysisContext',
         args: { stockId: stock.id },
-        reason: '固定个股分析模板需要持仓、成本、行情、技术指标和新闻上下文。',
+        reason: '固定标的分析模板需要持仓、成本、行情、技术指标和新闻上下文。',
       },
     ],
     responseMode: 'answer',
@@ -119,7 +119,7 @@ export async function runStockAnalysisAgentTask(
     aiConfig,
     maxContextTokens: Math.max(4096, aiConfig.maxContextTokens || 128000),
   })
-  const context = getRequiredContext<StockAnalysisContext>(skillResults[0], '个股分析')
+  const context = getRequiredContext<StockAnalysisContext>(skillResults[0], '标的分析')
   return {
     context,
     plan,

@@ -46,7 +46,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         })
         const res = await fetch(`/api/ai/history?${params.toString()}`, { signal: controller.signal })
         const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
-          fallbackMessage: '读取个股 AI 历史失败',
+          fallbackMessage: '读取标的 AI 历史失败',
           unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
         })
         const latest = (data.records as AiAnalysisHistoryRecord[] | undefined)?.[0]
@@ -57,7 +57,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         console.error('Load stock AI analysis history failed:', err)
-        setError(describeClientRequestError(err, '读取个股 AI 历史失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
+        setError(describeClientRequestError(err, '读取标的 AI 历史失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
       } finally {
         if (!controller.signal.aborted) setHistoryLoading(false)
       }
@@ -82,14 +82,14 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
         }),
       })
       const data = await readJsonResponse<{ result: AiAnalysisResult }>(res, {
-        fallbackMessage: '个股 AI 分析失败',
+        fallbackMessage: '标的 AI 分析失败',
         unavailableMessage: AI_ANALYSIS_UNAVAILABLE_MESSAGE,
       })
       setResult(data.result as AiAnalysisResult)
       setRestoredFromHistory(false)
     } catch (err) {
       console.error('Run stock AI analysis failed:', err)
-      setError(describeClientRequestError(err, '个股 AI 分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
+      setError(describeClientRequestError(err, '标的 AI 分析失败', AI_ANALYSIS_UNAVAILABLE_MESSAGE))
     } finally {
       setLoading(false)
     }
@@ -123,7 +123,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
 
         {!result && !error && (
           <div className="rounded-lg border border-border/70 bg-muted/30 p-4 text-sm text-muted-foreground">
-            {historyLoading ? '正在读取最近一次个股 AI 分析...' : '点击“开始分析”后，系统会结合最新行情、估值、K 线技术指标和相关新闻生成结构化报告。'}
+            {historyLoading ? '正在读取最近一次标的 AI 分析...' : '点击“开始分析”后，系统会结合最新行情、估值、K 线技术指标和相关新闻生成结构化报告。'}
           </div>
         )}
 

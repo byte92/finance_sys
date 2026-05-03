@@ -1,10 +1,10 @@
-// 股价数据源接口定义 - 支持多种API提供商
+// 行情数据源接口定义 - 支持多种 API 提供商
 import type { Market } from '@/types'
 
-// 统一的股价响应格式
+// 统一的行情响应格式
 export interface StockQuote {
-  symbol: string          // 股票代码
-  name: string            // 股票名称
+  symbol: string          // 标的代码
+  name: string            // 标的名称
   price: number           // 当前价格
   change: number          // 涨跌额
   changePercent: number   // 涨跌幅(%)
@@ -20,7 +20,7 @@ export interface StockQuote {
 }
 
 // 数据源提供商枚举
-export type DataSourceProvider = 'tencent' | 'nasdaq' | 'yahoo-finance' | 'alpha-vantage' | 'stooq' | 'manual'
+export type DataSourceProvider = 'tencent' | 'nasdaq' | 'yahoo-finance' | 'alpha-vantage' | 'stooq' | 'crypto' | 'manual'
 
 // 数据源配置
 export interface DataSourceConfig {
@@ -48,7 +48,7 @@ export interface QuoteCacheItem {
   expiresAt: number
 }
 
-// 全局股价服务配置
+// 全局行情服务配置
 export interface StockServiceConfig {
   defaultProvider: DataSourceProvider
   sources: Partial<Record<DataSourceProvider, DataSourceConfig>>

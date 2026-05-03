@@ -1,4 +1,4 @@
-// 股价服务主类 - 管理多个数据源和故障转移
+// 行情服务主类 - 管理多个数据源和故障转移
 import type { StockQuote, StockServiceConfig, DataSourceProvider, QuoteCacheItem, StockDataSource } from '@/types/stockApi'
 import type { Market } from '@/types'
 import { TencentFinanceSource } from '@/lib/dataSources/TencentFinanceSource'
@@ -6,6 +6,7 @@ import { NasdaqSource } from '@/lib/dataSources/NasdaqSource'
 import { AlphaVantageDataSource } from '@/lib/dataSources/AlphaVantageSource'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import { StooqSource } from '@/lib/dataSources/StooqSource'
+import { CryptoSource } from '@/lib/dataSources/CryptoSource'
 import { ManualDataSource } from '@/lib/dataSources/ManualSource'
 import { logger } from '@/lib/observability/logger'
 
@@ -22,15 +23,16 @@ const DEFAULT_CONFIG: StockServiceConfig = {
       cacheTtl: 300,
     },
     stooq: { provider: 'stooq', rateLimit: 120, cacheTtl: 60 },
+    crypto: { provider: 'crypto', rateLimit: 120, cacheTtl: 15 },
     manual: { provider: 'manual', rateLimit: 1000, cacheTtl: 0 },
   },
   cacheEnabled: true,
   cacheTtl: 60,
-  fallbackChain: ['tencent', 'nasdaq', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'],
+  fallbackChain: ['tencent', 'nasdaq', 'yahoo-finance', 'stooq', 'crypto', 'alpha-vantage', 'manual'],
 }
 
 /**
- * 股票报价聚合服务，负责管理多个行情数据源、按市场选择 fallback 链路，并对报价结果做短期缓存。
+ * 行情报价聚合服务，负责管理多个数据源、按市场选择 fallback 链路，并对报价结果做短期缓存。
  */
 export class StockPriceService {
   private config: StockServiceConfig
@@ -48,6 +50,7 @@ export class StockPriceService {
     if (s.nasdaq) this.sources.set('nasdaq', new NasdaqSource(s.nasdaq))
     if (s['yahoo-finance']) this.sources.set('yahoo-finance', new YahooFinanceSource(s['yahoo-finance']))
     if (s.stooq) this.sources.set('stooq', new StooqSource(s.stooq))
+    if (s.crypto) this.sources.set('crypto', new CryptoSource(s.crypto))
     if (s['alpha-vantage']) this.sources.set('alpha-vantage', new AlphaVantageDataSource(s['alpha-vantage']))
     if (s.manual) this.sources.set('manual', new ManualDataSource(s.manual))
   }
@@ -94,6 +97,9 @@ export class StockPriceService {
   private getFallbackChain(market: Market) {
     if (market === 'US') {
       return ['nasdaq', 'tencent', 'yahoo-finance', 'stooq', 'alpha-vantage', 'manual'] as DataSourceProvider[]
+    }
+    if (market === 'CRYPTO') {
+      return ['crypto', 'manual'] as DataSourceProvider[]
     }
     return this.config.fallbackChain
   }

@@ -8,7 +8,7 @@ export default function PortfolioPage() {
     <div className="min-h-screen">
       <PageHeader
         title="持仓"
-        description="集中查看当前持仓、成本和盈亏，并进入股票详情。"
+        description="集中查看当前持仓、成本和盈亏，并进入资产详情。"
       />
 
       <div className="px-4 py-6 lg:px-6">

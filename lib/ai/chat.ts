@@ -1,3 +1,4 @@
+import { SUPPORTED_MARKETS } from '@/config/defaults'
 import { calcStockSummary, generateId } from '@/lib/finance'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { streamCompletion, type LlmProviderMessage } from '@/lib/external/llmProvider'
@@ -17,7 +18,6 @@ export type ChatContextBuildResult = {
   stats: AiChatContextStats
 }
 
-const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 export const AI_CHAT_TITLE_MAX_LENGTH = 24
 
 export function validateAiChatConfig(config: AiConfig) {
@@ -121,7 +121,7 @@ function buildHoldingContext(stocks: Stock[]) {
 
 async function buildExternalStockContext(externalStocks: ExternalStockRequest[]) {
   const unique = externalStocks
-    .filter((item) => item.symbol.trim() && VALID_MARKETS.includes(item.market))
+    .filter((item) => item.symbol.trim() && SUPPORTED_MARKETS.includes(item.market))
     .filter((item, index, array) => array.findIndex((candidate) => candidate.symbol === item.symbol && candidate.market === item.market) === index)
 
   return Promise.all(
@@ -140,9 +140,9 @@ async function buildExternalStockContext(externalStocks: ExternalStockRequest[])
 function buildSystemPrompt(language: AiConfig['analysisLanguage']) {
   return [
     '你是 StockTracker 内置的个人理财专家，服务对象是正在管理自己股票、基金、港股、美股、A 股或加密资产记录的个人投资者。',
-    '你只能回答与用户当前持仓、用户明确提到的股票、交易记录、股票基础数据、估值、行情、风险、仓位、复盘和资产配置有关的问题。',
-    '如果用户询问与股票投资无关的内容，你必须礼貌拒绝，并引导用户回到持仓、交易复盘、股票估值、行情或风险管理相关问题。',
-    '你可以基于系统提供的持仓数据、交易记录、盈亏摘要、个股基础数据、技术指标，以及系统为未持仓股票自动抓取到的可用数据进行分析。',
+    '你只能回答与用户当前持仓、用户明确提到的标的、交易记录、标的基础数据、估值、行情、风险、仓位、复盘和资产配置有关的问题。',
+    '如果用户询问与投资标的无关的内容，你必须礼貌拒绝，并引导用户回到持仓、交易复盘、估值、行情或风险管理相关问题。',
+    '你可以基于系统提供的持仓数据、交易记录、盈亏摘要、标的基础数据、技术指标，以及系统为未持仓标的自动抓取到的可用数据进行分析。',
     '你不能编造系统未提供的数据；如果数据不足，必须明确说明。',
     '你不能承诺收益，不能声称确定涨跌，不能提供内幕消息，不能把回答包装成绝对买卖指令。',
     '回答需要具体、直接、可执行，但不要在每次回复中输出免责声明、风险提示模板或“仅供参考，不构成投资建议”之类的固定结尾；这些边界由界面中的固定提醒承担。',

@@ -5,6 +5,7 @@ import { ChevronRight, Sparkles } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary } from '@/lib/finance'
+import { getMarketAssetUnit } from '@/config/defaults'
 
 export default function AiStockNavigator() {
   const { stocks, config } = useStockStore()
@@ -12,18 +13,19 @@ export default function AiStockNavigator() {
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-sm font-semibold">个股分析入口</h2>
-        <div className="mt-1 text-xs text-muted-foreground">从这里直接进入对应股票详情页，触发 AI 深度分析。</div>
+        <h2 className="text-sm font-semibold">标的分析入口</h2>
+        <div className="mt-1 text-xs text-muted-foreground">从这里直接进入对应资产详情页，触发 AI 深度分析。</div>
       </div>
 
       {stocks.length === 0 ? (
         <Card className="border-border bg-card">
-          <div className="p-5 text-sm text-muted-foreground">当前没有持仓，先添加股票后再使用个股 AI 分析。</div>
+          <div className="p-5 text-sm text-muted-foreground">当前没有持仓，先添加资产后再使用标的 AI 分析。</div>
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {stocks.map((stock) => {
             const summary = calcStockSummary(stock, undefined, { matchMode: config.tradeMatchMode })
+            const assetUnit = getMarketAssetUnit(stock.market)
             return (
               <Link
                 key={stock.id}
@@ -38,7 +40,7 @@ export default function AiStockNavigator() {
                   <Sparkles className="h-4 w-4 shrink-0 text-primary" />
                 </div>
                 <div className="mt-4 space-y-1 text-xs text-muted-foreground">
-                  <div>当前持仓 {summary.currentHolding.toLocaleString()} 股</div>
+                  <div>当前持仓 {formatQuantity(summary.currentHolding)} {assetUnit}</div>
                   <div>已实现收益 {summary.realizedPnl.toFixed(2)}</div>
                   <div>交易记录 {stock.trades.length} 条</div>
                 </div>
@@ -53,4 +55,10 @@ export default function AiStockNavigator() {
       )}
     </section>
   )
+}
+
+function formatQuantity(value: number) {
+  return value.toLocaleString('zh-CN', {
+    maximumFractionDigits: 8,
+  })
 }

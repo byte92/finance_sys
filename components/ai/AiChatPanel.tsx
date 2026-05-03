@@ -606,7 +606,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>AI 分析基于你的持仓和交易数据生成，仅供参考，不构成任何投资建议。市场有风险，交易需谨慎。</span>
               </div>
-              <div className="text-sm text-muted-foreground">可以直接问我与你的持仓、交易复盘、股票估值或风险管理相关的问题。</div>
+              <div className="text-sm text-muted-foreground">可以直接问我与你的持仓、交易复盘、估值或风险管理相关的问题。</div>
               <div className="grid gap-2">
                 {suggestions.map((suggestion) => (
                   <button
@@ -732,7 +732,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
               value={input}
               disabled={!aiReady || loading}
               rows={mode === 'full' ? 2 : 1}
-              placeholder={aiReady ? '输入与股票、持仓或交易相关的问题...' : '请先配置 AI'}
+              placeholder={aiReady ? '输入与标的、持仓或交易相关的问题...' : '请先配置 AI'}
               onChange={(event) => setInput(event.target.value)}
               onCompositionStart={() => {
                 composingRef.current = true

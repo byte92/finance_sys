@@ -3,7 +3,7 @@
 
 export type Market = 'A' | 'HK' | 'US' | 'FUND' | 'CRYPTO'
 
-// 交易类型：新增 DIVIDEND（分红/派息）
+// 交易类型：DIVIDEND 表示现金收益（股票分红、基金派息、加密资产收益等）
 export type TradeType = 'BUY' | 'SELL' | 'DIVIDEND'
 
 // 卖出成本匹配口径
@@ -12,15 +12,15 @@ export type TradeMatchMode = 'FIFO' | 'RECENT_LOTS'
 // 单笔交易记录
 export interface Trade {
   id: string            // UUID
-  stockId: string       // 关联股票ID
+  stockId: string       // 关联持仓 ID
   type: TradeType
   date: string          // ISO date string: "2024-01-15"
-  price: number         // 成交价格（分红时为每股分红金额）
-  quantity: number      // 成交数量（分红时为持有股数）
+  price: number         // 成交价格（现金收益时为单位到账金额）
+  quantity: number      // 成交数量（现金收益时为持有数量）
   commission: number    // 手续费（元）
   tax: number           // 税费合计（如印花税、过户费、结算费）
   totalAmount: number   // 总金额（price * quantity，不含费用）
-  netAmount: number     // 实际金额（买入含费用，卖出/分红扣费用）
+  netAmount: number     // 实际金额（买入含费用，卖出/现金收益扣费用）
   note?: string
   createdAt: string     // 创建时间
   updatedAt: string
@@ -37,15 +37,15 @@ export interface TradePnlDetail {
   proceeds: number      // 卖出实收（含税后）
   holdingAfterTrade?: number   // 该笔交易完成后的总持仓
   soldQuantity?: number        // 对买入记录而言，该笔买入已被卖出的数量
-  remainingQuantity?: number   // 对买入记录而言，该笔买入当前尚未卖出的剩余股数
+  remainingQuantity?: number   // 对买入记录而言，该笔买入当前尚未卖出的剩余数量
   isDividend?: boolean
 }
 
-// 股票持仓/历史记录
+// 投资标的持仓/历史记录
 export interface Stock {
   id: string
-  code: string          // 股票代码：000001, 00700, AAPL
-  name: string          // 股票名称
+  code: string          // 标的代码：000001, 00700, AAPL, BTC
+  name: string          // 标的名称
   market: Market
   trades: Trade[]
   note?: string
@@ -107,7 +107,7 @@ export interface TradeProfit {
   sellAmount: number    // 卖出金额（扣手续费）
 }
 
-// 股票整体盈亏摘要（计算型）
+// 单个标的整体盈亏摘要（计算型）
 export interface StockSummary {
   stock: Stock
   tradeMatchMode: TradeMatchMode // 卖出成本匹配口径
@@ -115,13 +115,13 @@ export interface StockSummary {
   totalSellAmount: number   // 总卖出（扣费）
   currentHolding: number    // 当前持仓数量
   avgCostPrice: number      // 平均成本价
-  realizedPnl: number       // 已实现盈亏（含分红）
+  realizedPnl: number       // 已实现盈亏（含现金收益）
   unrealizedPnl: number     // 未实现盈亏（需输入当前价格）
   totalPnl: number          // 总盈亏
   totalPnlPercent: number   // 总盈亏%
   totalCommission: number   // 总手续费
-  totalDividend: number     // 累计分红收益
-  tradeCount: number        // 交易笔数（不含分红）
+  totalDividend: number     // 累计现金收益
+  tradeCount: number        // 交易笔数（不含现金收益）
   tradePnlDetails: TradePnlDetail[]  // 每笔交易的盈亏明细
 }
 

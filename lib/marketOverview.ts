@@ -221,7 +221,7 @@ function normalizeMarketAnalysisResult(
     stance: parsed?.stance?.trim() || '中性偏观察',
     facts: parsed?.facts?.length ? parsed.facts : fallback.evidence,
     inferences: parsed?.inferences?.length ? parsed.inferences : [summary],
-    actionPlan: parsed?.actionPlan?.length ? parsed.actionPlan : ['优先把大盘分析作为节奏参考，再结合个股和仓位做决策。'],
+    actionPlan: parsed?.actionPlan?.length ? parsed.actionPlan : ['优先把大盘分析作为节奏参考，再结合标的和仓位做决策。'],
     invalidationSignals: parsed?.invalidationSignals?.length
       ? parsed.invalidationSignals
       : ['若三地指数强弱排序明显反转，或宏观新闻快速转向，应重新评估当前大盘判断。'],
@@ -233,7 +233,7 @@ function normalizeMarketAnalysisResult(
     technicalSignals: parsed?.technicalSignals?.length ? parsed.technicalSignals : (fallback.signals ?? []),
     newsDrivers: parsed?.newsDrivers?.length ? parsed.newsDrivers : (fallback.news ?? []),
     keyLevels: parsed?.keyLevels?.length ? parsed.keyLevels : ['关注三地大盘代表指数的近期支撑与阻力位'],
-    actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把大盘分析作为节奏参考，仍需结合个股与仓位管理。'],
+    actionableObservations: parsed?.actionableObservations?.length ? parsed.actionableObservations : ['把大盘分析作为节奏参考，仍需结合标的与仓位管理。'],
     risks: parsed?.risks?.length ? parsed.risks : ['外部指数、新闻和技术指标数据可能延迟或缺失。'],
     confidence: parsed?.confidence ?? fallbackInput.confidence,
     disclaimer: parsed?.disclaimer?.trim() || '以上内容仅基于当前大盘数据进行条件式分析，不构成投资建议或收益承诺。',
@@ -492,7 +492,7 @@ export function buildAnalysisTags(
   _strength: AiAnalysisResult['analysisStrength'],
   stock?: { market: Market; code: string; name: string },
 ) {
-  const typeLabel = type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '个股分析'
+  const typeLabel = type === 'portfolio' ? '组合分析' : type === 'market' ? '大盘分析' : '标的分析'
   const tags = [
     typeLabel,
     confidence === 'high' ? '高信心' : confidence === 'medium' ? '中等信心' : '低信心',

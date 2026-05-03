@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { parseMarket } from '@/config/defaults'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import { withApiLogging } from '@/lib/observability/api'
@@ -6,20 +7,19 @@ import { logger } from '@/lib/observability/logger'
 import type { Market } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
-const VALID_MARKETS: Market[] = ['A', 'HK', 'US', 'FUND', 'CRYPTO']
 const yahooValuationSource = new YahooFinanceSource({ provider: 'yahoo-finance' })
 
 async function handleGET(request: Request) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')?.trim()
-  const market = searchParams.get('market') as Market | null
+  const market = parseMarket(searchParams.get('market'))
   const forceRefresh = searchParams.get('forceRefresh') === '1'
 
   if (!symbol) {
     return NextResponse.json({ error: 'Missing query param: symbol' }, { status: 400 })
   }
 
-  if (!market || !VALID_MARKETS.includes(market)) {
+  if (!market) {
     return NextResponse.json({ error: 'Invalid query param: market' }, { status: 400 })
   }
 

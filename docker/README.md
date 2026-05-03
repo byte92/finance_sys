@@ -2,7 +2,7 @@
 
 本文档说明如何把 StockTracker 作为 Docker 服务运行，并发布到 GitHub Container Registry。
 
-## 本地构建并启动
+## 使用公开镜像启动
 
 如果需要修改宿主机端口，可以准备 Docker 编排配置：
 
@@ -15,7 +15,7 @@ cp .env.example .env
 
 ```bash
 cd docker
-docker compose up -d --build
+docker compose up -d
 ```
 
 启动后访问：
@@ -32,6 +32,34 @@ cp .env.example .env.local
 `docker/docker-compose.yml` 会可选读取 `../.env.local` 并把这些业务变量注入容器。应用代码仍然通过 `process.env.AI_API_KEY`、`process.env.AI_MODEL` 等方式读取。
 
 默认数据会保存在 Docker volume `stocktracker-data` 中，容器重启后不会丢失。
+
+默认情况下，`docker-compose.yml` 会从 GHCR 拉取公开镜像：
+
+```text
+ghcr.io/byte92/finance_sys:latest
+```
+
+如需指定其它 tag 或镜像源，可以在 `docker/.env` 中设置：
+
+```dotenv
+DOCKER_IMAGE=ghcr.io/byte92/finance_sys:main-84ee3a6
+```
+
+如果需要更新到最新镜像：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+## 本地构建
+
+如果希望在本机重新构建镜像，请编辑 `docker/docker-compose.yml`，取消 `build` 配置的注释，然后运行：
+
+```bash
+cd docker
+docker compose up -d --build
+```
 
 ## 常用命令
 

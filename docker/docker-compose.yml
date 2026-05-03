@@ -2,10 +2,12 @@ name: stocktracker
 
 services:
   stocktracker:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: stocktracker:local
+    image: ${DOCKER_IMAGE:-ghcr.io/byte92/finance_sys:latest}
+    pull_policy: missing
+    # 如需本地构建，取消下面 build 配置的注释即可。
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile
     container_name: stocktracker
     restart: unless-stopped
     init: true

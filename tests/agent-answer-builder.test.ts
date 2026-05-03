@@ -127,6 +127,46 @@ test('answer builder exposes web search sources and searched time', () => {
   }])
 })
 
+test('answer builder exposes finance calculation formula and assumptions', () => {
+  const draft = buildAgentAnswerDraft(tradeReviewPlan, [
+    {
+      skillName: 'finance.calculate',
+      ok: true,
+      data: {
+        calculationType: 'dividend.estimate',
+        stock: { id: 'stock-1', code: '601398', name: '工商银行', market: 'A' },
+        quantity: 2000,
+        currency: 'CNY',
+        cashPerShare: 0.3064,
+        grossCashPerShare: 0.3064,
+        netCashPerShare: 0.3064,
+        estimatedAmount: 612.8,
+        grossEstimatedAmount: 612.8,
+        netEstimatedAmount: 612.8,
+        formula: '2000 × 0.3064 = 612.8',
+        source: { kind: 'local_recent_dividend', tradeDate: '2025-07-10' },
+        assumptions: ['按本地最近一次现金收益记录（2025-07-10）的实际口径估算。'],
+      },
+    },
+  ])
+
+  const calculation = draft.calculations.find((item) => item.label === '预计分红金额')
+  const source = draft.facts.find((item) => item.label === '分红估算口径')
+
+  assert.equal(calculation?.source, 'finance.calculate')
+  assert.deepEqual(calculation?.value, {
+    amount: 612.8,
+    currency: 'CNY',
+    quantity: 2000,
+    cashPerShare: 0.3064,
+    grossEstimatedAmount: 612.8,
+    netEstimatedAmount: 612.8,
+    formula: '2000 × 0.3064 = 612.8',
+  })
+  assert.match(calculation?.note ?? '', /最近一次现金收益/)
+  assert.equal(source?.source, 'finance.calculate')
+})
+
 test('answer builder exposes web fetch content', () => {
   const draft = buildAgentAnswerDraft({
     intent: 'market_question',

@@ -1,9 +1,18 @@
 import { composeAgentContext } from '@/lib/agent/context'
 import { executeAgentPlan } from '@/lib/agent/executor'
 import { planAgentResponse } from '@/lib/agent/planner'
-import type { AgentRunInput, AgentRunResult } from '@/lib/agent/types'
+import type { AgentDataScope, AgentRunInput, AgentRunResult } from '@/lib/agent/types'
 
 const CLARIFY_DATA_SKILLS = new Set(['security.resolve', 'market.resolveCandidate'])
+const DEFAULT_AGENT_SCOPES: AgentDataScope[] = [
+  'portfolio.read',
+  'stock.read',
+  'trade.read',
+  'quote.read',
+  'chat.read',
+  'market.read',
+  'network.fetch',
+]
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const maxContextTokens = Math.max(4096, input.aiConfig.maxContextTokens || 128000)
@@ -11,6 +20,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
     userMessage: input.userMessage,
     stocks: input.stocks,
     history: input.history,
+    resolvedSecurities: input.resolvedSecurities ?? [],
     externalStocks: input.externalStocks ?? [],
     aiConfig: input.aiConfig,
   })
@@ -22,6 +32,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
       stocks: input.stocks,
       aiConfig: input.aiConfig,
       maxContextTokens,
+      allowedScopes: DEFAULT_AGENT_SCOPES,
     })
     : []
 
@@ -55,6 +66,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
         stocks: input.stocks,
         aiConfig: input.aiConfig,
         maxContextTokens,
+        allowedScopes: DEFAULT_AGENT_SCOPES,
       })
       : []
     const skillResults = [...clarifyDataResults, {

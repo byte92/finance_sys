@@ -11,6 +11,7 @@ test('agent skill loader reads builtin markdown manifests', () => {
   const names = manifests.map((manifest) => manifest.name).sort()
 
   assert.deepEqual(names, [
+    'finance.calculate',
     'market.getAnalysisContext',
     'market.resolveCandidate',
     'portfolio.getAnalysisContext',

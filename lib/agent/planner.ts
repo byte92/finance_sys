@@ -1,13 +1,21 @@
 import { detectStockCode, formatStockCandidate, matchStocks } from '@/lib/agent/entity/stockMatcher'
 import { resolveSecurityCandidates, type SecurityCandidate } from '@/lib/agent/entity/securityResolver'
 import { MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
-import type { AgentPlan, AgentSkillCall } from '@/lib/agent/types'
+import type { AgentPlan, AgentResolvedSecurity, AgentSkillCall } from '@/lib/agent/types'
 import type { AiChatMessage, AiConfig, Market, Stock } from '@/types'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
 
 const PORTFOLIO_KEYWORDS = ['组合', '仓位', '持仓', '风险', '亏损', '盈利', '收益', '回撤', '集中', '配置', '哪只', '哪些']
 const TRADE_KEYWORDS = ['交易', '复盘', '买入', '卖出', '分红', '派息', '成本', '加仓', '减仓']
 const OUT_OF_SCOPE_KEYWORDS = ['天气', '菜谱', '写代码', '编程', '电影', '小说', '医疗', '法律', '旅游', '翻译']
+const PUBLIC_DISCLOSURE_KEYWORDS = ['公告', '新闻', '政策', '财报', '年报', '季报', '业绩', '利好', '利空', '回购', '减持', '增持', '监管', '诉讼', '处罚', '重组', '并购']
+const CORPORATE_ACTION_KEYWORDS = ['分红', '派息', '股息', '除权', '除息', '股权登记', '利润分配']
+const EXTERNAL_TIMING_KEYWORDS = ['最新', '最近', '下一次', '下次', '什么时候', '哪天', '时间', '要', '即将', '预案', '实施']
+const DIVIDEND_ESTIMATE_PATTERNS = [
+  /(预计|预估|估算|估计|大概).*(分红|派息|股息|现金收益|能分|能拿|到账)/,
+  /(分红|派息|股息|现金收益).*(我|持仓|手里|这次|下次|下一次|预计|预估|估算|估计|大概|能分|能拿|到账)/,
+  /(我)?能分多少|分多少|能拿多少|到账多少|派多少钱/,
+]
 
 function includesAny(content: string, keywords: string[]) {
   return keywords.some((keyword) => content.includes(keyword))
@@ -19,6 +27,8 @@ const LLM_PLANNER_TIMEOUT_MS = 8_000
 
 function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = buildDefaultStockSkillCalls(stock)
+  appendExternalResearchFallback(skills, userMessage, stock)
+  appendDomainCalculationFallback(skills, userMessage, stock)
   return dedupeSkillCalls(skills)
 }
 
@@ -36,6 +46,7 @@ type ExternalStockTarget = Pick<SecurityCandidate, 'code' | 'name' | 'market'>
 
 function buildExternalStockSkillCalls(target: ExternalStockTarget, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = buildDefaultExternalStockSkillCalls(target)
+  appendExternalResearchFallback(skills, userMessage, target)
   return dedupeSkillCalls(skills)
 }
 
@@ -60,6 +71,47 @@ function dedupeSkillCalls(calls: AgentSkillCall[]) {
 
 function buildFallbackSearchQuery(target: StockSearchTarget, content: string) {
   return [target.name, target.code, content].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+function needsExternalResearch(content: string) {
+  const asksPublicDisclosure = includesAny(content, PUBLIC_DISCLOSURE_KEYWORDS)
+  const asksCorporateActionTiming = includesAny(content, CORPORATE_ACTION_KEYWORDS)
+    && includesAny(content, EXTERNAL_TIMING_KEYWORDS)
+  return asksPublicDisclosure || asksCorporateActionTiming
+}
+
+function hasResearchSkill(calls: AgentSkillCall[]) {
+  return calls.some((call) => call.name === 'web.search' || call.name === 'web.fetch')
+}
+
+function needsDividendEstimate(content: string) {
+  return DIVIDEND_ESTIMATE_PATTERNS.some((pattern) => pattern.test(content))
+}
+
+function hasFinanceCalculationSkill(calls: AgentSkillCall[]) {
+  return calls.some((call) => call.name === 'finance.calculate')
+}
+
+function appendDomainCalculationFallback(calls: AgentSkillCall[], userMessage: string, stock: Stock) {
+  if (!needsDividendEstimate(userMessage) || hasFinanceCalculationSkill(calls)) return
+  calls.push({
+    name: 'finance.calculate',
+    args: { type: 'dividend.estimate', stockId: stock.id },
+    reason: '用户询问持仓相关的分红现金估算，需要执行受控业务域计算',
+  })
+}
+
+function appendExternalResearchFallback(calls: AgentSkillCall[], userMessage: string, target?: StockSearchTarget) {
+  if (!needsExternalResearch(userMessage) || hasResearchSkill(calls)) return
+  calls.push({
+    name: 'web.search',
+    args: {
+      query: target ? buildFallbackSearchQuery(target, userMessage) : userMessage,
+      limit: 5,
+      searchLimit: 10,
+    },
+    reason: '用户询问系统本地持仓/行情之外的公开财务或披露信息，需要用公开搜索补充上下文',
+  })
 }
 
 function inferMarketFromCode(code: string): Market | null {
@@ -105,13 +157,15 @@ const PLANNER_SYSTEM_PROMPT = [
   '- security.resolve: 基础证券实体解析，将名称/代码/简称解析为标准 code、name、market 和持仓状态',
   '- market.resolveCandidate: 旧版兼容解析 Skill；新计划应优先使用 security.resolve',
   '- stock.getFinancials: 获取最近财报数据；args 可带 researchQuery/sourceHints，供结构化数据不可用时继续 web.search',
+  '- finance.calculate: 执行受控的投资业务域计算；当前支持 { type: "dividend.estimate", stockId/code/symbol, quantity?, cashPerShare?, dividendPer10Shares? }',
   '- web.search: 搜索公开网页。args 支持 { query, queries?, sourceHints?, limit?, searchLimit? }，query/queries/sourceHints 由你根据用户问题抽取，不会被代码按金融场景二次改写',
   '- web.fetch: 抓取用户明确给出的 URL 或白名单金融接口。args 支持 { url, method?, headers?, body?, extractPrompt? }',
   '',
   '规则：',
   '- 如果用户问题与投资标的、持仓、交易或市场无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
   '- 如果标的不明确，responseMode 设为 clarify',
-  '- 如果用户询问新闻、公告、政策、财报、利好利空、今日发生了什么、外部页面内容或任何当前上下文没有的数据，必须规划 web.search 或 web.fetch 补充上下文',
+  '- 如果用户询问新闻、公告、政策、财报、业绩、分红/派息、除权除息、股权登记日、利润分配、利好利空、今日发生了什么、外部页面内容或任何当前上下文没有的数据，必须规划 web.search 或 web.fetch 补充上下文',
+  '- 如果用户要求本系统业务域内的计算（例如“预计这次我能分多少”“按当前持仓能拿多少分红”），必须规划 finance.calculate；缺少分红金额等外部事实时，同时规划 web.search 或让 finance.calculate 触发后续检索',
   '- 如果用户给了明确 URL，优先规划 web.fetch，并用 extractPrompt 写清楚要从页面提取什么',
   '- web.search query 必须是可独立搜索的短句，包含你从用户问题中抽取的标的、主题、时间范围；如果需要权威来源，用 sourceHints 表达，而不是依赖代码补词',
   '- 如果用户提到的标的还没有标准 code + market，必须先规划 security.resolve，并且 args.query 只放原始标的名称或代码，例如“高德红外”“五粮液”“科创50ETF”，不要放整句问题',
@@ -207,6 +261,25 @@ function normalizeWebSkillCalls(plan: AgentPlan, userMessage: string, target?: S
   return calls
 }
 
+function normalizeFinanceCalculationCall(call: AgentSkillCall, stock: Stock, userMessage: string): AgentSkillCall {
+  const requestedType = textArg(call.args, ['type', 'calculation'])
+  return {
+    name: 'finance.calculate',
+    args: {
+      ...call.args,
+      type: requestedType || 'dividend.estimate',
+      stockId: stock.id,
+    },
+    reason: call.reason || '模型判断需要执行投资业务域计算',
+  }
+}
+
+function normalizeFinanceCalculationCalls(plan: AgentPlan, stock: Stock, userMessage: string) {
+  return plan.requiredSkills
+    .filter((call) => call.name === 'finance.calculate')
+    .map((call) => normalizeFinanceCalculationCall(call, stock, userMessage))
+}
+
 function planRequestsSkill(plan: AgentPlan, name: string) {
   return plan.requiredSkills.some((call) => call.name === name)
 }
@@ -222,7 +295,10 @@ function buildModelStockSkillCalls(stock: Stock, plan: AgentPlan, userMessage: s
     if (!financialArgs.researchQuery) financialArgs.researchQuery = buildFallbackSearchQuery(stock, userMessage)
     skills.push({ name: 'stock.getFinancials', args: financialArgs, reason: '模型判断需要财报或业绩数据' })
   }
+  skills.push(...normalizeFinanceCalculationCalls(plan, stock, userMessage))
   skills.push(...normalizeWebSkillCalls(plan, userMessage, stock))
+  appendExternalResearchFallback(skills, userMessage, stock)
+  appendDomainCalculationFallback(skills, userMessage, stock)
   return dedupeSkillCalls(skills)
 }
 
@@ -234,6 +310,7 @@ function buildModelExternalStockSkillCalls(target: ExternalStockTarget, plan: Ag
     skills.push({ name: 'stock.getFinancials', args: financialArgs, reason: '模型判断需要财报或业绩数据' })
   }
   skills.push(...normalizeWebSkillCalls(plan, userMessage, target))
+  appendExternalResearchFallback(skills, userMessage, target)
   return dedupeSkillCalls(skills)
 }
 
@@ -248,6 +325,7 @@ function passthroughModelContextCalls(plan: AgentPlan) {
     'stock.getExternalQuote',
     'stock.getTechnicalSnapshot',
     'stock.getFinancials',
+    'finance.calculate',
     'web.search',
     'web.fetch',
   ])
@@ -256,6 +334,11 @@ function passthroughModelContextCalls(plan: AgentPlan) {
 
 function needsResolvedSecurity(call: AgentSkillCall) {
   if (call.name === 'security.resolve' || call.name === 'market.resolveCandidate') return true
+  if (call.name === 'finance.calculate') {
+    const stockId = textArg(call.args, ['stockId'])
+    const query = textArg(call.args, ['query', 'keyword', 'name', 'symbol', 'code'])
+    return Boolean(!stockId && query)
+  }
   if (!['stock.getExternalQuote', 'stock.getTechnicalSnapshot', 'stock.getFinancials'].includes(call.name)) return false
   const symbol = textArg(call.args, ['symbol', 'code', 'query', 'keyword', 'name'])
   const market = textArg(call.args, ['market'])
@@ -480,26 +563,82 @@ export async function planAgentResponse({
   userMessage,
   stocks,
   history,
+  resolvedSecurities = [],
   externalStocks = [],
   aiConfig,
 }: {
   userMessage: string
   stocks: Stock[]
   history?: AiChatMessage[]
+  resolvedSecurities?: AgentResolvedSecurity[]
   externalStocks?: Array<{ symbol: string; market: Market }>
   aiConfig: AiConfig
 }): Promise<AgentPlan> {
   const content = userMessage.trim()
   const code = detectStockCode(content)
 
-  if (externalStocks.length) {
-    const skills: AgentSkillCall[] = externalStocks.flatMap((item) => {
-      return buildDefaultExternalStockSkillCalls({ code: item.symbol, name: item.symbol, market: item.market })
-    })
+  const selectedSecurities: AgentResolvedSecurity[] = [
+    ...resolvedSecurities,
+    ...externalStocks.map((item) => ({ symbol: item.symbol, market: item.market, inPortfolio: false })),
+  ]
+
+  if (selectedSecurities.length) {
+    const localTargets: Stock[] = []
+    const externalTargets: ExternalStockTarget[] = []
+    for (const item of selectedSecurities) {
+      const symbol = item.symbol.trim()
+      if (!symbol) continue
+
+      const local = item.stockId
+        ? stocks.find((stock) => stock.id === item.stockId)
+        : stocks.find((stock) => stock.code.toUpperCase() === symbol.toUpperCase() && stock.market === item.market)
+
+      if ((item.inPortfolio || item.stockId) && local) {
+        localTargets.push(local)
+        continue
+      }
+
+      externalTargets.push({ code: symbol, name: item.name || symbol, market: item.market })
+    }
+
+    let intent: AgentPlan['intent'] = 'stock_analysis'
+    let skills: AgentSkillCall[] = [
+      ...localTargets.flatMap((stock) => buildStockSkillCalls(stock, content)),
+      ...externalTargets.flatMap((target) => buildExternalStockSkillCalls(target, content)),
+    ]
+
+    const llmPlan = await tryPlanViaLLM(content, stocks, history, aiConfig)
+    if (llmPlan?.responseMode === 'answer') {
+      intent = llmPlan.intent === 'unknown' ? 'stock_analysis' : llmPlan.intent
+      skills = [
+        ...localTargets.flatMap((stock) => buildModelStockSkillCalls(stock, llmPlan, content)),
+        ...externalTargets.flatMap((target) => buildModelExternalStockSkillCalls(target, llmPlan, content)),
+        ...passthroughModelContextCalls(llmPlan),
+      ]
+    }
+
     return {
-      intent: 'stock_analysis',
-      entities: externalStocks.map((item) => ({ type: 'stock', raw: item.symbol, code: item.symbol, market: item.market, confidence: 0.8 })),
-      requiredSkills: skills,
+      intent,
+      entities: [
+        ...localTargets.map((stock) => ({
+          type: 'stock' as const,
+          raw: stock.name,
+          stockId: stock.id,
+          code: stock.code,
+          name: stock.name,
+          market: stock.market,
+          confidence: 0.86,
+        })),
+        ...externalTargets.map((item) => ({
+          type: 'stock' as const,
+          raw: item.name,
+          code: item.code,
+          name: item.name,
+          market: item.market,
+          confidence: 0.82,
+        })),
+      ],
+      requiredSkills: dedupeSkillCalls(skills),
       responseMode: 'answer',
     }
   }

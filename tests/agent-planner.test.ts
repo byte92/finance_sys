@@ -31,6 +31,7 @@ const stocks = [
   stock('stock-1', '601838', '成都银行'),
   stock('stock-2', '510300', '沪深300ETF'),
   stock('stock-3', '000001', '平安银行'),
+  stock('stock-4', '601398', '工商银行'),
 ]
 
 test('agent planner uses stock skills for a single-stock question', async () => {
@@ -51,7 +52,7 @@ test('agent planner uses stock skills for a single-stock question', async () => 
   ])
 })
 
-test('agent planner fallback does not hard-code web search for stock announcement questions', async () => {
+test('agent planner fallback adds generic web search for public announcement questions', async () => {
   const plan = await planAgentResponse({
     userMessage: '成都银行最近有什么公告？',
     stocks,
@@ -63,7 +64,7 @@ test('agent planner fallback does not hard-code web search for stock announcemen
   assert.equal(plan.intent, 'stock_analysis')
   assert.equal(plan.responseMode, 'answer')
   assert.equal(plan.entities[0]?.stockId, 'stock-1')
-  assert.equal(webSearch, undefined)
+  assert.equal(webSearch?.args.query, '成都银行 601838 成都银行最近有什么公告？')
 })
 
 test('agent planner keeps model extracted web search context', async () => {
@@ -111,7 +112,7 @@ test('agent planner keeps model extracted web search context', async () => {
   }
 })
 
-test('agent planner fallback does not hard-code web search for stock news questions', async () => {
+test('agent planner fallback adds generic web search for stock news questions', async () => {
   const plan = await planAgentResponse({
     userMessage: '成都银行今天发生了什么，有利空吗？',
     stocks,
@@ -122,7 +123,7 @@ test('agent planner fallback does not hard-code web search for stock news questi
 
   assert.equal(plan.intent, 'stock_analysis')
   assert.equal(plan.responseMode, 'answer')
-  assert.equal(webSearch, undefined)
+  assert.equal(webSearch?.args.query, '成都银行 601838 成都银行今天发生了什么，有利空吗？')
 })
 
 test('agent planner uses portfolio skills for portfolio risk questions', async () => {
@@ -176,6 +177,76 @@ test('agent planner keeps recent stock focus for follow-up metric questions', as
     'stock.getQuote',
     'stock.getTechnicalSnapshot',
   ])
+})
+
+test('agent planner uses web search fallback for recent focused dividend timing questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '下一次分红时间是什么时候',
+    stocks,
+    history: [{
+      id: 'message-1',
+      sessionId: 'session-1',
+      userId: 'user-1',
+      role: 'assistant',
+      content: '工商银行分析',
+      contextSnapshot: {
+        agent: {
+          entities: [{
+            type: 'stock',
+            stockId: 'stock-4',
+            code: '601398',
+            name: '工商银行',
+            market: 'A',
+          }],
+        },
+      },
+      tokenEstimate: 10,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }],
+    aiConfig: mockAiConfig,
+  })
+
+  const webSearch = plan.requiredSkills.find((item) => item.name === 'web.search')
+
+  assert.equal(plan.intent, 'trade_review')
+  assert.equal(plan.responseMode, 'answer')
+  assert.equal(plan.entities[0]?.stockId, 'stock-4')
+  assert.equal(webSearch?.args.query, '工商银行 601398 下一次分红时间是什么时候')
+})
+
+test('agent planner adds finance calculation for recent focused dividend estimate questions', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '预计这次我能分多少',
+    stocks,
+    history: [{
+      id: 'message-1',
+      sessionId: 'session-1',
+      userId: 'user-1',
+      role: 'assistant',
+      content: '工商银行最近一次分红情况',
+      contextSnapshot: {
+        agent: {
+          entities: [{
+            type: 'stock',
+            stockId: 'stock-4',
+            code: '601398',
+            name: '工商银行',
+            market: 'A',
+          }],
+        },
+      },
+      tokenEstimate: 10,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }],
+    aiConfig: mockAiConfig,
+  })
+
+  const calculation = plan.requiredSkills.find((item) => item.name === 'finance.calculate')
+
+  assert.equal(plan.intent, 'stock_analysis')
+  assert.equal(plan.responseMode, 'answer')
+  assert.equal(plan.entities[0]?.stockId, 'stock-4')
+  assert.deepEqual(calculation?.args, { type: 'dividend.estimate', stockId: 'stock-4' })
 })
 
 test('agent planner adds web search for A-share market event and policy questions', async () => {
@@ -387,6 +458,78 @@ test('agent planner keeps recent external ETF candidates for follow-up reference
   assert.equal(plan.intent, 'stock_analysis')
   assert.equal(plan.responseMode, 'answer')
   assert.deepEqual(externalQuotes.map((item) => item.args.symbol), ['588000', '588080'])
+})
+
+test('agent planner uses local holding skills for clarified portfolio candidates', async () => {
+  const plan = await planAgentResponse({
+    userMessage: '就看成都银行',
+    stocks,
+    resolvedSecurities: [{
+      symbol: '601838',
+      market: 'A',
+      name: '成都银行',
+      stockId: 'stock-1',
+      inPortfolio: true,
+    }],
+    aiConfig: mockAiConfig,
+  })
+
+  assert.equal(plan.intent, 'stock_analysis')
+  assert.equal(plan.responseMode, 'answer')
+  assert.equal(plan.entities[0]?.stockId, 'stock-1')
+  assert.deepEqual(plan.requiredSkills.map((item) => item.name), [
+    'stock.getHolding',
+    'stock.getRecentTrades',
+    'stock.getQuote',
+    'stock.getTechnicalSnapshot',
+  ])
+})
+
+test('agent planner keeps original intent extras after a clarified candidate is selected', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    if (String(input).includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              intent: 'stock_analysis',
+              entities: [{ type: 'stock', raw: '成都银行', code: '601838', market: 'A', confidence: 0.9 }],
+              requiredSkills: [{
+                name: 'web.search',
+                args: { query: '成都银行 601838 最新公告', sourceHints: ['cninfo.com.cn'], limit: 5 },
+                reason: '用户原问题询问公告',
+              }],
+              responseMode: 'answer',
+            }),
+          },
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return originalFetch(input)
+  }
+
+  try {
+    const plan = await planAgentResponse({
+      userMessage: '成都银行最近有什么公告？\n用户澄清选择：成都银行',
+      stocks,
+      resolvedSecurities: [{
+        symbol: '601838',
+        market: 'A',
+        name: '成都银行',
+        stockId: 'stock-1',
+        inPortfolio: true,
+      }],
+      aiConfig: mockAiConfig,
+    })
+
+    assert.equal(plan.intent, 'stock_analysis')
+    assert.equal(plan.entities[0]?.stockId, 'stock-1')
+    assert.ok(plan.requiredSkills.some((item) => item.name === 'stock.getHolding'))
+    assert.equal(plan.requiredSkills.find((item) => item.name === 'web.search')?.args.query, '成都银行 601838 最新公告')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('agent planner refuses clearly out-of-scope questions', async () => {

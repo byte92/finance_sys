@@ -8,6 +8,8 @@ services:
     image: stocktracker:local
     container_name: stocktracker
     restart: unless-stopped
+    init: true
+    shm_size: "1gb"
     ports:
       - "${HOST_PORT:-3218}:3218"
     env_file:

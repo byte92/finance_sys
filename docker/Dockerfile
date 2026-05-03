@@ -20,6 +20,11 @@ RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \
   pnpm build
 
 FROM ${NODE_IMAGE} AS runner
+LABEL org.opencontainers.image.title="StockTracker" \
+  org.opencontainers.image.description="Local-first portfolio tracker and AI investing copilot." \
+  org.opencontainers.image.source="https://github.com/byte92/finance_sys" \
+  org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 ENV NODE_ENV=production \
   NEXT_TELEMETRY_DISABLED=1 \

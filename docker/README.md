@@ -1,6 +1,6 @@
 # Docker 部署
 
-本文档说明如何把 StockTracker 作为 Docker 服务运行，并为后续发布到 Docker Hub 预留流程。
+本文档说明如何把 StockTracker 作为 Docker 服务运行，并发布到 GitHub Container Registry。
 
 ## 本地构建并启动
 
@@ -46,9 +46,15 @@ docker compose down
 docker compose down -v
 ```
 
-## 直接运行镜像
+## 直接运行公开镜像
 
-如果镜像已经发布到 Docker Hub，可以直接拉取运行：
+公开镜像发布在 GitHub Container Registry：
+
+```text
+ghcr.io/byte92/finance_sys
+```
+
+可以直接拉取运行：
 
 ```bash
 HOST_PORT=${HOST_PORT:-3218}
@@ -59,20 +65,29 @@ docker run -d \
   -p "${HOST_PORT}:3218" \
   -e PORT=3218 \
   -v stocktracker-data:/app/data \
-  byte92/stocktracker:latest
+  ghcr.io/byte92/finance_sys:latest
 ```
 
 如果需要传入 AI/API Key 等业务配置，可以额外加上 `--env-file ../.env.local`。
 
-## 发布到 Docker Hub
+## 发布镜像
 
-维护者发布镜像时可以使用：
+镜像通过 GitHub Actions 发布到 GHCR：
+
+- 合入 `main`：发布 `latest` 和 `main-<short-sha>`。
+- 推送 `v*` tag：发布对应语义化版本 tag，例如 `1.0.0`、`1.0` 和 `v1.0.0`。
+- 也可以在 GitHub Actions 中手动触发 `Publish Docker Image`。
+
+如果需要本地临时发布，可以使用：
 
 ```bash
-docker build -f Dockerfile -t byte92/stocktracker:latest ..
-docker tag byte92/stocktracker:latest byte92/stocktracker:<version>
-docker push byte92/stocktracker:latest
-docker push byte92/stocktracker:<version>
+docker login ghcr.io
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -f Dockerfile \
+  -t ghcr.io/byte92/finance_sys:latest \
+  --push \
+  ..
 ```
 
 建议同时发布：

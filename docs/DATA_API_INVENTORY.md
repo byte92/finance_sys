@@ -11,11 +11,13 @@
 | 实时报价 | Yahoo Finance | `https://query1.finance.yahoo.com` / `https://query2.finance.yahoo.com` | `lib/dataSources/YahooFinanceSource.ts` | 美股报价兜底。 |
 | 实时报价 | Stooq | `https://stooq.com/q/l/` | `lib/dataSources/StooqSource.ts` | 美股报价兜底。 |
 | 实时报价 | Alpha Vantage | `https://www.alphavantage.co/query` | `lib/dataSources/AlphaVantageSource.ts` | 报价兜底，需要 `ALPHA_VANTAGE_API_KEY`。 |
+| 实时报价 | Binance / Coinbase | `https://api.binance.com` / `https://api.coinbase.com` | `lib/dataSources/CryptoSource.ts` | 加密资产现货报价，优先 USDT，失败回退 USD。 |
 | K 线 | 腾讯财经 | `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get` | `lib/external/kline.ts` | A 股、港股、基金日 K。 |
 | 分钟 K 线 | 腾讯财经 | `https://ifzq.gtimg.cn/appstock/app/kline/mkline` | `lib/external/kline.ts` | A 股、港股、基金分钟 K。 |
 | K 线 | Nasdaq | `https://api.nasdaq.com/api/quote/{symbol}/historical` | `lib/external/kline.ts` | 美股日 K。 |
 | K 线 | Stooq | `https://stooq.com/q/d/l/` | `lib/external/kline.ts` | 美股日 K 兜底。 |
 | K 线 | Alpha Vantage | `https://www.alphavantage.co/query` | `lib/external/kline.ts` | K 线兜底，需要 `ALPHA_VANTAGE_API_KEY`。 |
+| K 线 | Binance / Coinbase | `https://api.binance.com` / `https://api.coinbase.com` | `lib/external/kline.ts` | 加密资产 K 线，优先 Binance，失败回退 Coinbase。 |
 | 大盘指数 | 腾讯财经 | `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get` | `lib/external/marketIndices.ts` | A 股、港股、美股代表指数快照和技术指标。 |
 | 新闻 | Google News RSS | `https://news.google.com/rss/search` | `lib/external/news.ts` | 个股、大盘相关新闻摘要。 |
 | 汇率 | ExchangeRate API | `https://api.exchangerate-api.com/v4/latest/USD` | `lib/ExchangeRateService.ts` | 组合多币种折算。 |
@@ -45,6 +47,7 @@ pnpm test:external
 | `GET/POST/PATCH/DELETE /api/ai/chat/sessions` | AI 对话面板 | AI 会话持久化。 |
 | `GET/DELETE /api/ai/chat/messages` | AI 对话面板 | AI 消息读取和清理。 |
 | `GET /api/ai/chat/runs` | AI Debug | Agent run 调试记录。 |
+| `GET /api/ai/chat/debug` | AI Trace | 通过对话 ID、消息 ID 或 Run ID 查询完整调用链路。 |
 | `POST /api/ai/portfolio-analysis` | AI Tab / 组合卡片 | 固定组合分析 Task。 |
 | `POST /api/ai/stock-analysis` | 个股页分析卡片 | 固定个股分析 Task。 |
 | `POST /api/ai/market-analysis` | 大盘分析卡片 | 固定大盘分析 Task。 |
@@ -57,6 +60,7 @@ pnpm test:external
 
 - `lib/dataSources/*`：只负责“当前报价”数据源适配。
 - `lib/external/*`：只负责外部接口调用和原始响应归一化，例如 K 线、新闻、指数、LLM。
+- `lib/observability/fetch.ts`：为第三方 API 调用提供统一日志埋点；外部 fetch 新增时应优先使用该封装。
 - `lib/marketOverview.ts`：只负责大盘业务聚合、分析上下文和结果兜底，不再直接拼外部接口 URL。
 - `lib/agent/skills/*`：只负责编排领域数据，不直接请求外部 URL。
 - `app/api/*`：只做参数校验、调用领域服务、返回 HTTP 响应。

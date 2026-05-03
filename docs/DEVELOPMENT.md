@@ -37,6 +37,8 @@ pnpm start
 
 - [http://localhost:3218](http://localhost:3218)
 
+`pnpm dev` 默认从 `PORT` 环境变量读取端口；未设置时使用 `3218`。如果目标端口已被占用，脚本会自动向后查找可用端口，并在终端输出实际地址。
+
 ## 本地数据库
 
 项目默认使用本地 SQLite 存储交易记录、配置、AI 历史和 Agent 调试记录。
@@ -81,6 +83,23 @@ AI_API_KEY=sk-...
 
 AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 
+## 国际化
+
+应用 UI 已接入轻量 i18n 层，当前支持：
+
+- `zh-CN`
+- `en-US`
+
+相关代码：
+
+- `lib/i18n/index.tsx`
+- `lib/i18n/messages.ts`
+- `components/i18n/LanguageSwitcher.tsx`
+
+语言切换入口位于侧边栏底部。选择结果保存在浏览器 `localStorage`，并同步更新 `<html lang>`。当前翻译表使用中文源文案作为过渡 key，新增用户可见文案时请同步补充英文翻译；后续如继续扩大语言范围，建议逐步迁移到语义 key。
+
+AI 分析输出语言由设置页中的“分析语言”控制，和 UI 语言切换相互独立。
+
 ## 环境变量说明
 
 | 变量 | 必填 | 示例 | 说明 |
@@ -93,6 +112,8 @@ AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 | `ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | Alpha Vantage 行情备用源密钥，服务端读取。 |
 | `NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY` | 否 | `YOUR_API_KEY_HERE` | 兼容旧配置，不推荐。`NEXT_PUBLIC_` 变量会暴露到前端。 |
 | `FINANCE_SQLITE_PATH` | 否 | `./data/dev-finance.sqlite` | 自定义 SQLite 数据库文件路径。未设置时默认使用 `data/finance.sqlite`。 |
+| `APP_LOG_LEVEL` | 否 | `debug` | 服务端日志级别。可选 `debug`、`info`、`warn`、`error`、`silent`；开发默认 `debug`，生产默认 `info`。 |
+| `PORT` | 否 | `3218` | Next.js 服务监听端口。本地开发未设置时默认 `3218`，占用时自动递增；Docker 容器内固定使用 `3218`。 |
 
 建议把项目业务配置放在 `.env.local`。Docker 编排配置单独放在 `docker/.env`，例如宿主机端口 `HOST_PORT`；容器运行时会由 Compose 可选读取根目录 `.env.local` 并注入业务环境变量。
 
@@ -114,10 +135,27 @@ AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 - Nasdaq
 - Yahoo Finance
 - Stooq
+- Binance / Coinbase（加密资产）
 - Alpha Vantage
 - Manual fallback
 
 外部 API 统一入口和测试说明见 [数据接口清单](./DATA_API_INVENTORY.md)。
+
+## 服务端日志
+
+项目提供轻量结构化日志：
+
+- `lib/observability/logger.ts`：日志级别、序列化和输出。
+- `lib/observability/api.ts`：API Route 请求耗时、状态码和异常日志。
+- `lib/observability/fetch.ts`：第三方 API 调用耗时、状态码和失败日志。
+
+开发排查外部 API、AI Provider 或 SQLite 问题时，可临时设置：
+
+```bash
+APP_LOG_LEVEL=debug pnpm dev
+```
+
+日志中不要输出 API Key、完整持仓数据或用户隐私内容。
 
 ## 手续费与收益计算
 
@@ -132,6 +170,7 @@ AI 分析提示词由 Skill 固定维护，不再从设置页编辑。
 - 普通 A 股股票：佣金 + 过户费；卖出再加印花税。
 - A 股 ETF：默认不收印花税，自动手续费逻辑已单独处理。
 - 港股：佣金 + 印花税 + 结算费。
+- 美股、基金、加密资产：使用对应市场配置；加密资产支持小数数量和交易所费率。
 
 敏感文件：
 

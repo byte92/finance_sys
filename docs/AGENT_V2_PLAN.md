@@ -1,8 +1,10 @@
 # StockTracker Agent V2 技术规划
 
+> 状态说明：本文是历史技术规划文档，其中多项能力已经在后续 PR 中落地，包括模型驱动 Planner、`security.resolve`、`web.search`、`web.fetch`、`stock.getFinancials`、多轮候选澄清和 Trace 持久化。当前实现口径以 [Agent 架构设计](./AGENT_ARCHITECTURE.md) 和 `skills/builtin/*/SKILL.md` 为准；本文保留作为设计脉络和后续版本参考。
+
 ## 1. 背景
 
-V1 已实现极简 Agent：单轮 `plan → execute → answer`，11 个内置 Skill，规则优先 Planner，Agent Trace 持久化。V1 验证了按需取数、最小上下文和领域 Agent 的基础架构可行性。
+V1 已实现极简 Agent：单轮 `plan → execute → answer`，多项内置 Skill，Agent Trace 持久化。V1 验证了按需取数、最小上下文和领域 Agent 的基础架构可行性。
 
 V2 的核心命题是**让 Agent 从"一步问答"升级为"多步执行"**，并在数据获取能力上补齐网络请求和财报等关键缺口。
 

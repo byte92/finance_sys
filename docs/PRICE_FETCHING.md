@@ -9,6 +9,7 @@
 - 短期缓存，减少重复请求。
 - 估值字段归一化，例如 `PE(TTM)`、`EPS(TTM)`、`PB`、`总市值`。
 - K 线和技术指标数据通过统一外部接口入口获取。
+- 加密资产报价和 K 线，优先 Binance，失败回退 Coinbase。
 - 外部接口 smoke test，用于发现上游接口变化。
 
 ## 报价数据源
@@ -19,6 +20,7 @@
 | Nasdaq | 美股报价 | 否 | `lib/dataSources/NasdaqSource.ts` |
 | Yahoo Finance | 美股及部分市场报价兜底，quote 不可用时 fallback 到 chart | 否 | `lib/dataSources/YahooFinanceSource.ts` |
 | Stooq | 美股 CSV 报价兜底 | 否 | `lib/dataSources/StooqSource.ts` |
+| Binance / Coinbase | 加密资产现货报价，优先 USDT，失败回退 USD | 否 | `lib/dataSources/CryptoSource.ts` |
 | Alpha Vantage | 备用报价源 | 是 | `lib/dataSources/AlphaVantageSource.ts` |
 | Manual | 手动兜底占位 | 否 | `lib/dataSources/ManualSource.ts` |
 
@@ -51,13 +53,19 @@
 Nasdaq -> Tencent -> Yahoo Finance -> Stooq -> Alpha Vantage -> Manual
 ```
 
+加密资产报价优先链路：
+
+```text
+CryptoSource(Binance -> Coinbase) -> Manual
+```
+
 其他市场默认链路：
 
 ```text
 Tencent -> Nasdaq -> Yahoo Finance -> Stooq -> Alpha Vantage -> Manual
 ```
 
-实际可用性还会受市场、标的、上游限制和 API Key 配置影响。
+实际可用性还会受市场、标的、上游限制和 API Key 配置影响。`CryptoSource` 只响应 `CRYPTO` 市场，即使出现在内部 fallback 配置中，也不会为非加密市场返回报价。
 
 ## 缓存策略
 

@@ -95,7 +95,13 @@ docker push byte92/stocktracker:<version>
 Docker 镜像使用 Next.js standalone 输出：
 
 ```text
-pnpm install --frozen-lockfile -> pnpm build -> .next/standalone -> node server.js
+pnpm install --frozen-lockfile -> pnpm build -> Chromium headless shell -> .next/standalone -> node server.js
 ```
 
-这样运行镜像只携带生产服务所需文件，镜像体积和启动路径都更清晰。
+应用运行时需要 Playwright 的 Chromium 来执行 `web.search` 等公开网页检索能力。镜像不会直接基于完整的 Playwright 官方镜像，而是基于 Node slim，并在运行层只安装 Chromium headless shell 和它需要的系统依赖：
+
+- 避免打包 Firefox / WebKit 等当前业务未使用的浏览器。
+- 保持 Playwright package 版本和浏览器版本由 `pnpm-lock.yaml` 统一锁定。
+- 使用 Docker BuildKit cache 缓存 pnpm store 和 Next.js build cache，让重复构建更快。
+
+`docker-compose.yml` 同时启用了 `init: true` 和 `shm_size: "1gb"`，用于减少长时间运行或 Chromium 启动时的僵尸进程和共享内存问题。

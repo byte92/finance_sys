@@ -14,7 +14,7 @@ import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPercent, formatPnl } from '@/lib/finance'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY, type Currency } from '@/lib/ExchangeRateService'
 import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
-import { getMarketAssetUnit, MARKET_LABELS } from '@/config/defaults'
+import { useI18n } from '@/lib/i18n'
 import type { Stock, TradeMatchMode } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
@@ -32,7 +32,7 @@ type QuoteByStockId = Record<string, StockQuote | null>
 export default function HoldingsList({
   limit,
   showAddButton = true,
-  title = '持仓列表',
+  title,
   description,
 }: {
   limit?: number
@@ -41,6 +41,7 @@ export default function HoldingsList({
   description?: string
 }) {
   const router = useRouter()
+  const { t } = useI18n()
   const { stocks, deleteStock, config } = useStockStore()
   const { convertAmountSync } = useCurrency()
   const [showAddStock, setShowAddStock] = useState(false)
@@ -151,9 +152,9 @@ export default function HoldingsList({
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 className="text-sm font-semibold">{title ?? t('持仓列表')}</h2>
           <div className="text-xs text-muted-foreground mt-1">
-            {description ?? (limit ? `展示前 ${visibleStocks.length} 条持仓，点击进入详情。` : `共 ${stocks.length} 个资产，支持删除与进入详情。`)}
+            {description ?? (limit ? t('展示前 {count} 条持仓，点击进入详情。', { count: visibleStocks.length }) : t('共 {count} 个资产，支持删除与进入详情。', { count: stocks.length }))}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -161,25 +162,25 @@ export default function HoldingsList({
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as SortOption)}
             containerClassName="w-[176px]"
-            aria-label="持仓排序"
+            aria-label={t('持仓排序')}
           >
-            <option value="default">默认顺序</option>
-            <option value="today-pnl-desc">今日盈亏从高到低</option>
-            <option value="today-pnl-asc">今日盈亏从低到高</option>
-            <option value="today-rate-desc">今日盈亏率从高到低</option>
-            <option value="total-pnl-desc">总盈亏从高到低</option>
-            <option value="cost-desc">持仓成本从高到低</option>
-            <option value="name-asc">代码顺序</option>
+            <option value="default">{t('默认顺序')}</option>
+            <option value="today-pnl-desc">{t('今日盈亏从高到低')}</option>
+            <option value="today-pnl-asc">{t('今日盈亏从低到高')}</option>
+            <option value="today-rate-desc">{t('今日盈亏率从高到低')}</option>
+            <option value="total-pnl-desc">{t('总盈亏从高到低')}</option>
+            <option value="cost-desc">{t('持仓成本从高到低')}</option>
+            <option value="name-asc">{t('代码顺序')}</option>
           </Select>
           {limit && stocks.length > visibleStocks.length && (
             <Button size="sm" variant="outline" onClick={() => router.push('/portfolio')}>
-              查看全部
+              {t('查看全部')}
             </Button>
           )}
           {showAddButton && (
             <Button size="sm" onClick={() => setShowAddStock(true)}>
               <Plus className="mr-1 h-3.5 w-3.5" />
-              添加资产
+              {t('添加资产')}
             </Button>
           )}
         </div>
@@ -188,17 +189,17 @@ export default function HoldingsList({
       {visibleStocks.length === 0 ? (
         <Card className="border-border bg-card">
           <div className="p-6 text-sm text-muted-foreground">
-            还没有添加资产，点击右上角“添加资产”开始记录。
+            {t('还没有添加资产，点击右上角“添加资产”开始记录。')}
           </div>
         </Card>
       ) : (
         <Card className="border-border bg-card/60 overflow-hidden">
           <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.5fr)_auto] gap-4 px-4 py-3 border-b border-border/70">
-            <div className="text-xs text-muted-foreground">名称</div>
-            <div className="text-xs text-muted-foreground">持仓成本</div>
-            <div className="text-xs text-muted-foreground">今日盈亏</div>
-            <div className="text-xs text-muted-foreground">总盈亏</div>
-            <div className="text-xs text-muted-foreground text-right">操作</div>
+            <div className="text-xs text-muted-foreground">{t('名称')}</div>
+            <div className="text-xs text-muted-foreground">{t('持仓成本')}</div>
+            <div className="text-xs text-muted-foreground">{t('今日盈亏')}</div>
+            <div className="text-xs text-muted-foreground">{t('总盈亏')}</div>
+            <div className="text-xs text-muted-foreground text-right">{t('操作')}</div>
           </div>
           <div className="divide-y divide-border/70">
             {visibleStocks.map((stock) => (
@@ -224,9 +225,9 @@ export default function HoldingsList({
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="确认删除持仓"
-        description={deleteTarget ? `确定删除 ${deleteTarget.name}（${deleteTarget.code}）？该操作不可恢复。` : undefined}
-        confirmText="删除"
+        title={t('确认删除持仓')}
+        description={deleteTarget ? t('确定删除 {name}（{code}）？该操作不可恢复。', { name: deleteTarget.name, code: deleteTarget.code }) : undefined}
+        confirmText={t('删除')}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
         }}
@@ -253,12 +254,14 @@ function StockListRow({
   onOpen: () => void
   onDelete: () => void
 }) {
+  const { t, getAssetUnit, getMarketLabel, numberLocale } = useI18n()
   const { quote: liveQuote } = useStockQuote(stock.code, stock.market, { autoRefresh: true, refreshInterval: 60000 })
   const quote = liveQuote ?? preloadedQuote
   const summary = calcStockSummary(stock, quote?.price, { matchMode })
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
-  const assetUnit = getMarketAssetUnit(stock.market)
-  const formatNativeAmount = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const assetUnit = getAssetUnit(stock.market)
+  const marketLabel = getMarketLabel(stock.market)
+  const formatNativeAmount = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency, numberLocale)
   const totalCost = summary.avgCostPrice * summary.currentHolding
   const avgCost = summary.avgCostPrice
   const realizedPnl = summary.realizedPnl
@@ -269,10 +272,10 @@ function StockListRow({
   const todayPnlRate = quote ? dailyPnl.rate : null
   const currentPrice = quote ? quote.price : null
   const dailyHint = dailyPnl.state === 'market-closed'
-    ? '今日休市'
+    ? t('今日休市')
     : dailyPnl.state === 'stale-quote'
-      ? '暂无今日行情'
-      : '暂无当日行情'
+      ? t('暂无今日行情')
+      : t('暂无当日行情')
 
   return (
     <div
@@ -283,10 +286,10 @@ function StockListRow({
         <div className="flex items-center gap-2">
           <div className="font-semibold text-foreground truncate">{stock.name}</div>
           <span className="text-xs text-muted-foreground font-mono">{stock.code}</span>
-          <span className="neutral-badge">{MARKET_LABELS[stock.market]}</span>
+          <span className="neutral-badge">{marketLabel}</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          {stock.code} · {MARKET_LABELS[stock.market]}
+          {stock.code} · {marketLabel}
         </div>
       </div>
 
@@ -295,10 +298,10 @@ function StockListRow({
           {formatNativeAmount(totalCost)}
         </div>
         <div className="text-xs text-muted-foreground">
-          持仓 {formatQuantity(summary.currentHolding)} {assetUnit}
+          {t('持仓 {quantity} {unit}', { quantity: formatQuantity(summary.currentHolding, numberLocale), unit: assetUnit })}
         </div>
         <div className="text-xs text-muted-foreground">
-          均价 {formatNativeAmount(avgCost)}
+          {t('均价 {amount}', { amount: formatNativeAmount(avgCost) })}
         </div>
       </div>
 
@@ -310,7 +313,7 @@ function StockListRow({
           {dailyPnl.state === 'active' && todayPnlRate !== null ? formatPercent(todayPnlRate) : dailyHint}
         </div>
         <div className="text-xs text-muted-foreground">
-          {quote ? `现价 ${formatNativeAmount(currentPrice ?? 0)}` : '等待行情返回'}
+          {quote ? t('现价 {amount}', { amount: formatNativeAmount(currentPrice ?? 0) }) : t('等待行情返回')}
         </div>
       </div>
 
@@ -320,15 +323,15 @@ function StockListRow({
         </div>
         {totalPnl === null ? (
           <div className="text-xs text-muted-foreground">
-            已实现收益
+            {t('已实现收益')}
           </div>
         ) : (
           <>
             <div className="text-xs text-muted-foreground">
-              已实现 {formatPnl(realizedPnl, nativeCurrency)} · 浮动 {formatPnl(unrealizedPnl ?? 0, nativeCurrency)}
+              {t('已实现 {realized} · 浮动 {unrealized}', { realized: formatPnl(realizedPnl, nativeCurrency), unrealized: formatPnl(unrealizedPnl ?? 0, nativeCurrency) })}
             </div>
             <div className="text-xs text-muted-foreground">
-              累计视角
+              {t('累计视角')}
             </div>
           </>
         )}
@@ -352,13 +355,13 @@ function StockListRow({
   )
 }
 
-function formatWithNativeCurrency(amount: number, currency: Currency) {
+function formatWithNativeCurrency(amount: number, currency: Currency, locale: string) {
   const symbol = CURRENCY_SYMBOLS[currency] ?? '¥'
-  return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function formatQuantity(value: number) {
-  return value.toLocaleString('zh-CN', {
+function formatQuantity(value: number, locale: string) {
+  return value.toLocaleString(locale, {
     maximumFractionDigits: 8,
   })
 }

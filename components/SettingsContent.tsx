@@ -10,7 +10,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
-import { MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
+import { SUPPORTED_MARKETS } from '@/config/defaults'
+import { useI18n } from '@/lib/i18n'
 import type { AiAnalysisLanguage, AiProvider, ExportData, Market, TradeMatchMode } from '@/types'
 
 type FeeField = 'commissionRate' | 'minCommission' | 'stampDutyRate' | 'transferFeeRate' | 'settlementFeeRate'
@@ -38,6 +39,7 @@ export default function SettingsContent({
 }) {
   const { config, updateConfig, exportData, importData, clearAll } = useStockStore()
   const { displayCurrency, setDisplayCurrency } = useCurrency()
+  const { t, getMarketLabel } = useI18n()
   const [defaultMarket, setDefaultMarket] = useState<Market>(config.defaultMarket)
   const [tradeMatchMode, setTradeMatchMode] = useState<TradeMatchMode>(config.tradeMatchMode)
   const [feeConfigs, setFeeConfigs] = useState(config.feeConfigs)
@@ -186,11 +188,11 @@ export default function SettingsContent({
       if (draftDisplayCurrency !== displayCurrency) {
         setDisplayCurrency(draftDisplayCurrency)
       }
-      setSuccessMessage('保存成功')
+      setSuccessMessage(t('保存成功'))
       setTimeout(() => setSuccessMessage(''), 2500)
       onSaved?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存配置失败')
+      setError(err instanceof Error ? err.message : t('保存配置失败'))
     } finally {
       setSaving(false)
     }
@@ -216,12 +218,12 @@ export default function SettingsContent({
       const text = await file.text()
       const data = JSON.parse(text) as Partial<ExportData>
       if (!Array.isArray(data.stocks) || !data.config) {
-        throw new Error('备份文件格式不正确')
+        throw new Error(t('备份文件格式不正确'))
       }
       importData(data as ExportData)
       setError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '导入失败，请检查文件内容')
+      setError(err instanceof Error ? err.message : t('导入失败，请检查文件内容'))
     } finally {
       event.target.value = ''
     }
@@ -244,10 +246,13 @@ export default function SettingsContent({
         body: JSON.stringify({ aiConfig }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? '模型连通测试失败')
-      setTestMessage(`连接成功：${data?.result?.provider ?? aiConfig.provider} / ${data?.result?.model ?? aiConfig.model}`)
+      if (!res.ok) throw new Error(t(data?.error ?? '模型连通测试失败'))
+      setTestMessage(t('连接成功：{provider} / {model}', {
+        provider: data?.result?.provider ?? aiConfig.provider,
+        model: data?.result?.model ?? aiConfig.model,
+      }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '模型连通测试失败')
+      setError(err instanceof Error ? err.message : t('模型连通测试失败'))
     } finally {
       setTestingModel(false)
     }
@@ -289,7 +294,7 @@ export default function SettingsContent({
             <div className="text-sm font-medium text-foreground">{title}</div>
             {dirty && (
               <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                未保存
+                {t('未保存')}
               </span>
             )}
           </div>
@@ -312,14 +317,14 @@ export default function SettingsContent({
       {renderSection({
         id: 'basic',
         icon: <Settings2 className="h-4 w-4" />,
-        title: '基础设置',
-        description: '管理默认市场和各市场手续费规则。',
+        title: t('基础设置'),
+        description: t('管理默认市场和各市场手续费规则。'),
         dirty: basicDirty,
         content: (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="space-y-1.5 max-w-48">
-                <Label htmlFor="default-market">默认市场</Label>
+                <Label htmlFor="default-market">{t('默认市场')}</Label>
                 <Select
                   id="default-market"
                   value={defaultMarket}
@@ -327,7 +332,7 @@ export default function SettingsContent({
                 >
                   {SUPPORTED_MARKETS.map((market) => (
                     <option key={market} value={market}>
-                      {MARKET_LABELS[market]}
+                      {getMarketLabel(market)}
                     </option>
                   ))}
                 </Select>
@@ -335,9 +340,9 @@ export default function SettingsContent({
             </div>
 
             <div>
-              <div className="text-sm font-medium text-foreground">手续费配置</div>
+              <div className="text-sm font-medium text-foreground">{t('手续费配置')}</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                自动计算会优先按市场与代码套用规则。例如普通 A 股卖出会收印花税，ETF 默认免印花税；费率字段使用小数形式，例如万一填写 `0.0001`
+                {t('自动计算会优先按市场与代码套用规则。例如普通 A 股卖出会收印花税，ETF 默认免印花税；费率字段使用小数形式，例如万一填写 `0.0001`')}
               </div>
             </div>
 
@@ -346,10 +351,10 @@ export default function SettingsContent({
                 const fee = feeConfigs[market]
                 return (
                   <div key={market} className="rounded-lg border border-border p-4 space-y-3">
-                    <div className="text-sm font-medium text-foreground">{MARKET_LABELS[market]}</div>
+                    <div className="text-sm font-medium text-foreground">{getMarketLabel(market)}</div>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                       <div className="space-y-1.5">
-                        <Label>佣金率</Label>
+                        <Label>{t('佣金率')}</Label>
                         <Input
                           type="number"
                           step="0.00001"
@@ -359,7 +364,7 @@ export default function SettingsContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>最低佣金</Label>
+                        <Label>{t('最低佣金')}</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -369,7 +374,7 @@ export default function SettingsContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>印花税率</Label>
+                        <Label>{t('印花税率')}</Label>
                         <Input
                           type="number"
                           step="0.00001"
@@ -379,7 +384,7 @@ export default function SettingsContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>过户费率</Label>
+                        <Label>{t('过户费率')}</Label>
                         <Input
                           type="number"
                           step="0.00001"
@@ -389,7 +394,7 @@ export default function SettingsContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>结算费率</Label>
+                        <Label>{t('结算费率')}</Label>
                         <Input
                           type="number"
                           step="0.00001"
@@ -410,29 +415,29 @@ export default function SettingsContent({
       {renderSection({
         id: 'ai',
         icon: <Sparkles className="h-4 w-4" />,
-        title: 'AI 设置',
-        description: '管理 provider、模型、密钥和默认运行参数。',
+        title: t('AI 设置'),
+        description: t('管理 provider、模型、密钥和默认运行参数。'),
         dirty: aiDirty,
         sectionRef: aiSectionRef,
         content: (
           <div className="rounded-lg border border-border p-4 space-y-4">
           {aiEnvStatus?.configured && (
             <div className="rounded-md border border-primary/25 bg-primary/10 p-3 text-xs text-primary">
-              当前检测到服务端 .env AI 配置，将优先使用环境变量中的 Provider / Base URL / Model / API Key。下方连接配置仅作为本地兜底；Temperature、Max Context Tokens、新闻增强和分析语言仍使用设置页配置。
-              {aiEnvStatus.model && <span className="ml-1">当前环境模型：{aiEnvStatus.model}</span>}
+              {t('当前检测到服务端 .env AI 配置，将优先使用环境变量中的 Provider / Base URL / Model / API Key。下方连接配置仅作为本地兜底；Temperature、Max Context Tokens、新闻增强和分析语言仍使用设置页配置。')}
+              {aiEnvStatus.model && <span className="ml-1">{t('当前环境模型：{model}', { model: aiEnvStatus.model })}</span>}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ai-enabled">启用 AI</Label>
+              <Label htmlFor="ai-enabled">{t('启用 AI')}</Label>
               <Select
                 id="ai-enabled"
                 value={displayedAiEnabled ? 'true' : 'false'}
                 disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, enabled: e.target.value === 'true' }))}
               >
-                <option value="true">启用</option>
-                <option value="false">关闭</option>
+                <option value="true">{t('启用')}</option>
+                <option value="false">{t('停用')}</option>
               </Select>
             </div>
             <div className="space-y-1.5">
@@ -448,7 +453,7 @@ export default function SettingsContent({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-model">模型</Label>
+              <Label htmlFor="ai-model">{t('模型')}</Label>
               <div className="flex gap-2">
                 <Input
                   id="ai-model"
@@ -507,31 +512,31 @@ export default function SettingsContent({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-news-enabled">新闻增强</Label>
+              <Label htmlFor="ai-news-enabled">{t('新闻增强')}</Label>
               <Select
                 id="ai-news-enabled"
                 value={aiConfig.newsEnabled ? 'true' : 'false'}
                 onChange={(e) => setAiConfig((current) => ({ ...current, newsEnabled: e.target.value === 'true' }))}
               >
-                <option value="true">开启</option>
-                <option value="false">关闭</option>
+                <option value="true">{t('开启')}</option>
+                <option value="false">{t('停用')}</option>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-language">分析语言</Label>
+              <Label htmlFor="ai-language">{t('分析语言')}</Label>
               <Select
                 id="ai-language"
                 value={aiConfig.analysisLanguage}
                 onChange={(e) => setAiConfig((current) => ({ ...current, analysisLanguage: e.target.value as AiAnalysisLanguage }))}
               >
-                <option value="zh-CN">中文</option>
+                <option value="zh-CN">{t('中文')}</option>
                 <option value="en-US">English</option>
               </Select>
             </div>
           </div>
 
           <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-            推荐把 AI_PROVIDER、AI_BASE_URL、AI_MODEL、AI_API_KEY 放在 .env.local 中。若未配置环境变量，系统会继续使用这里保存的本地兜底配置；JSON 导出会自动移除 API Key。分析提示词由 Skill 固定维护，不再从设置页编辑。
+            {t('推荐把 AI_PROVIDER、AI_BASE_URL、AI_MODEL、AI_API_KEY 放在 .env.local 中。若未配置环境变量，系统会继续使用这里保存的本地兜底配置；JSON 导出会自动移除 API Key。分析提示词由 Skill 固定维护，不再从设置页编辑。')}
           </div>
 
           {testMessage && (
@@ -546,13 +551,13 @@ export default function SettingsContent({
       {renderSection({
         id: 'preferences',
         icon: <SlidersHorizontal className="h-4 w-4" />,
-        title: '偏好设置',
-        description: '管理显示货币等页面展示偏好。',
+        title: t('偏好设置'),
+        description: t('管理显示货币等页面展示偏好。'),
         dirty: preferencesDirty,
         content: (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-1.5 max-w-48">
-              <Label htmlFor="display-currency">显示货币</Label>
+              <Label htmlFor="display-currency">{t('显示货币')}</Label>
               <Select
                 id="display-currency"
                 value={draftDisplayCurrency}
@@ -564,21 +569,21 @@ export default function SettingsContent({
                 <option value="USDT">USDT</option>
               </Select>
               <div className="text-xs text-muted-foreground">
-                主题模式已迁回侧边栏底部，方便随时切换。
+                {t('主题模式已迁回侧边栏底部，方便随时切换。')}
               </div>
             </div>
             <div className="space-y-1.5 max-w-80">
-              <Label htmlFor="trade-match-mode">卖出成本匹配口径</Label>
+              <Label htmlFor="trade-match-mode">{t('卖出成本匹配口径')}</Label>
               <Select
                 id="trade-match-mode"
                 value={tradeMatchMode}
                 onChange={(e) => setTradeMatchMode(e.target.value as TradeMatchMode)}
               >
-                <option value="FIFO">FIFO（先进先出）</option>
-                <option value="RECENT_LOTS">最近批次（做 T 复盘口径）</option>
+                <option value="FIFO">{t('FIFO（先进先出）')}</option>
+                <option value="RECENT_LOTS">{t('最近批次（做 T 复盘口径）')}</option>
               </Select>
               <div className="text-xs text-muted-foreground">
-                影响卖出已实现盈亏、剩余持仓成本和浮盈浮亏；默认 FIFO 保持传统会计口径。
+                {t('影响卖出已实现盈亏、剩余持仓成本和浮盈浮亏；默认 FIFO 保持传统会计口径。')}
               </div>
             </div>
           </div>
@@ -587,22 +592,22 @@ export default function SettingsContent({
 
       <section className="space-y-3">
         <div>
-          <div className="text-sm font-medium text-foreground">数据管理</div>
-          <div className="text-xs text-muted-foreground mt-1">支持本地 JSON 备份、导入恢复和一键清空</div>
+          <div className="text-sm font-medium text-foreground">{t('数据管理')}</div>
+          <div className="text-xs text-muted-foreground mt-1">{t('支持本地 JSON 备份、导入恢复和一键清空')}</div>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1" />
-            导出备份
+            {t('导出备份')}
           </Button>
           <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4 mr-1" />
-            导入备份
+            {t('导入备份')}
           </Button>
           <Button type="button" variant="outline" className="text-destructive" onClick={() => setClearConfirmOpen(true)}>
             <Trash2 className="h-4 w-4 mr-1" />
-            清空数据
+            {t('清空数据')}
           </Button>
           <input
             ref={fileInputRef}
@@ -618,11 +623,11 @@ export default function SettingsContent({
 
       <div className={`flex ${compact ? 'justify-end border-t border-border pt-5' : 'justify-end'} gap-2`}>
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+          <Button type="button" variant="outline" onClick={onCancel}>{t('取消')}</Button>
         )}
         <div className="relative">
           <Button type="button" onClick={handleSave} disabled={saving || !isDirty}>
-            {saving ? '保存中...' : '保存设置'}
+            {saving ? t('保存中...') : t('保存设置')}
           </Button>
           {successMessage && (
             <div className="absolute right-0 top-full mt-2 w-max max-w-xs rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 shadow-lg">
@@ -635,9 +640,9 @@ export default function SettingsContent({
 
       <ConfirmDialog
         open={clearConfirmOpen}
-        title="确认清空数据"
-        description="确定清空所有持仓、交易和配置吗？该操作不可恢复。"
-        confirmText="清空"
+        title={t('确认清空数据')}
+        description={t('确定清空所有持仓、交易和配置吗？该操作不可恢复。')}
+        confirmText={t('清空')}
         onOpenChange={setClearConfirmOpen}
         onConfirm={handleClearAll}
       />

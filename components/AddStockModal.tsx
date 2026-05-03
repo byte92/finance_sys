@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
-import { getMarketCodeMinLength, MARKET_CODE_PLACEHOLDERS, MARKET_LABELS, SUPPORTED_MARKETS } from '@/config/defaults'
+import { getMarketCodeMinLength, SUPPORTED_MARKETS } from '@/config/defaults'
+import { useI18n } from '@/lib/i18n'
 import type { Market } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
 
@@ -25,6 +26,7 @@ interface AddStockModalProps {
 
 export default function AddStockModal({ onClose, onAdded, editStock }: AddStockModalProps) {
   const { addStock, updateStock, config } = useStockStore()
+  const { t, getMarketLabel, getMarketCodePlaceholder } = useI18n()
   const isEdit = !!editStock
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
@@ -75,12 +77,12 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
           setError('')
         } else {
           setIsValidated(false)
-          setError(data?.error ?? '未找到该资产，请检查代码或市场是否正确，也可以手动填写名称后保存')
+          setError(t(data?.error ?? '未找到该资产，请检查代码或市场是否正确，也可以手动填写名称后保存'))
         }
       } catch (e) {
         console.error('搜索资产失败:', e)
         setIsValidated(false)
-        setError('搜索失败，可手动填写名称后保存')
+        setError(t('搜索失败，可手动填写名称后保存'))
       } finally {
         setIsValidating(false)
       }
@@ -94,11 +96,11 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
     e.preventDefault()
     const trimmedCode = code.trim()
     if (!trimmedCode) {
-      setError('请填写资产代码')
+      setError(t('请填写资产代码'))
       return
     }
     if (!name.trim()) {
-      setError('请填写资产名称')
+      setError(t('请填写资产名称'))
       return
     }
     try {
@@ -115,7 +117,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
       onClose()
     } catch (error) {
       console.error(isEdit ? '更新资产失败:' : '添加资产失败:', error)
-      setError(isEdit ? '保存失败，请重试' : '添加失败，请重试')
+      setError(isEdit ? t('保存失败，请重试') : t('添加失败，请重试'))
     }
   }
 
@@ -127,7 +129,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border p-5">
-          <h2 className="text-base font-semibold">{isEdit ? '编辑资产' : '添加资产'}</h2>
+          <h2 className="text-base font-semibold">{isEdit ? t('编辑资产') : t('添加资产')}</h2>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-secondary transition-colors">
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -135,7 +137,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="market">市场</Label>
+            <Label htmlFor="market">{t('市场')}</Label>
             <Select
               id="market"
               value={market}
@@ -143,20 +145,20 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
               className="h-10 bg-background"
             >
               {SUPPORTED_MARKETS.map((m) => (
-                <option key={m} value={m}>{MARKET_LABELS[m]}</option>
+                <option key={m} value={m}>{getMarketLabel(m)}</option>
               ))}
             </Select>
             {isEdit && (
-              <p className="text-[11px] text-muted-foreground">编辑模式下暂不支持直接修改市场，如需变更建议新建后迁移交易。</p>
+              <p className="text-[11px] text-muted-foreground">{t('编辑模式下暂不支持直接修改市场，如需变更建议新建后迁移交易。')}</p>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="code">代码</Label>
+            <Label htmlFor="code">{t('代码')}</Label>
             <div className="relative">
               <Input
                 id="code"
-                placeholder={MARKET_CODE_PLACEHOLDERS[market]}
+                placeholder={getMarketCodePlaceholder(market)}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required
@@ -169,10 +171,12 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="name">名称 {isValidated && <span className="text-xs text-green-600 ml-2">✓ 已验证</span>}</Label>
+            <Label htmlFor="name">
+              {t('名称')} {isValidated && <span className="text-xs text-green-600 ml-2">✓ {t('已验证')}</span>}
+            </Label>
             <Input
               id="name"
-              placeholder="输入代码后自动搜索，也可手动填写"
+              placeholder={t('输入代码后自动搜索，也可手动填写')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -180,10 +184,10 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="note">备注（可选）</Label>
+            <Label htmlFor="note">{t('备注（可选）')}</Label>
             <Input
               id="note"
-              placeholder="记录这只资产的计划或说明"
+              placeholder={t('记录这只资产的计划或说明')}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -192,9 +196,9 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <div className="flex gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">取消</Button>
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">{t('取消')}</Button>
             <Button type="submit" className="flex-1" disabled={!code.trim() || !name.trim() || isValidating}>
-              {isEdit ? '保存' : '添加'}
+              {isEdit ? t('保存') : t('添加')}
             </Button>
           </div>
         </form>

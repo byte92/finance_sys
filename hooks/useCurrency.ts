@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { exchangeRateService, type Currency, CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
+import { useI18n } from '@/lib/i18n'
 
 const DISPLAY_CURRENCY_KEY = 'stock-tracker-display-currency'
 
 export function useCurrency() {
+  const { numberLocale } = useI18n()
   const [displayCurrency, setDisplayCurrencyState] = useState<Currency>('CNY')
   const [rates, setRates] = useState<Record<string, number>>({ CNY: 1, HKD: 0.92, USD: 7.2, USDT: 7.2 })
   const [loading, setLoading] = useState(false)
@@ -62,7 +64,7 @@ export function useCurrency() {
   const formatWithCurrency = (amount: number, currency?: Currency) => {
     const curr = currency || displayCurrency
     const symbol = CURRENCY_SYMBOLS[curr]
-    return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return `${symbol}${amount.toLocaleString(numberLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   return {

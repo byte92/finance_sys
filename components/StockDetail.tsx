@@ -9,9 +9,10 @@ import { Select } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { useStockStore } from '@/store/useStockStore'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
-import { getMarketAssetUnit, MARKET_LABELS, marketSupportsValuation } from '@/config/defaults'
+import { marketSupportsValuation } from '@/config/defaults'
 import { useStockQuote } from '@/hooks/useStockQuote'
 import { CURRENCY_SYMBOLS, MARKET_CURRENCY } from '@/lib/ExchangeRateService'
+import { useI18n } from '@/lib/i18n'
 import AddTradeModal from '@/components/AddTradeModal'
 import AddStockModal from '@/components/AddStockModal'
 import StockKline from '@/components/StockKline'
@@ -30,6 +31,7 @@ interface StockDetailProps {
 
 export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const { deleteTrade, config } = useStockStore()
+  const { t, getAssetUnit, getMarketLabel, formatDateTime, numberLocale } = useI18n()
   const [showAddTrade, setShowAddTrade] = useState(false)
   const [showEditStock, setShowEditStock] = useState(false)
   const [editTrade, setEditTrade] = useState<Trade | undefined>(undefined)
@@ -52,12 +54,13 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const currentPriceNum = quote?.price || parseFloat(manualPrice) || undefined
   const summary = calcStockSummary(stock, currentPriceNum, { matchMode: config.tradeMatchMode })
   const nativeCurrency = MARKET_CURRENCY[stock.market] || 'CNY'
-  const quoteTimeLabel = quote?.timestamp ? formatQuoteTimestamp(quote.timestamp) : null
-  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const quoteTimeLabel = quote?.timestamp ? formatQuoteTimestamp(quote.timestamp, t, formatDateTime) : null
+  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency, numberLocale)
   const formatPnlWithNative = (amount: number) => formatPnl(amount, nativeCurrency)
-  const assetUnit = getMarketAssetUnit(stock.market)
+  const assetUnit = getAssetUnit(stock.market)
+  const marketLabel = getMarketLabel(stock.market)
   const supportsValuation = marketSupportsValuation(stock.market, stock.code)
-  const incomeLabel = stock.market === 'CRYPTO' ? '收益' : '分红'
+  const incomeLabel = stock.market === 'CRYPTO' ? t('收益') : t('分红')
 
   const sortedTrades = [...stock.trades].sort((a, b) => b.date.localeCompare(a.date))
   // 构建 tradeId -> pnlDetail 的映射（finance.ts 按时间正序计算）
@@ -90,7 +93,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
     let cumPnl = 0
     const pts: Array<{ date: string; pnl: number; type: string }> = []
     // 添加起始点（显示为0）
-    pts.push({ date: '起始', pnl: 0, type: 'START' })
+    pts.push({ date: t('起始'), pnl: 0, type: 'START' })
     for (const t of sorted) {
       const detail = pnlMap.get(t.id)
       if (t.type === 'SELL' && detail) {
@@ -108,7 +111,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   const tradeRows = useMemo(() => {
     const rows = stock.trades.map((trade) => {
       const pnlDetail = pnlMap.get(trade.id)
-      const typeLabel = trade.type === 'BUY' ? '买入' : trade.type === 'SELL' ? '卖出' : incomeLabel
+      const typeLabel = trade.type === 'BUY' ? t('买入') : trade.type === 'SELL' ? t('卖出') : incomeLabel
       const feeTotal = trade.commission + trade.tax
       const realizedAmount = trade.type === 'SELL' || trade.type === 'DIVIDEND' ? pnlDetail?.pnl ?? 0 : null
       const buyRemaining = trade.type === 'BUY' ? (pnlDetail?.remainingQuantity ?? 0) : null
@@ -116,7 +119,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
       const holdingAfterTrade = pnlDetail?.holdingAfterTrade ?? 0
       const isClosingTrade = closingTradeIds.has(trade.id)
       const buyLotState = trade.type === 'BUY'
-        ? (buyRemaining && buyRemaining > 0 ? '持有中' : '已卖完')
+        ? (buyRemaining && buyRemaining > 0 ? t('持有中') : t('已卖完'))
         : null
 
       return {
@@ -155,7 +158,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             row.typeLabel,
             row.trade.note ?? '',
             row.buyLotState ?? '',
-            row.isClosingTrade ? '清仓' : '',
+            row.isClosingTrade ? t('清仓') : '',
           ]
           if (!haystacks.some((item) => item.toLowerCase().includes(keyword))) return false
         }
@@ -166,26 +169,29 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         const delta = a.trade.date.localeCompare(b.trade.date)
         return sortDirection === 'desc' ? -delta : delta
       })
-  }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection, incomeLabel])
+  }, [stock.trades, pnlMap, closingTradeIds, tradeTypeFilter, dateFrom, dateTo, specialFilter, resultFilter, noteFilter, tradeKeyword, sortDirection, incomeLabel, t])
 
   return (
     <div className="min-h-screen">
       <PageHeader
         title={`${stock.name} · ${stock.code}`}
-        description={`市场：${MARKET_LABELS[stock.market]}，可在此查看交易、K 线${supportsValuation ? '、估值' : ''}与 AI 深度分析。`}
+        description={t('市场：{market}，可在此查看交易、K 线{valuation}与 AI 深度分析。', {
+          market: marketLabel,
+          valuation: supportsValuation ? t('、估值') : '',
+        })}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={onBack}>
               <ArrowLeft className="h-3.5 w-3.5 mr-1" />
-              返回持仓
+              {t('返回持仓')}
             </Button>
             <Button size="sm" onClick={() => setShowAddTrade(true)}>
               <Plus className="h-3.5 w-3.5 mr-1" />
-              添加交易
+              {t('添加交易')}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowEditStock(true)}>
               <Edit className="h-3.5 w-3.5 mr-1" />
-              编辑资产
+              {t('编辑资产')}
             </Button>
           </>
         }
@@ -195,13 +201,13 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         {/* 汇总卡片 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总收益</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('总收益')}</div>
             <div className={`text-xl font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
               {formatPnlWithNative(summary.totalPnl)}
             </div>
             {summary.currentHolding > 0 && currentPriceNum ? (
               <div className="text-xs text-muted-foreground mt-1">
-                已实现 + 浮动
+                {t('已实现 + 浮动')}
               </div>
             ) : (
               <div className={`text-xs mt-1 ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
@@ -211,31 +217,31 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">已实现收益</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('已实现收益')}</div>
             <div className={`text-lg font-bold font-mono ${summary.realizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
               {formatPnlWithNative(summary.realizedPnl)}
             </div>
             {summary.totalDividend > 0 && (
-              <div className="text-xs text-primary mt-0.5">含{incomeLabel} {formatAmountWithNative(summary.totalDividend)}</div>
+              <div className="text-xs text-primary mt-0.5">{t('含{incomeLabel} {amount}', { incomeLabel, amount: formatAmountWithNative(summary.totalDividend) })}</div>
             )}
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">当前持仓</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('当前持仓')}</div>
             <div className="text-lg font-bold font-mono text-foreground">
-              {formatQuantity(summary.currentHolding)} {assetUnit}
+              {formatQuantity(summary.currentHolding, numberLocale)} {assetUnit}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              均成本 {formatAmountWithNative(summary.avgCostPrice)}
+              {t('均成本 {amount}', { amount: formatAmountWithNative(summary.avgCostPrice) })}
             </div>
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总手续费</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('总手续费')}</div>
             <div className="text-lg font-bold font-mono text-foreground">
               {formatAmountWithNative(summary.totalCommission)}
             </div>
-            <div className="text-xs text-muted-foreground mt-1">{summary.tradeCount} 笔买卖</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('{count} 笔买卖', { count: summary.tradeCount })}</div>
           </Card>
         </div>
 
@@ -245,7 +251,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
             <CardContent className="p-4">
               <div className="flex items-center gap-3 flex-wrap">
                 <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-sm text-muted-foreground whitespace-nowrap">当前价格</span>
+                <span className="text-sm text-muted-foreground whitespace-nowrap">{t('当前价格')}</span>
 
                 {quote ? (
                   <div className="flex items-center gap-2 flex-wrap">
@@ -261,7 +267,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                 ) : (
                   <Input
                     type="number" step="0.001" min="0"
-                    placeholder={loading ? '获取中...' : '手动输入当前价格...'}
+                    placeholder={loading ? t('获取中...') : t('手动输入当前价格...')}
                     value={manualPrice} onChange={(e) => setManualPrice(e.target.value)}
                     className="max-w-44 h-8 text-sm"
                   />
@@ -269,7 +275,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
                 <div className="ml-auto flex items-center gap-2">
                   {error && !quote && (
-                    <span className="text-xs text-muted-foreground">{error}，请手动输入</span>
+                    <span className="text-xs text-muted-foreground">{t('{error}，请手动输入', { error })}</span>
                   )}
                   <Button size="sm" variant="ghost" onClick={forceRefresh} disabled={loading} className="h-8 px-2">
                     <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -280,25 +286,25 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
               {currentPriceNum && currentPriceNum > 0 && (
                 <div className="mt-3 pt-3 border-t border-border flex items-center gap-6">
                   <div>
-                    <div className="text-xs text-muted-foreground">浮动盈亏</div>
+                    <div className="text-xs text-muted-foreground">{t('浮动盈亏')}</div>
                     <div className={`text-base font-bold font-mono ${summary.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
                       {formatPnlWithNative(summary.unrealizedPnl)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">市值</div>
+                    <div className="text-xs text-muted-foreground">{t('市值')}</div>
                     <div className="text-base font-bold font-mono text-foreground">
                       {formatAmountWithNative(currentPriceNum * summary.currentHolding)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">总收益</div>
+                    <div className="text-xs text-muted-foreground">{t('总收益')}</div>
                     <div className={`text-base font-bold font-mono ${summary.totalPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
                       {formatPnlWithNative(summary.totalPnl)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground">成本</div>
+                    <div className="text-xs text-muted-foreground">{t('成本')}</div>
                     <div className="text-base font-bold font-mono text-foreground">
                       {formatAmountWithNative(summary.avgCostPrice * summary.currentHolding)}
                     </div>
@@ -313,31 +319,31 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
           <Card className="border-border bg-card">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-foreground">估值信息</div>
+                <div className="text-sm font-medium text-foreground">{t('估值信息')}</div>
                 {quote?.valuationSource && (
-                  <div className="text-xs text-muted-foreground">估值源：{quote.valuationSource}</div>
+                  <div className="text-xs text-muted-foreground">{t('估值源：{source}', { source: quote.valuationSource })}</div>
                 )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <MetricCard
                   label="PE(TTM)"
-                  value={formatPeTtm(quote?.peTtm, quote?.epsTtm)}
+                  value={formatPeTtm(quote?.peTtm, quote?.epsTtm, t)}
                 />
                 <MetricCard
                   label="EPS(TTM)"
-                  value={formatOptionalMoney(quote?.epsTtm, quote?.currency)}
+                  value={formatOptionalMoney(quote?.epsTtm, quote?.currency, t)}
                 />
                 <MetricCard
                   label="PB"
-                  value={formatOptionalRatio(quote?.pb)}
+                  value={formatOptionalRatio(quote?.pb, t)}
                 />
                 <MetricCard
-                  label="总市值"
-                  value={formatOptionalMarketCap(quote?.marketCap, quote?.currency)}
+                  label={t('总市值')}
+                  value={formatOptionalMarketCap(quote?.marketCap, quote?.currency, t)}
                 />
               </div>
               <div className="text-xs text-muted-foreground">
-                `暂无数据` 表示当前行情源未返回该字段，`亏损` 表示 TTM 每股收益小于等于 0。
+                {t('`暂无数据` 表示当前行情源未返回该字段，`亏损` 表示 TTM 每股收益小于等于 0。')}
               </div>
             </CardContent>
           </Card>
@@ -349,7 +355,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         {chartData.length > 1 && (
           <Card className="border-border">
             <div className="p-5 pb-3">
-              <h3 className="text-sm font-medium text-foreground">已实现盈亏曲线</h3>
+              <h3 className="text-sm font-medium text-foreground">{t('已实现盈亏曲线')}</h3>
             </div>
             <div className="h-48 px-2 pb-4">
               <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
@@ -382,11 +388,11 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                         <span style={{ color, fontWeight: 'bold' }}>
                           {sign}{formatAmountWithNative(Math.abs(pnlValue))}
                         </span>,
-                        '累计盈亏'
+                        t('累计盈亏')
                       ]
                     }}
                     labelFormatter={(label: any) => {
-                      return `日期: ${label}`
+                      return t('日期: {date}', { date: String(label) })
                     }}
                   />
                   <ReferenceLine y={0} stroke="hsl(215 12% 52%)" strokeDasharray="4 4" />
@@ -411,7 +417,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         {stock.note && (
           <Card className="border-border bg-card">
             <CardContent className="p-4">
-              <div className="text-xs text-muted-foreground mb-2">资产备注</div>
+              <div className="text-xs text-muted-foreground mb-2">{t('资产备注')}</div>
               <div className="text-sm text-foreground whitespace-pre-wrap">{stock.note}</div>
             </CardContent>
           </Card>
@@ -420,8 +426,8 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
         {/* 交易记录列表 */}
         <div>
           <div className="flex items-center justify-between gap-3 mb-3">
-            <h3 className="text-sm font-medium text-foreground">交易记录</h3>
-            <div className="text-xs text-muted-foreground">共 {tradeRows.length} / {stock.trades.length} 条</div>
+            <h3 className="text-sm font-medium text-foreground">{t('交易记录')}</h3>
+            <div className="text-xs text-muted-foreground">{t('共 {shown} / {total} 条', { shown: tradeRows.length, total: stock.trades.length })}</div>
           </div>
 
           <Card className="border-border bg-card mb-3">
@@ -430,7 +436,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                 <Input
                   value={tradeKeyword}
                   onChange={(e) => setTradeKeyword(e.target.value)}
-                  placeholder="搜索备注 / 操作 / 状态"
+                  placeholder={t('搜索备注 / 操作 / 状态')}
                   className="xl:col-span-2"
                 />
                 <Select
@@ -438,9 +444,9 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   onChange={(e) => setTradeTypeFilter(e.target.value as typeof tradeTypeFilter)}
                   className="h-10 bg-background"
                 >
-                  <option value="ALL">全部类型</option>
-                  <option value="BUY">买入</option>
-                  <option value="SELL">卖出</option>
+                  <option value="ALL">{t('全部类型')}</option>
+                  <option value="BUY">{t('买入')}</option>
+                  <option value="SELL">{t('卖出')}</option>
                   <option value="DIVIDEND">{incomeLabel}</option>
                 </Select>
                 <Select
@@ -448,33 +454,33 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   onChange={(e) => setSpecialFilter(e.target.value as typeof specialFilter)}
                   className="h-10 bg-background"
                 >
-                  <option value="ALL">全部状态</option>
-                  <option value="CLOSING">只看清仓</option>
-                  <option value="OPEN_BUY">只看仍持有批次</option>
-                  <option value="CLOSED_BUY">只看已卖完批次</option>
-                  <option value="REALIZED">只看已实现记录</option>
+                  <option value="ALL">{t('全部状态')}</option>
+                  <option value="CLOSING">{t('只看清仓')}</option>
+                  <option value="OPEN_BUY">{t('只看仍持有批次')}</option>
+                  <option value="CLOSED_BUY">{t('只看已卖完批次')}</option>
+                  <option value="REALIZED">{t('只看已实现记录')}</option>
                 </Select>
                 <Select
                   value={resultFilter}
                   onChange={(e) => setResultFilter(e.target.value as typeof resultFilter)}
                   className="h-10 bg-background"
                 >
-                  <option value="ALL">全部结果</option>
-                  <option value="PROFIT">只看盈利</option>
-                  <option value="LOSS">只看亏损</option>
-                  <option value="BREAKEVEN">只看持平</option>
+                  <option value="ALL">{t('全部结果')}</option>
+                  <option value="PROFIT">{t('只看盈利')}</option>
+                  <option value="LOSS">{t('只看亏损')}</option>
+                  <option value="BREAKEVEN">{t('只看持平')}</option>
                 </Select>
                 <Select
                   value={noteFilter}
                   onChange={(e) => setNoteFilter(e.target.value as typeof noteFilter)}
                   className="h-10 bg-background"
                 >
-                  <option value="ALL">全部备注</option>
-                  <option value="WITH_NOTE">只看有备注</option>
-                  <option value="WITHOUT_NOTE">只看无备注</option>
+                  <option value="ALL">{t('全部备注')}</option>
+                  <option value="WITH_NOTE">{t('只看有备注')}</option>
+                  <option value="WITHOUT_NOTE">{t('只看无备注')}</option>
                 </Select>
-                <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="开始日期" allowClear />
-                <DatePicker value={dateTo} onChange={setDateTo} placeholder="结束日期" allowClear />
+                <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('开始日期')} allowClear />
+                <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('结束日期')} allowClear />
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -483,7 +489,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                   size="sm"
                   onClick={() => setSortDirection((current) => current === 'desc' ? 'asc' : 'desc')}
                 >
-                  时间排序：{sortDirection === 'desc' ? '最新在前' : '最早在前'}
+                  {t('时间排序：{order}', { order: sortDirection === 'desc' ? t('最新在前') : t('最早在前') })}
                 </Button>
                 <Button
                   type="button"
@@ -500,7 +506,7 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                     setSortDirection('desc')
                   }}
                 >
-                  重置筛选
+                  {t('重置筛选')}
                 </Button>
               </div>
             </CardContent>
@@ -509,10 +515,10 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
           {sortedTrades.length === 0 ? (
             <Card className="border-border border-dashed">
               <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground text-sm">暂无交易记录</p>
+                <p className="text-muted-foreground text-sm">{t('暂无交易记录')}</p>
                 <Button size="sm" className="mt-3" onClick={() => setShowAddTrade(true)}>
                   <Plus className="h-3.5 w-3.5 mr-1" />
-                  添加第一笔
+                  {t('添加第一笔')}
                 </Button>
               </CardContent>
             </Card>
@@ -522,21 +528,21 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
                 <table className="min-w-[1180px] w-full text-sm">
                   <thead className="sticky top-0 z-[1] bg-muted/95 border-b border-border backdrop-blur">
                     <tr className="text-left">
-                      <th className="px-4 py-3 font-medium text-muted-foreground">日期</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">操作</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">价格 / 数量</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">费用 / 金额</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">批次 / 持仓状态</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">已实现结果</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground">备注</th>
-                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">操作</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('日期')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('操作')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('价格 / 数量')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('费用 / 金额')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('批次 / 持仓状态')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('已实现结果')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t('备注')}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t('操作')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tradeRows.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                          当前筛选条件下没有匹配的交易记录
+                          {t('当前筛选条件下没有匹配的交易记录')}
                         </td>
                       </tr>
                     ) : (
@@ -587,13 +593,16 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
 
       <ConfirmDialog
         open={!!deleteTradeTarget}
-        title="确认删除交易"
+        title={t('确认删除交易')}
         description={
           deleteTradeTarget
-            ? `确定删除 ${deleteTradeTarget.date} 的${deleteTradeTarget.type === 'BUY' ? '买入' : deleteTradeTarget.type === 'SELL' ? '卖出' : incomeLabel}记录？删除后会重算后续持仓成本和 FIFO 盈亏，该操作不可恢复。`
+            ? t('确定删除 {date} 的{type}记录？删除后会重算后续持仓成本和 FIFO 盈亏，该操作不可恢复。', {
+              date: deleteTradeTarget.date,
+              type: deleteTradeTarget.type === 'BUY' ? t('买入') : deleteTradeTarget.type === 'SELL' ? t('卖出') : incomeLabel,
+            })
             : undefined
         }
-        confirmText="删除"
+        confirmText={t('删除')}
         onOpenChange={(open) => {
           if (!open) setDeleteTradeTarget(null)
         }}
@@ -607,20 +616,20 @@ export default function StockDetail({ stock, onBack }: StockDetailProps) {
   )
 }
 
-function formatQuoteTimestamp(raw: string) {
+function formatQuoteTimestamp(raw: string, t: (key: string, params?: Record<string, string | number>) => string, formatDateTime: (value: string | Date, options?: Intl.DateTimeFormatOptions) => string) {
   const etMatch = raw.match(/^([A-Za-z]{3} \d{1,2}, \d{4} \d{1,2}:\d{2} (?:AM|PM) ET)$/i)
-  if (etMatch) return `更新于 ${etMatch[1]}`
+  if (etMatch) return t('更新于 {value}', { value: etMatch[1] })
 
   const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return `更新于 ${raw}`
+  if (Number.isNaN(parsed.getTime())) return t('更新于 {value}', { value: raw })
 
-  return `更新于 ${parsed.toLocaleString('zh-CN', {
+  return t('更新于 {value}', { value: formatDateTime(parsed, {
     hour12: false,
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  })}`
+  }) })
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {
@@ -632,22 +641,22 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function formatPeTtm(pe?: number | null, eps?: number | null): string {
-  if (eps !== null && eps !== undefined && Number.isFinite(eps) && eps <= 0) return '亏损'
-  if (pe === null || pe === undefined) return '暂无数据'
-  if (!Number.isFinite(pe) || pe <= 0) return '不适用'
+function formatPeTtm(pe: number | null | undefined, eps: number | null | undefined, t: (key: string) => string): string {
+  if (eps !== null && eps !== undefined && Number.isFinite(eps) && eps <= 0) return t('亏损')
+  if (pe === null || pe === undefined) return t('暂无数据')
+  if (!Number.isFinite(pe) || pe <= 0) return t('不适用')
   return pe.toFixed(2)
 }
 
-function formatOptionalRatio(value?: number | null): string {
-  if (value === null || value === undefined) return '暂无数据'
-  if (!Number.isFinite(value) || value <= 0) return '不适用'
+function formatOptionalRatio(value: number | null | undefined, t: (key: string) => string): string {
+  if (value === null || value === undefined) return t('暂无数据')
+  if (!Number.isFinite(value) || value <= 0) return t('不适用')
   return value.toFixed(2)
 }
 
-function formatOptionalMoney(value?: number | null, currency = 'CNY'): string {
-  if (value === null || value === undefined) return '暂无数据'
-  if (!Number.isFinite(value)) return '不适用'
+function formatOptionalMoney(value: number | null | undefined, currency = 'CNY', t: (key: string) => string): string {
+  if (value === null || value === undefined) return t('暂无数据')
+  if (!Number.isFinite(value)) return t('不适用')
   const symbols: Record<string, string> = {
     CNY: '¥',
     HKD: 'HK$',
@@ -657,9 +666,9 @@ function formatOptionalMoney(value?: number | null, currency = 'CNY'): string {
   return `${symbols[currency] ?? ''}${value.toFixed(2)}`
 }
 
-function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): string {
-  if (value === null || value === undefined) return '暂无数据'
-  if (!Number.isFinite(value) || value <= 0) return '不适用'
+function formatOptionalMarketCap(value: number | null | undefined, currency = 'CNY', t: (key: string) => string): string {
+  if (value === null || value === undefined) return t('暂无数据')
+  if (!Number.isFinite(value) || value <= 0) return t('不适用')
   const symbols: Record<string, string> = {
     CNY: '¥',
     HKD: 'HK$',
@@ -671,20 +680,20 @@ function formatOptionalMarketCap(value?: number | null, currency = 'CNY'): strin
     { threshold: 1e12, suffix: 'T' },
     { threshold: 1e9, suffix: 'B' },
     { threshold: 1e6, suffix: 'M' },
-    { threshold: 1e4, suffix: '万' },
+    { threshold: 1e4, suffix: t('万') },
   ]
   const unit = units.find((item) => abs >= item.threshold)
   if (!unit) return `${symbols[currency] ?? ''}${value.toFixed(0)}`
   return `${symbols[currency] ?? ''}${(value / unit.threshold).toFixed(2)}${unit.suffix}`
 }
 
-function formatWithNativeCurrency(amount: number, currency: keyof typeof CURRENCY_SYMBOLS) {
+function formatWithNativeCurrency(amount: number, currency: keyof typeof CURRENCY_SYMBOLS, locale: string) {
   const symbol = CURRENCY_SYMBOLS[currency] ?? '¥'
-  return `${symbol}${amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${symbol}${amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function formatQuantity(value: number) {
-  return value.toLocaleString('zh-CN', {
+function formatQuantity(value: number, locale: string) {
+  return value.toLocaleString(locale, {
     maximumFractionDigits: 8,
   })
 }
@@ -708,15 +717,16 @@ function TradeTableRow({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const { t, getAssetUnit, numberLocale } = useI18n()
   const { trade, pnlDetail, isClosingTrade, typeLabel, feeTotal, realizedAmount, buyRemaining, buySold, holdingAfterTrade, buyLotState } = row
   const isBuy = trade.type === 'BUY'
   const isSell = trade.type === 'SELL'
   const isDividend = trade.type === 'DIVIDEND'
   const nativeCurrency = MARKET_CURRENCY[market] || 'CNY'
-  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency)
+  const formatAmountWithNative = (amount: number) => formatWithNativeCurrency(amount, nativeCurrency, numberLocale)
   const formatPnlWithNative = (amount: number) => formatPnl(amount, nativeCurrency)
-  const assetUnit = getMarketAssetUnit(market)
-  const incomeLabel = market === 'CRYPTO' ? '收益' : '分红'
+  const assetUnit = getAssetUnit(market)
+  const incomeLabel = market === 'CRYPTO' ? t('收益') : t('分红')
 
   return (
     <tr className="border-b border-border last:border-b-0 align-top hover:bg-muted/20">
@@ -737,12 +747,12 @@ function TradeTableRow({
             <div className="flex flex-wrap items-center gap-1">
               {isSell && isClosingTrade && (
                 <span className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-bold text-primary-foreground">
-                  清仓
+                  {t('清仓')}
                 </span>
               )}
               {isBuy && buyLotState && (
                 <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
-                  buyLotState === '持有中' ? 'bg-profit/15 text-profit' : 'bg-muted text-muted-foreground'
+                  buyLotState === t('持有中') ? 'bg-profit/15 text-profit' : 'bg-muted text-muted-foreground'
                 }`}>
                   {buyLotState}
                 </span>
@@ -754,12 +764,12 @@ function TradeTableRow({
       <td className="px-4 py-3">
         <div className="space-y-1 text-xs">
           <div className="font-mono text-foreground">{formatAmountWithNative(trade.price)}</div>
-          <div className="text-muted-foreground">{formatQuantity(trade.quantity)} {assetUnit}</div>
+          <div className="text-muted-foreground">{formatQuantity(trade.quantity, numberLocale)} {assetUnit}</div>
         </div>
       </td>
       <td className="px-4 py-3">
         <div className="space-y-1 text-xs">
-          <div className="text-muted-foreground">费用 {formatAmountWithNative(feeTotal)}</div>
+          <div className="text-muted-foreground">{t('费用 {amount}', { amount: formatAmountWithNative(feeTotal) })}</div>
           <div className={`font-mono ${isBuy ? 'profit-text' : isDividend ? 'text-primary' : 'loss-text'}`}>
             {isBuy ? '-' : '+'}{formatAmountWithNative(Math.abs(trade.netAmount))}
           </div>
@@ -767,23 +777,23 @@ function TradeTableRow({
       </td>
       <td className="px-4 py-3">
         <div className="space-y-1 text-xs text-muted-foreground">
-          <div>当时总持仓 {formatQuantity(holdingAfterTrade)} {assetUnit}</div>
+          <div>{t('当时总持仓 {quantity} {unit}', { quantity: formatQuantity(holdingAfterTrade, numberLocale), unit: assetUnit })}</div>
           {isBuy ? (
             <>
-              <div>摊薄成本 {formatAmountWithNative(trade.netAmount / trade.quantity)}</div>
-              <div>该笔已卖出 {formatQuantity(buySold ?? 0)} {assetUnit}</div>
-              <div>该笔剩余 {formatQuantity(buyRemaining ?? 0)} {assetUnit}</div>
+              <div>{t('摊薄成本 {amount}', { amount: formatAmountWithNative(trade.netAmount / trade.quantity) })}</div>
+              <div>{t('该笔已卖出 {quantity} {unit}', { quantity: formatQuantity(buySold ?? 0, numberLocale), unit: assetUnit })}</div>
+              <div>{t('该笔剩余 {quantity} {unit}', { quantity: formatQuantity(buyRemaining ?? 0, numberLocale), unit: assetUnit })}</div>
             </>
           ) : isDividend ? (
-            <div>税前{incomeLabel} {formatAmountWithNative(trade.totalAmount)}</div>
+            <div>{t('税前{incomeLabel} {amount}', { incomeLabel, amount: formatAmountWithNative(trade.totalAmount) })}</div>
           ) : (
-            <div>成本基础 {formatAmountWithNative(pnlDetail?.costBasis ?? 0)}</div>
+            <div>{t('成本基础 {amount}', { amount: formatAmountWithNative(pnlDetail?.costBasis ?? 0) })}</div>
           )}
         </div>
       </td>
       <td className="px-4 py-3">
         {realizedAmount === null ? (
-          <span className="text-xs text-muted-foreground">未实现</span>
+          <span className="text-xs text-muted-foreground">{t('未实现')}</span>
         ) : (
           <div className="space-y-1 text-xs">
             <div className={`font-mono ${realizedAmount >= 0 ? 'profit-text' : 'loss-text'}`}>

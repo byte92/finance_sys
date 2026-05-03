@@ -9,6 +9,7 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_CURRENCY } from '@/lib/ExchangeRateService'
 import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
+import { useI18n } from '@/lib/i18n'
 import type { StockQuote } from '@/types/stockApi'
 
 type TodayPnlSnapshot = {
@@ -30,6 +31,7 @@ type TodayPnlSnapshot = {
 export default function PortfolioSummarySection() {
   const { stocks, config } = useStockStore()
   const { displayCurrency, convertAmountSync, formatWithCurrency, rates } = useCurrency()
+  const { t, numberLocale } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const [todayPnl, setTodayPnl] = useState<TodayPnlSnapshot>({
     amount: 0,
@@ -195,15 +197,26 @@ export default function PortfolioSummarySection() {
     }
   }, [stocks, displayCurrency, rates, config.tradeMatchMode])
 
+  const todayPnlStatus = (() => {
+    if (todayPnlLoading) return t('正在刷新当日行情')
+    if (todayPnl.activeDaily > 0) {
+      const base = t('{gainers} 个上涨 · {losers} 个下跌', { gainers: todayPnl.gainers, losers: todayPnl.losers })
+      return todayPnl.flat > 0 ? `${base} · ${t('{count} 个平盘', { count: todayPnl.flat })}` : base
+    }
+    if (todayPnl.quoted > 0 && todayPnl.closed > 0) return t('今日休市 · 最近行情不计入今日盈亏')
+    if (todayPnl.quoted > 0 && todayPnl.stale > 0) return t('暂无今日行情 · 最近行情不计入今日盈亏')
+    return t('暂无可用行情')
+  })()
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold">资产概览</h2>
-          <div className="mt-1 text-xs text-muted-foreground">默认展示核心资产状态，展开可查看费用、现金收益和持仓数量</div>
+          <h2 className="text-sm font-semibold">{t('资产概览')}</h2>
+          <div className="mt-1 text-xs text-muted-foreground">{t('默认展示核心资产状态，展开可查看费用、现金收益和持仓数量')}</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="hidden text-xs text-muted-foreground sm:block">共 {portfolio.stockCount} 个资产</div>
+          <div className="hidden text-xs text-muted-foreground sm:block">{t('共 {count} 个资产', { count: portfolio.stockCount })}</div>
           <Button
             type="button"
             variant="outline"
@@ -212,14 +225,14 @@ export default function PortfolioSummarySection() {
             onClick={() => setExpanded((current) => !current)}
           >
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            {expanded ? '收起详情' : '展开详情'}
+            {expanded ? t('收起详情') : t('展开详情')}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">今日盈亏</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('今日盈亏')}</div>
           <div className={`stat-value ${todayPnl.amount >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(todayPnl.amount, displayCurrency)}
           </div>
@@ -227,30 +240,22 @@ export default function PortfolioSummarySection() {
             {formatPercent(todayPnl.rate)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            {todayPnlLoading
-              ? '正在刷新当日行情'
-              : todayPnl.activeDaily > 0
-                ? `${todayPnl.gainers} 个上涨 · ${todayPnl.losers} 个下跌${todayPnl.flat > 0 ? ` · ${todayPnl.flat} 个平盘` : ''}`
-                : todayPnl.quoted > 0 && todayPnl.closed > 0
-                  ? '今日休市 · 最近行情不计入今日盈亏'
-                  : todayPnl.quoted > 0 && todayPnl.stale > 0
-                    ? '暂无今日行情 · 最近行情不计入今日盈亏'
-                : '暂无可用行情'}
+            {todayPnlStatus}
           </div>
         </Card>
 
         <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">持有市值</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('持有市值')}</div>
           <div className="stat-value text-foreground">
             {formatWithCurrency(todayPnl.marketValue)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            {todayPnlLoading ? '正在刷新行情' : todayPnl.quoted > 0 ? `${todayPnl.quoted} 个持仓有最近行情` : '暂无可用行情'}
+            {todayPnlLoading ? t('正在刷新行情') : todayPnl.quoted > 0 ? t('{count} 个持仓有最近行情', { count: todayPnl.quoted }) : t('暂无可用行情')}
           </div>
         </Card>
 
         <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">浮动盈亏</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('浮动盈亏')}</div>
           <div className={`stat-value ${todayPnl.unrealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(todayPnl.unrealizedPnl, displayCurrency)}
           </div>
@@ -258,12 +263,12 @@ export default function PortfolioSummarySection() {
             {formatPercent(todayPnl.unrealizedPnlPercent)}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            成本 {formatWithCurrency(todayPnl.costBasis)}
+            {t('成本 {amount}', { amount: formatWithCurrency(todayPnl.costBasis) })}
           </div>
         </Card>
 
         <Card className="stat-card border-border">
-          <div className="text-xs text-muted-foreground mb-1">累计已实现收益</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('累计已实现收益')}</div>
           <div className={`stat-value ${portfolio.totalRealizedPnl >= 0 ? 'profit-text' : 'loss-text'}`}>
             {formatPnl(portfolio.totalRealizedPnl, displayCurrency)}
           </div>
@@ -276,27 +281,27 @@ export default function PortfolioSummarySection() {
       {expanded && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">总手续费</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('总手续费')}</div>
             <div className="stat-value text-foreground">
               {formatWithCurrency(portfolio.totalCommission)}
             </div>
-            <div className="text-xs text-muted-foreground mt-1">累计手续费</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('累计手续费')}</div>
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">累计现金收益</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('累计现金收益')}</div>
             <div className="stat-value text-foreground">
               {formatWithCurrency(portfolio.totalDividend)}
             </div>
-            <div className="text-xs text-muted-foreground mt-1">税后到账</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('税后到账')}</div>
           </Card>
 
           <Card className="stat-card border-border">
-            <div className="text-xs text-muted-foreground mb-1">持仓数量</div>
+            <div className="text-xs text-muted-foreground mb-1">{t('持仓数量')}</div>
             <div className="stat-value text-foreground">
-              {portfolio.totalHolding.toLocaleString()}
+              {portfolio.totalHolding.toLocaleString(numberLocale)}
             </div>
-            <div className="text-xs text-muted-foreground mt-1">全部市场</div>
+            <div className="text-xs text-muted-foreground mt-1">{t('全部市场')}</div>
           </Card>
         </div>
       )}

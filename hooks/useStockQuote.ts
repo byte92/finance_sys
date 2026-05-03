@@ -1,5 +1,6 @@
 // React Hook for 股价获取
 import { useState, useEffect, useCallback } from 'react'
+import { useI18n } from '@/lib/i18n'
 import type { StockQuote } from '@/types/stockApi'
 import type { Market } from '@/types'
 
@@ -10,6 +11,7 @@ interface Options {
 
 export function useStockQuote(symbol: string, market: Market, options: Options = {}) {
   const { autoRefresh = false, refreshInterval = 60000 } = options
+  const { t } = useI18n()
 
   const [quote, setQuote] = useState<StockQuote | null>(null)
   const [loading, setLoading] = useState(false)
@@ -27,13 +29,13 @@ export function useStockQuote(symbol: string, market: Market, options: Options =
       const data = await res.json()
       const result = (data?.quote ?? null) as StockQuote | null
       setQuote(result)
-      if (!result) setError(data?.error ?? '暂无行情数据')
+      if (!result) setError(t(data?.error ?? '暂无行情数据'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '获取失败')
+      setError(err instanceof Error ? t(err.message) : t('获取失败'))
     } finally {
       setLoading(false)
     }
-  }, [symbol, market])
+  }, [symbol, market, t])
 
   useEffect(() => { fetchQuote() }, [fetchQuote])
 
@@ -55,13 +57,13 @@ export function useStockQuote(symbol: string, market: Market, options: Options =
       const data = await res.json()
       const result = (data?.quote ?? null) as StockQuote | null
       setQuote(result)
-      if (!result) setError(data?.error ?? '暂无行情数据')
+      if (!result) setError(t(data?.error ?? '暂无行情数据'))
     } catch (err) {
-      setError(err instanceof Error ? err.message : '获取失败')
+      setError(err instanceof Error ? t(err.message) : t('获取失败'))
     } finally {
       setLoading(false)
     }
-  }, [symbol, market])
+  }, [symbol, market, t])
 
   return { quote, loading, error, refresh: fetchQuote, forceRefresh }
 }

@@ -6,6 +6,8 @@ scopes:
   - network.fetch
 inputs:
   query: string
+  queries: string[]?
+  sourceHints: string[]?
   limit: number?
   searchLimit: number?
 dependencies:
@@ -18,11 +20,11 @@ script: lib/agent/skills/search.ts#webSearchSkill
 当内置 Skill 无法覆盖用户需要的最新数据时使用（如财报、公告、新闻等）。
 通过 Playwright 驱动搜索引擎获取候选结果，再打开二级页面抓取正文并做相关性筛选。
 
-金融类问题会保留通用自由搜索能力，同时按场景扩展 query：
+`web.search` 不负责理解金融语义，也不会按场景硬编码改写 query。
+Planner/模型需要提前把用户问题提取成可独立搜索的 `query`，必要时提供：
 
-- A 股公告、定期报告、业绩预告等优先尝试巨潮资讯、上交所、深交所等官方/权威来源。
-- 个股新闻、利好利空、今日发生了什么，使用股票名称/代码 + 新闻/消息/利好利空等通用检索词。
-- A 股大盘今日事件、政策、盘面新闻，使用 A 股、大盘、政策、盘面、大事件等通用检索词。
+- `queries`: 模型生成的候选搜索句。
+- `sourceHints`: 模型判断应优先参考的来源、域名或机构名。
 
 # 不适用场景
 

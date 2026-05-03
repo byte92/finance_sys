@@ -16,6 +16,7 @@ test('agent skill loader reads builtin markdown manifests', () => {
     'portfolio.getAnalysisContext',
     'portfolio.getSummary',
     'portfolio.getTopPositions',
+    'security.resolve',
     'stock.getAnalysisContext',
     'stock.getExternalQuote',
     'stock.getFinancials',
@@ -33,6 +34,11 @@ test('agent skill loader reads builtin markdown manifests', () => {
   assert.equal(holding.inputs.stockId, 'string')
   assert.deepEqual(holding.scopes, ['stock.read', 'quote.read'])
   assert.ok(holding.documentation.includes('使用场景'))
+
+  const resolver = manifests.find((manifest) => manifest.name === 'security.resolve')
+  assert.ok(resolver)
+  assert.equal(resolver.inputs.query, 'string')
+  assert.deepEqual(resolver.scopes, ['stock.read', 'quote.read'])
 })
 
 test('agent skill registry binds markdown metadata to internal executors', () => {

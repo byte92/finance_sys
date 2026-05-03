@@ -22,7 +22,15 @@ function normalize(input: string) {
 }
 
 export function detectStockCode(input: string) {
-  return input.match(/\b[A-Z]{1,6}\b|\b\d{5,6}\b/)?.[0]?.toUpperCase() ?? null
+  const pattern = /\b[A-Z]{1,6}\b|\b\d{5,6}\b/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(input))) {
+    const value = match[0]
+    const nextChar = input[match.index + value.length]
+    if (/^[A-Z]{1,6}$/.test(value) && nextChar === '股') continue
+    return value.toUpperCase()
+  }
+  return null
 }
 
 export function matchStocks(query: string, stocks: Stock[], limit = 5): StockMatch[] {

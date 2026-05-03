@@ -2,6 +2,8 @@ import type { AgentSkill } from '@/lib/agent/types'
 
 export type WebSearchInput = {
   query: string
+  queries?: string[]
+  sourceHints?: string[]
   limit?: number
   searchLimit?: number
 }
@@ -16,8 +18,16 @@ export type WebSearchItem = {
 
 export type WebSearchResult = {
   query: string
+  queries?: string[]
+  sourceHints?: string[]
   results: WebSearchItem[]
   searchedAt: string
+}
+
+type NormalizedWebSearchRequest = {
+  query: string
+  queries: string[]
+  sourceHints: string[]
 }
 
 type PlaywrightBrowser = import('playwright').Browser
@@ -26,12 +36,13 @@ type PlaywrightPage = import('playwright').Page
 
 export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
   name: 'web.search',
-  description: '通过搜索引擎查找最新财报、公告、新闻等公开信息，并用浏览器抓取二级页面内容',
-  inputSchema: { query: 'string', limit: 'number?', searchLimit: 'number?' },
+  description: '通过搜索引擎查找公开信息，并用浏览器抓取二级页面内容',
+  inputSchema: { query: 'string', queries: 'string[]?', sourceHints: 'string[]?', limit: 'number?', searchLimit: 'number?' },
   requiredScopes: ['network.fetch'],
   async execute(args) {
     const query = String(args.query ?? '').trim()
     if (!query) return { skillName: 'web.search', ok: false, error: '缺少搜索关键词' }
+    const request = normalizeWebSearchRequest(args, query)
 
     const resultLimit = clampNumber(args.limit, 5, 1, 10)
     const searchLimit = Math.max(resultLimit, clampNumber(args.searchLimit, 10, 1, 20))
@@ -51,15 +62,15 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
       })
 
       const searchPage = await context.newPage()
-      const candidates = await collectSearchCandidates(searchPage, query, searchLimit)
+      const candidates = await collectSearchCandidates(searchPage, request, searchLimit)
       await searchPage.close().catch(() => {})
 
-      const rankedCandidates = sortByRelevance(query, dedupeResults(candidates)).slice(0, searchLimit)
-      const enriched = await enrichResults(context, rankedCandidates, query, searchLimit)
-      const relevant = filterRelevantResults(query, enriched)
-      const results = (relevant.length ? relevant : sortByRelevance(query, enriched)).slice(0, resultLimit)
+      const rankedCandidates = sortByRelevance(request, dedupeResults(candidates)).slice(0, searchLimit)
+      const enriched = await enrichResults(context, rankedCandidates, request, searchLimit)
+      const relevant = filterRelevantResults(request, enriched)
+      const results = (relevant.length ? relevant : sortByRelevance(request, enriched)).slice(0, resultLimit)
 
-      return buildSearchResult(query, results, resultLimit)
+      return buildSearchResult(request, results, resultLimit)
     } catch (error) {
       return { skillName: 'web.search', ok: false, error: describeWebSearchError(error) }
     } finally {
@@ -69,15 +80,34 @@ export const webSearchSkill: AgentSkill<WebSearchInput, WebSearchResult> = {
   },
 }
 
-function buildSearchResult(query: string, results: WebSearchItem[], limit: number) {
+function buildSearchResult(request: NormalizedWebSearchRequest, results: WebSearchItem[], limit: number) {
   return {
     skillName: 'web.search',
     ok: true,
     data: {
-      query,
+      query: request.query,
+      queries: request.queries.length ? request.queries : undefined,
+      sourceHints: request.sourceHints.length ? request.sourceHints : undefined,
       results: results.slice(0, limit),
       searchedAt: new Date().toISOString(),
     },
+  }
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(
+    value
+      .map((item) => (typeof item === 'string' ? item.replace(/\s+/g, ' ').trim() : ''))
+      .filter(Boolean),
+  ))
+}
+
+function normalizeWebSearchRequest(args: WebSearchInput, query: string): NormalizedWebSearchRequest {
+  return {
+    query,
+    queries: normalizeStringList(args.queries),
+    sourceHints: normalizeStringList(args.sourceHints),
   }
 }
 
@@ -100,9 +130,9 @@ function isMissingPlaywrightBrowserError(message: string) {
   return normalized.includes("executable doesn't exist") || normalized.includes('playwright install')
 }
 
-async function collectSearchCandidates(page: PlaywrightPage, query: string, searchLimit: number): Promise<WebSearchItem[]> {
+async function collectSearchCandidates(page: PlaywrightPage, request: NormalizedWebSearchRequest, searchLimit: number): Promise<WebSearchItem[]> {
   const items: WebSearchItem[] = []
-  const variants = buildQueryVariants(query).slice(0, 4)
+  const variants = buildQueryVariants(request).slice(0, 4)
 
   for (const item of variants) {
     items.push(...await searchGoogle(page, item, searchLimit).catch(() => []))
@@ -121,7 +151,7 @@ async function collectSearchCandidates(page: PlaywrightPage, query: string, sear
     if (hasEnoughCandidates(items, searchLimit)) break
   }
 
-  return sortByRelevance(query, dedupeResults(items)).slice(0, searchLimit)
+  return sortByRelevance(request, dedupeResults(items)).slice(0, searchLimit)
 }
 
 async function searchGoogle(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
@@ -275,10 +305,10 @@ async function searchBing(page: PlaywrightPage, query: string, limit: number): P
 async function enrichResults(
   context: PlaywrightBrowserContext,
   results: WebSearchItem[],
-  query: string,
+  request: NormalizedWebSearchRequest,
   searchLimit: number,
 ): Promise<WebSearchItem[]> {
-  const top = sortByRelevance(query, dedupeResults(results)).slice(0, Math.min(searchLimit, 10))
+  const top = sortByRelevance(request, dedupeResults(results)).slice(0, Math.min(searchLimit, 10))
   const enriched: WebSearchItem[] = []
   const batchSize = 3
 
@@ -292,7 +322,7 @@ async function enrichResults(
     enriched.push(...items)
   }
 
-  return sortByRelevance(query, enriched)
+  return sortByRelevance(request, enriched)
 }
 
 async function capturePageContentWithBrowser(context: PlaywrightBrowserContext, url: string) {
@@ -321,45 +351,26 @@ async function capturePageContentWithBrowser(context: PlaywrightBrowserContext, 
   }
 }
 
-export function buildQueryVariants(query: string) {
-  const year = String(new Date().getFullYear())
-  const code = query.match(/\b\d{6}\b/)?.[0]
-  const chineseName = extractLikelyChineseStockName(query, code)
-  const nameCode = [chineseName, code].filter(Boolean).join(' ')
+export function buildQueryVariants(input: string | Partial<WebSearchInput> | NormalizedWebSearchRequest) {
+  const query = typeof input === 'string' ? input : String(input.query ?? '')
+  const request = typeof input === 'string'
+    ? normalizeWebSearchRequest({ query }, query)
+    : normalizeWebSearchRequest({
+      query,
+      queries: input.queries,
+      sourceHints: input.sourceHints,
+    }, query)
   const variants: string[] = []
   const push = (value: string | null | undefined) => {
     const normalized = value?.replace(/\s+/g, ' ').trim()
     if (normalized) variants.push(normalized)
   }
 
-  if (code && isAStockCode(code) && isAStockAnnouncementQuery(query)) {
-    const exchange = getAStockExchange(code)
-    push(`site:cninfo.com.cn ${nameCode || code} 公告 ${year}`)
-    if (exchange?.site) push(`site:${exchange.site} ${nameCode || code} 公告 ${year}`)
-    push(`${nameCode || code} 公告 巨潮资讯 ${exchange?.label ?? '交易所'} 官方公告 ${year}`)
-    if (isFinancialReportQuery(query)) {
-      push(`site:cninfo.com.cn ${nameCode || code} 年报 季报 一季报 净利润 营业收入 ${year}`)
-      if (exchange?.site) push(`site:${exchange.site} ${nameCode || code} 定期报告 业绩 ${year}`)
-    }
+  if (request.sourceHints.length) {
+    push(`${query} ${request.sourceHints.join(' ')}`)
   }
-
-  if (isAShareMarketNewsQuery(query)) {
-    push(`A股 今日 大盘 新闻 政策 盘面 ${year}`)
-    push(`A股 今日 大事件 政策 证券时报 中国证券报 财联社 ${year}`)
-    push(`A股 证监会 央行 财政部 政策 新闻 ${year}`)
-  }
-
-  if (code && nameCode && isStockNewsQuery(query)) {
-    push(`${nameCode} 今日 新闻 利好 利空 ${year}`)
-    push(`${nameCode} 最新消息 发生了什么 ${year}`)
-  }
-
-  push(query.replace(/最新财报/g, '').replace(/\s+/g, ' ').trim())
   push(query)
-  push(query.replace(/最新财报/g, '一季报').replace(/\s+/g, ' ').trim())
-  push(`${query} ${year}`)
-  push(code && chineseName ? `${chineseName} ${code}.SH ${year} 一季报 净利润 营业收入` : '')
-  push(code && chineseName ? `${chineseName} ${year} 一季报 净利润 营业收入 ${code}` : '')
+  for (const candidate of request.queries) push(candidate)
   return Array.from(new Set(variants.filter(Boolean)))
 }
 
@@ -367,74 +378,31 @@ function hasEnoughCandidates(results: WebSearchItem[], searchLimit: number) {
   return dedupeResults(results).length >= searchLimit
 }
 
-function filterRelevantResults(query: string, results: WebSearchItem[]) {
-  const sorted = sortByRelevance(query, dedupeResults(results))
-  const threshold = isFinancialReportQuery(query) ? 5 : 3
-  const relevant = sorted.filter((item) => scoreResult(query, item) >= threshold)
+function filterRelevantResults(request: NormalizedWebSearchRequest, results: WebSearchItem[]) {
+  const sorted = sortByRelevance(request, dedupeResults(results))
+  const relevant = sorted.filter((item) => scoreResult(request, item) >= 3)
   if (relevant.length) return relevant
 
-  return sorted.filter((item) => scoreResult(query, item) >= 2)
+  return sorted.filter((item) => scoreResult(request, item) >= 2)
 }
 
-function sortByRelevance(query: string, results: WebSearchItem[]) {
-  return [...results].sort((a, b) => scoreResult(query, b) - scoreResult(query, a))
+function sortByRelevance(request: NormalizedWebSearchRequest, results: WebSearchItem[]) {
+  return [...results].sort((a, b) => scoreResult(request, b) - scoreResult(request, a))
 }
 
-function scoreResult(query: string, result: WebSearchItem) {
+function scoreResult(request: NormalizedWebSearchRequest, result: WebSearchItem) {
   const haystack = `${result.title} ${result.snippet} ${result.url} ${result.content ?? ''}`.toLowerCase()
-  const tokens = Array.from(new Set(query.toLowerCase().match(/[a-z0-9.]+|[\u4e00-\u9fa5]{2,}/g) ?? []))
-    .filter((token) => !['最新财报', '财报', 'site'].includes(token))
+  const queryText = [request.query, ...request.queries, ...request.sourceHints].join(' ')
+  const tokens = Array.from(new Set(queryText.toLowerCase().match(/[a-z0-9.]+|[\u4e00-\u9fa5]{2,}/g) ?? []))
+    .filter((token) => token.length >= 2 && token !== 'site')
   const tokenScore = tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0)
-  const financeScore = /(财报|一季报|季报|年报|业绩|公告|营业收入|净利润|eps|revenue|earnings)/i.test(haystack) ? 2 : 0
-  const metricScore = /(同比增长|同比下降|归母|归属于|869\.41|2303\.70|净利润.*亿元|营业收入.*亿元)/i.test(haystack) ? 3 : 0
-  const authorityScore = isAStockAnnouncementQuery(query) && /(cninfo\.com\.cn|sse\.com\.cn|szse\.cn|巨潮资讯|上海证券交易所|深圳证券交易所|上交所|深交所)/i.test(haystack) ? 5 : 0
-  const marketNewsScore = isAShareMarketNewsQuery(query) && /(证监会|新华社|证券时报|中国证券报|上海证券报|财联社|央视财经|央行|财政部)/i.test(haystack) ? 2 : 0
+  const normalizedQuery = request.query.toLowerCase().replace(/\s+/g, ' ').trim()
+  const phraseScore = normalizedQuery && haystack.includes(normalizedQuery) ? 3 : 0
+  const sourceHintScore = request.sourceHints.reduce((sum, hint) => (
+    haystack.includes(hint.toLowerCase()) ? sum + 2 : sum
+  ), 0)
   const contentScore = result.content && result.content.length >= 80 ? 1 : 0
-  const junkPenalty = /(工商登记|政务服务|企业信用|采购公告|招标|招聘|开户行|网点查询|电子银行|网上银行|市场监督管理)/i.test(haystack) ? -6 : 0
-  return tokenScore + financeScore + metricScore + authorityScore + marketNewsScore + contentScore + junkPenalty
-}
-
-function isFinancialReportQuery(query: string) {
-  return /(财报|一季报|季报|年报|业绩|营业收入|净利润|eps|revenue|earnings)/i.test(query)
-}
-
-function isAStockAnnouncementQuery(query: string) {
-  return /(公告|披露|停牌|复牌|减持|增持|回购|业绩预告|业绩快报|年报|季报|半年报|重大事项|澄清|财报|定期报告)/i.test(query)
-}
-
-function isStockNewsQuery(query: string) {
-  return /(新闻|消息|利好|利空|发生了什么|出了?什么事|怎么了|今日|今天|最新)/i.test(query)
-}
-
-function isAShareMarketNewsQuery(query: string) {
-  return /(A\s*股|大盘|盘面|沪指|上证|深成指|创业板|两市|三大指数)/i.test(query)
-    && /(今日|今天|新闻|消息|政策|大事件|事件|盘面|发生|利好|利空|证监会|央行|财政部|降准|降息)/i.test(query)
-}
-
-function isAStockCode(code: string) {
-  return /^\d{6}$/.test(code)
-}
-
-function getAStockExchange(code: string) {
-  if (/^6/.test(code)) return { site: 'sse.com.cn', label: '上交所' }
-  if (/^[023]/.test(code)) return { site: 'szse.cn', label: '深交所' }
-  return null
-}
-
-function extractLikelyChineseStockName(query: string, code?: string) {
-  if (code) {
-    const escapedCode = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const beforeCode = query.match(new RegExp(`([\\u4e00-\\u9fa5]{2,})\\s+${escapedCode}\\b`))?.[1]
-    if (beforeCode) return beforeCode
-    const afterCode = query.match(new RegExp(`\\b${escapedCode}\\s+([\\u4e00-\\u9fa5]{2,})`))?.[1]
-    if (afterCode && !isGenericSearchToken(afterCode)) return afterCode
-  }
-
-  return query.match(/[\u4e00-\u9fa5]{2,}/g)?.find((token) => !isGenericSearchToken(token)) ?? null
-}
-
-function isGenericSearchToken(token: string) {
-  return /^(最新|今日|今天|新闻|消息|公告|官方公告|巨潮资讯|上交所|深交所|交易所|财报|年报|季报|半年报|一季报|业绩|利好|利空|政策|大盘|盘面)$/.test(token)
+  return tokenScore + phraseScore + sourceHintScore + contentScore
 }
 
 function normalizeDuckUrl(raw: string) {

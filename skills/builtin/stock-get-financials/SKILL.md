@@ -8,6 +8,8 @@ scopes:
 inputs:
   symbol: string
   market: Market
+  researchQuery: string?
+  sourceHints: string[]?
 dependencies:
   - lib/agent/skills/stock.ts
   - lib/agent/skills/web.ts
@@ -17,7 +19,7 @@ script: lib/agent/skills/stock.ts#stockGetFinancialsSkill
 # 使用场景
 
 当用户询问持仓或未持仓股票的财报数据时使用。
-美股通过 Yahoo Finance API 获取；A 股优先读取结构化财务数据源，失败时建议追加公开搜索。
+A 股优先读取结构化财务数据源，失败时按 Planner/模型提供的 `researchQuery` 和 `sourceHints` 建议追加公开搜索。
 
 # 不适用场景
 
@@ -27,4 +29,4 @@ script: lib/agent/skills/stock.ts#stockGetFinancialsSkill
 # 输出要求
 
 返回 EPS（实际/预期/超预期值）、营收同比增速、盈利同比增速、财报发布日期和数据源。
-如果结构化数据不可用，返回后续搜索建议，由 Agent 追加公开信息检索。
+如果结构化数据不可用，返回后续搜索建议，由 Agent 用 Planner/模型提取的公开检索上下文继续补数据。

@@ -42,7 +42,7 @@ test('runAgent preserves candidate data when clarification is required', async (
 
   assert.equal(result.plan.responseMode, 'clarify')
 
-  const candidatesResult = result.skillResults.find((item) => item.skillName === 'market.resolveCandidate')
+  const candidatesResult = result.skillResults.find((item) => item.skillName === 'security.resolve')
   assert.equal(candidatesResult?.ok, true)
   assert.deepEqual(
     (candidatesResult?.data as { candidates: Array<{ code: string }> }).candidates.map((item) => item.code),

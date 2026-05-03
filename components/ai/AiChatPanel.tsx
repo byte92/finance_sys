@@ -12,27 +12,14 @@ import JsonViewer from '@/components/ui/json-viewer'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
-import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession, Market } from '@/types'
+import type { AiAgentRun, AiChatContextStats, AiChatMessage, AiChatSession } from '@/types'
 
 type AiChatPanelProps = {
   mode: 'floating' | 'full'
   onClose?: () => void
 }
 
-const MARKET_OPTIONS: Array<{ market: Market; label: string }> = [
-  { market: 'A', label: 'A 股' },
-  { market: 'HK', label: '港股' },
-  { market: 'US', label: '美股' },
-  { market: 'FUND', label: '基金' },
-  { market: 'CRYPTO', label: '加密资产' },
-]
-
 const CHAT_TITLE_MAX_LENGTH = 24
-
-type PendingCandidate = {
-  symbol: string
-  message: string
-}
 
 type AiEnvStatus = {
   configured: boolean
@@ -69,7 +56,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
   const [contextStats, setContextStats] = useState<AiChatContextStats | null>(null)
   const [clearOpen, setClearOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [pendingCandidate, setPendingCandidate] = useState<PendingCandidate | null>(null)
   const [aiEnvStatus, setAiEnvStatus] = useState<AiEnvStatus | null>(null)
   const [streamStatus, setStreamStatus] = useState('')
   const [debugEnabled, setDebugEnabled] = useState(false)
@@ -227,30 +213,15 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     setMessages([])
   }
 
-  const detectExternalCandidate = (content: string) => {
-    const code = content.match(/\b[A-Z]{1,6}\b|\b\d{5,6}\b/)?.[0]
-    if (!code) return null
-    const upper = code.toUpperCase()
-    const exists = stocks.some((stock) => stock.code.toUpperCase() === upper || stock.name.toUpperCase() === upper)
-    return exists ? null : upper
-  }
-
-  const startSend = async (content: string, externalStock?: { symbol: string; market: Market }) => {
+  const startSend = async (content: string) => {
     if (!content.trim() || !userId || loading) return
     if (!aiReady) {
       setError('请先在 .env.local 或设置页配置 AI Provider、Base URL、模型和 API Key。')
       return
     }
 
-    const candidate = detectExternalCandidate(content)
-    if (candidate && !externalStock) {
-      setPendingCandidate({ symbol: candidate, message: content })
-      return
-    }
-
     setError('')
     setInput('')
-    setPendingCandidate(null)
     setLoading(true)
     setStreamStatus('')
     const abortController = new AbortController()
@@ -287,7 +258,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
           message: content,
           stocks,
           aiConfig: config.aiConfig,
-          externalStocks: externalStock ? [externalStock] : [],
         }),
         signal: abortController.signal,
       })
@@ -755,25 +725,6 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
         </div>
 
         {error && <div className="border-t border-border px-4 py-2 text-xs text-destructive">{error}</div>}
-
-        {pendingCandidate && (
-          <div className="shrink-0 border-t border-border bg-secondary/40 p-3">
-            <div className="mb-2 text-xs text-muted-foreground">检测到未持仓标的 {pendingCandidate.symbol}，请选择市场后继续。</div>
-            <div className="flex flex-wrap gap-2">
-              {MARKET_OPTIONS.map((item) => (
-                <Button
-                  key={item.market}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void startSend(pendingCandidate.message, { symbol: pendingCandidate.symbol, market: item.market })}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
 
         <footer className="mt-auto shrink-0 border-t border-border p-3">
           <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/40 px-3 py-2 transition-colors focus-within:border-primary/40 focus-within:bg-secondary/60">

@@ -81,7 +81,7 @@ function assertNormalFinish(finishReason: string | null, receivedText: boolean, 
   throw new Error(`AI 回复被提前终止：${finishReason}`)
 }
 
-export async function callJsonCompletion(config: AiConfig, systemPrompt: string, userPrompt: string) {
+export async function callJsonCompletion(config: AiConfig, systemPrompt: string, userPrompt: string, signal?: AbortSignal) {
   if (config.provider === 'anthropic-compatible') {
     const baseUrl = ensureApiBase(config.baseUrl)
     const res = await fetch(`${baseUrl}/messages`, {
@@ -98,6 +98,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
         max_tokens: ANTHROPIC_RESPONSE_TOKEN_LIMIT,
         messages: [{ role: 'user', content: userPrompt }],
       }),
+      signal,
     })
 
     if (!res.ok) {
@@ -134,6 +135,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
         { role: 'user', content: userPrompt },
       ],
     }),
+    signal,
   })
 
   if (!res.ok) {

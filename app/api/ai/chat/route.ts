@@ -16,8 +16,25 @@ type Body = {
   externalStocks?: Array<{ symbol: string; market: Market }>
 }
 
+const MARKET_ALIASES: Record<Market, string[]> = {
+  A: ['A', 'A股', 'A 股', '沪深', '上证', '深交所', '上交所'],
+  HK: ['HK', '港股', '香港', '港交所'],
+  US: ['US', '美股', '美国', '纳斯达克', '纽交所', 'NYSE', 'NASDAQ'],
+  FUND: ['FUND', '基金', 'ETF'],
+  CRYPTO: ['CRYPTO', '加密', '币', '数字货币'],
+}
+
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function matchesCandidateAnswer(answer: string, candidate: { code: string; name: string; market: string }) {
+  const upperAnswer = answer.toUpperCase()
+  const market = candidate.market as Market
+  return upperAnswer.includes(candidate.code.toUpperCase())
+    || answer.includes(candidate.name)
+    || upperAnswer.includes(candidate.market.toUpperCase())
+    || (MARKET_ALIASES[market] ?? []).some((alias) => upperAnswer.includes(alias.toUpperCase()))
 }
 
 export async function POST(request: Request) {
@@ -70,14 +87,12 @@ export async function POST(request: Request) {
           // 用户正在选择一个候选标的
           const userAnswer = userMessage.trim()
           const candidates = pending.candidates as Array<{ code: string; name: string; market: string }>
-          const match = candidates.find((c) =>
-            userAnswer.includes(c.code) || userAnswer.includes(c.name) || userAnswer.includes(c.market)
-          ) || candidates[0]
+          const match = candidates.find((c) => matchesCandidateAnswer(userAnswer, c))
 
           if (match && match.market) {
             externalStocks = [{ symbol: match.code, market: match.market as Market }]
+            setSessionContext(body.userId!, sessionId, null) // 匹配后消费澄清状态
           }
-          setSessionContext(body.userId!, sessionId, null) // 消费后清空
         }
 
         const history = listAiChatMessages(body.userId!, sessionId)
@@ -121,7 +136,8 @@ export async function POST(request: Request) {
 
         // 如果是澄清模式，保存候选列表供下一轮消费
         if (agent.plan.responseMode === 'clarify') {
-          const candidatesResult = agent.skillResults.find((r) => r.skillName === 'market.resolveCandidate')
+          const candidatesResult = agent.skillResults.find((r) => r.skillName === 'security.resolve')
+            ?? agent.skillResults.find((r) => r.skillName === 'market.resolveCandidate')
           if (candidatesResult?.ok && candidatesResult.data) {
             const data = candidatesResult.data as { candidates?: Array<{ code: string; name: string; market: string }> }
             if (data.candidates?.length) {

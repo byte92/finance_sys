@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useStockStore } from '@/store/useStockStore'
 import { getMarketCodeMinLength, SUPPORTED_MARKETS } from '@/config/defaults'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import type { Market } from '@/types'
 import type { StockQuote } from '@/types/stockApi'
@@ -66,7 +67,7 @@ export default function AddStockModal({ onClose, onAdded, editStock }: AddStockM
 
       try {
         const res = await fetch(
-          `/api/stock/quote?symbol=${encodeURIComponent(trimmedCode)}&market=${encodeURIComponent(market)}`,
+          nextApiUrls.stock.quote(trimmedCode, market),
           { cache: 'no-store' }
         )
         const data = await res.json()

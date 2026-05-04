@@ -1,5 +1,6 @@
 import type { Market } from '@/types'
-import { COINBASE_EXCHANGE_BASE, CRYPTO_BINANCE_HOSTS, normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
+import { normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
+import { THIRD_PARTY_API_BASES, THIRD_PARTY_REQUEST_HEADERS, thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -128,7 +129,7 @@ async function fetchTencentKline(symbol: string, market: Market, interval: Kline
 }
 
 async function fetchTencentDailyKline(code: string, limit = 800): Promise<KlineItem[]> {
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},day,,,${limit},qfq`
+  const url = thirdPartyApiUrls.tencentDailyKline(code, limit)
   const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
     operation: 'kline.tencent.daily',
     provider: 'tencent',
@@ -151,7 +152,7 @@ async function fetchTencentMinuteKline(code: string, interval: KlineInterval, da
   const barsPerDay = interval === '5m' ? 48 : interval === '15m' ? 16 : interval === '30m' ? 8 : 4
   const safeDays = Number.isFinite(days) ? Math.max(7, Math.min(days, 370)) : 180
   const bars = Math.min(CONFIG.MAX_TENCENT_BARS, safeDays * barsPerDay)
-  const url = `https://ifzq.gtimg.cn/appstock/app/kline/mkline?param=${code},${gtInterval},,${bars}`
+  const url = thirdPartyApiUrls.tencentMinuteKline(code, gtInterval, bars)
   const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
     operation: 'kline.tencent.minute',
     provider: 'tencent',
@@ -178,7 +179,7 @@ async function fetchTencentMinuteKline(code: string, interval: KlineInterval, da
 async function fetchStooqKline(symbol: string, market: Market): Promise<KlineItem[]> {
   if (market !== 'US') return []
   const std = `${symbol.trim().toLowerCase()}.us`
-  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(std)}&i=d`
+  const url = thirdPartyApiUrls.stooqDailyDownload(std)
   const res = await loggedFetch(url, { signal: AbortSignal.timeout(CONFIG.TIMEOUT), cache: CONFIG.CACHE }, {
     operation: 'kline.stooq.daily',
     provider: 'stooq',
@@ -201,14 +202,9 @@ async function fetchStooqKline(symbol: string, market: Market): Promise<KlineIte
 async function fetchNasdaqKline(symbol: string, market: Market, interval: KlineInterval, days: number): Promise<KlineItem[]> {
   if (market !== 'US' || interval !== '1d') return []
   const fromDate = formatUsDateForNasdaq(days)
-  const url = `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol.toUpperCase())}/historical?assetclass=stocks&limit=500&fromdate=${fromDate}`
+  const url = thirdPartyApiUrls.nasdaqHistorical(symbol, fromDate)
   const res = await loggedFetch(url, {
-    headers: {
-      'Accept': 'application/json, text/plain, */*',
-      'Origin': 'https://www.nasdaq.com',
-      'Referer': 'https://www.nasdaq.com/',
-      'User-Agent': 'Mozilla/5.0',
-    },
+    headers: THIRD_PARTY_REQUEST_HEADERS.nasdaq,
     signal: AbortSignal.timeout(CONFIG.TIMEOUT),
     cache: CONFIG.CACHE,
   }, {
@@ -255,7 +251,7 @@ async function fetchAlphaVantageKline(symbol: string, market: Market, interval: 
   })
   if (isMinute) params.set('interval', interval)
 
-  const res = await loggedFetch(`https://www.alphavantage.co/query?${params}`, {
+  const res = await loggedFetch(thirdPartyApiUrls.alphaVantageQuery(params), {
     signal: AbortSignal.timeout(CONFIG.ALPHA_VANTAGE_TIMEOUT),
     cache: CONFIG.CACHE,
   }, {
@@ -296,14 +292,14 @@ async function fetchBinanceCryptoKline(symbol: string, market: Market, interval:
   const binanceInterval = interval === '60m' ? '1h' : interval
   const limit = getCryptoKlineLimit(interval, days)
 
-  for (const baseUrl of CRYPTO_BINANCE_HOSTS) {
+  for (const baseUrl of THIRD_PARTY_API_BASES.binance) {
     try {
       const params = new URLSearchParams({
         symbol: normalized.binanceSymbol,
         interval: binanceInterval,
         limit: String(limit),
       })
-      const url = `${baseUrl}/api/v3/klines?${params}`
+      const url = thirdPartyApiUrls.binanceKlines(baseUrl, params)
       const res = await loggedFetch(url, {
         signal: AbortSignal.timeout(CONFIG.TIMEOUT),
         cache: CONFIG.CACHE,
@@ -356,7 +352,7 @@ async function fetchCoinbaseCryptoKline(symbol: string, market: Market, interval
     start: start.toISOString(),
     end: end.toISOString(),
   })
-  const url = `${COINBASE_EXCHANGE_BASE}/products/${encodeURIComponent(normalized.coinbaseProductId)}/candles?${params}`
+  const url = thirdPartyApiUrls.coinbaseCandles(normalized.coinbaseProductId, params)
   const res = await loggedFetch(url, {
     signal: AbortSignal.timeout(CONFIG.TIMEOUT),
     cache: CONFIG.CACHE,

@@ -1,4 +1,5 @@
-import { COINBASE_EXCHANGE_BASE, CRYPTO_BINANCE_HOSTS, normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
+import { normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
+import { THIRD_PARTY_API_BASES, thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 import type { Market } from '@/types'
@@ -60,9 +61,9 @@ export class CryptoSource implements StockDataSource {
   }
 
   private async fetchBinanceQuote(symbol: NonNullable<ReturnType<typeof normalizeCryptoSymbol>>) {
-    for (const baseUrl of CRYPTO_BINANCE_HOSTS) {
+    for (const baseUrl of THIRD_PARTY_API_BASES.binance) {
       try {
-        const url = `${baseUrl}/api/v3/ticker/24hr?symbol=${encodeURIComponent(symbol.binanceSymbol)}`
+        const url = thirdPartyApiUrls.binanceTicker24h(baseUrl, symbol.binanceSymbol)
         const res = await loggedFetch(url, {
           signal: AbortSignal.timeout(7000),
           cache: 'no-store',
@@ -97,7 +98,7 @@ export class CryptoSource implements StockDataSource {
 
   private async fetchCoinbaseQuote(symbol: NonNullable<ReturnType<typeof normalizeCryptoSymbol>>) {
     try {
-      const url = `${COINBASE_EXCHANGE_BASE}/products/${encodeURIComponent(symbol.coinbaseProductId)}/stats`
+      const url = thirdPartyApiUrls.coinbaseStats(symbol.coinbaseProductId)
       const res = await loggedFetch(url, {
         signal: AbortSignal.timeout(7000),
         cache: 'no-store',

@@ -1,6 +1,7 @@
 import { detectStockCode } from '@/lib/agent/entity/stockMatcher'
 import { SUPPORTED_MARKETS } from '@/config/defaults'
 import { normalizeCryptoSymbol } from '@/lib/external/cryptoSymbols'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import type { Market } from '@/types'
 
@@ -176,7 +177,7 @@ export async function resolveExternalCandidates(query: string, limit = 5): Promi
   const timeout = setTimeout(() => controller.abort(), 2500)
   try {
     for (const candidateQuery of queries) {
-      const response = await loggedFetch(`https://smartbox.gtimg.cn/s3/?t=all&q=${encodeURIComponent(candidateQuery)}`, {
+      const response = await loggedFetch(thirdPartyApiUrls.tencentSmartbox(candidateQuery), {
         signal: controller.signal,
         headers: {
           Accept: 'text/plain,*/*',

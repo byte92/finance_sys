@@ -12,6 +12,7 @@ import {
   type MouseEventParams,
 } from 'lightweight-charts'
 import type { Market, Trade, TradeMatchMode } from '@/types'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { calcPerShareCost, add, mul, sub } from '@/lib/money'
 import { useI18n } from '@/lib/i18n'
 
@@ -265,7 +266,7 @@ export default function StockKline({
     setError(null)
 
     fetch(
-      `/api/stock/kline?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}&range=${range}&interval=${interval}`,
+      nextApiUrls.stock.kline(symbol, market, range, interval),
       { cache: 'no-store' }
     )
       .then(async (res) => {

@@ -1,4 +1,5 @@
 import type { AgentSkill } from '@/lib/agent/types'
+import { THIRD_PARTY_SEARCH_URLS } from '@/lib/external/thirdPartyApis'
 
 export type WebSearchInput = {
   query: string
@@ -155,7 +156,7 @@ async function collectSearchCandidates(page: PlaywrightPage, request: Normalized
 }
 
 async function searchGoogle(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
-  await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=zh-CN&num=${limit}`, {
+  await page.goto(THIRD_PARTY_SEARCH_URLS.google(query, limit), {
     waitUntil: 'domcontentloaded',
     timeout: 12_000,
   })
@@ -189,7 +190,7 @@ async function searchGoogle(page: PlaywrightPage, query: string, limit: number):
 }
 
 async function searchBaidu(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
-  await page.goto(`https://www.baidu.com/s?wd=${encodeURIComponent(query)}`, {
+  await page.goto(THIRD_PARTY_SEARCH_URLS.baidu(query), {
     waitUntil: 'domcontentloaded',
     timeout: 12_000,
   })
@@ -216,7 +217,7 @@ async function searchBaidu(page: PlaywrightPage, query: string, limit: number): 
 }
 
 async function searchSogou(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
-  await page.goto(`https://www.sogou.com/web?query=${encodeURIComponent(query)}`, {
+  await page.goto(THIRD_PARTY_SEARCH_URLS.sogou(query), {
     waitUntil: 'domcontentloaded',
     timeout: 12_000,
   })
@@ -243,7 +244,7 @@ async function searchSogou(page: PlaywrightPage, query: string, limit: number): 
 }
 
 async function searchDuckDuckGo(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
-  await page.goto(`https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+  await page.goto(THIRD_PARTY_SEARCH_URLS.duckDuckGo(query), {
     waitUntil: 'domcontentloaded',
     timeout: 12_000,
   })
@@ -273,7 +274,7 @@ async function searchDuckDuckGo(page: PlaywrightPage, query: string, limit: numb
 }
 
 async function searchBing(page: PlaywrightPage, query: string, limit: number): Promise<WebSearchItem[]> {
-  await page.goto(`https://cn.bing.com/search?q=${encodeURIComponent(query)}`, {
+  await page.goto(THIRD_PARTY_SEARCH_URLS.bing(query), {
     waitUntil: 'domcontentloaded',
     timeout: 12_000,
   })

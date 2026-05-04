@@ -1,6 +1,7 @@
 // 汇率服务 - 获取实时汇率
 // 使用免费的汇率API (exchangerate-api.com)
 import { mul, div, roundTo } from './money'
+import { THIRD_PARTY_API_BASES } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -39,8 +40,6 @@ const CACHE_DURATION = 60 * 60 * 1000 // 1小时
  * 汇率服务，负责获取并缓存外部汇率数据，提供组合资产跨币种折算能力。
  */
 class ExchangeRateService {
-  private apiUrl = 'https://api.exchangerate-api.com/v4/latest/USD'
-
   async getRates(): Promise<ExchangeRates & Record<string, number>> {
     const now = Date.now()
 
@@ -50,7 +49,7 @@ class ExchangeRateService {
     }
 
     try {
-      const response = await loggedFetch(this.apiUrl, {}, {
+      const response = await loggedFetch(THIRD_PARTY_API_BASES.exchangeRateLatestUsd, {}, {
         operation: 'exchangeRate.fetchLatest',
         provider: 'exchangerate-api',
         resource: 'USD',

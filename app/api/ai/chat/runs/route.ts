@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { withApiLogging } from '@/lib/observability/api'
 import { listAiAgentRuns } from '@/lib/sqlite/db'
 
@@ -15,4 +16,4 @@ async function handleGET(request: NextRequest) {
   return NextResponse.json({ runs: listAiAgentRuns(userId, sessionId, limit) })
 }
 
-export const GET = withApiLogging('/api/ai/chat/runs', handleGET)
+export const GET = withApiLogging(NEXT_API_ROUTES.ai.chatRuns, handleGET)

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { testAiConnection } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
@@ -27,4 +28,4 @@ async function handlePOST(request: Request) {
   }
 }
 
-export const POST = withApiLogging('/api/ai/test', handlePOST)
+export const POST = withApiLogging(NEXT_API_ROUTES.ai.test, handlePOST)

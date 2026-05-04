@@ -1,8 +1,7 @@
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
-
-const API_BASE = 'https://stooq.com/q/l/'
 
 /**
  * Stooq 行情数据源，负责获取美股 CSV 报价，主要作为美股报价链路的轻量 fallback。
@@ -19,7 +18,7 @@ export class StooqSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await loggedFetch(`${API_BASE}?s=aapl.us&i=d`, {
+      const res = await loggedFetch(thirdPartyApiUrls.stooqQuote('aapl.us', 'd'), {
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
       }, {
@@ -38,7 +37,7 @@ export class StooqSource implements StockDataSource {
 
     try {
       const std = `${symbol.trim().toLowerCase()}.us`
-      const res = await loggedFetch(`${API_BASE}?s=${encodeURIComponent(std)}&i=5`, {
+      const res = await loggedFetch(thirdPartyApiUrls.stooqQuote(std), {
         signal: AbortSignal.timeout(6000),
         cache: 'no-store',
       }, {

@@ -1,12 +1,10 @@
 // 腾讯财经数据源 - 国内A股/港股免费实时行情（无需API Key，支持浏览器端直连）
-// 接口文档: http://qt.gtimg.cn/q=sz000001
 
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { THIRD_PARTY_REQUEST_HEADERS, thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
-
-const API_BASE = 'https://qt.gtimg.cn'
 
 type TencentValuation = {
   peTtm?: number
@@ -72,7 +70,7 @@ export class TencentFinanceSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await loggedFetch(`${API_BASE}/q=sh000001`, { mode: 'cors' }, {
+      const res = await loggedFetch(thirdPartyApiUrls.tencentQuote('sh000001'), { mode: 'cors' }, {
         operation: 'quote.tencent.healthCheck',
         provider: this.provider,
         resource: 'sh000001',
@@ -89,9 +87,9 @@ export class TencentFinanceSource implements StockDataSource {
     try {
       const code = toTencentCode(symbol, market)
       // 使用 jsonp-like 的文本接口（浏览器可直接请求）
-      const url = `${API_BASE}/q=${code}&r=${Date.now()}`
+      const url = thirdPartyApiUrls.tencentQuote(code, Date.now())
       const res = await loggedFetch(url, {
-        headers: { Referer: 'https://finance.qq.com' },
+        headers: THIRD_PARTY_REQUEST_HEADERS.tencentFinance,
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
       }, {
@@ -114,9 +112,9 @@ export class TencentFinanceSource implements StockDataSource {
     if (market !== 'A' && market !== 'HK' && market !== 'FUND' && market !== 'US') return []
     try {
       const codes = symbols.map((s) => toTencentCode(s, market)).join(',')
-      const url = `${API_BASE}/q=${codes}&r=${Date.now()}`
+      const url = thirdPartyApiUrls.tencentQuote(codes, Date.now())
       const res = await loggedFetch(url, {
-        headers: { Referer: 'https://finance.qq.com' },
+        headers: THIRD_PARTY_REQUEST_HEADERS.tencentFinance,
         signal: AbortSignal.timeout(5000),
         cache: 'no-store',
       }, {

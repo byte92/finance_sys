@@ -118,6 +118,7 @@ export const enMessages: Record<string, string> = {
   '确定删除 {name}（{code}）？该操作不可恢复。': 'Delete {name} ({code})? This action cannot be undone.',
   '删除': 'Delete',
   '今日休市': 'Market closed today',
+  '正在确认交易日': 'Checking trading day',
   '暂无今日行情': 'No same-day quote',
   '暂无当日行情': 'No daily quote',
   '持仓 {quantity} {unit}': 'Holding {quantity} {unit}',

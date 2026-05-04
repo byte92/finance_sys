@@ -11,6 +11,8 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
 import { SUPPORTED_MARKETS } from '@/config/defaults'
+import { nextApiUrls } from '@/lib/api/endpoints'
+import { THIRD_PARTY_API_EXAMPLES } from '@/lib/external/thirdPartyApis'
 import { useI18n } from '@/lib/i18n'
 import type { AiAnalysisLanguage, AiProvider, ExportData, Market, TradeMatchMode } from '@/types'
 
@@ -101,7 +103,7 @@ export default function SettingsContent({
     let cancelled = false
     async function loadAiEnvStatus() {
       try {
-        const res = await fetch('/api/ai/config/status', { cache: 'no-store' })
+        const res = await fetch(nextApiUrls.ai.configStatus(), { cache: 'no-store' })
         const data = await res.json()
         if (!cancelled && res.ok) {
           setAiEnvStatus(data.env ?? null)
@@ -240,7 +242,7 @@ export default function SettingsContent({
     setError('')
     setTestMessage('')
     try {
-      const res = await fetch('/api/ai/test', {
+      const res = await fetch(nextApiUrls.ai.test(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiConfig }),
@@ -471,7 +473,7 @@ export default function SettingsContent({
               <Label htmlFor="ai-base-url">Base URL</Label>
               <Input
                 id="ai-base-url"
-                placeholder="https://api.openai.com/v1"
+                placeholder={THIRD_PARTY_API_EXAMPLES.openAiCompatibleBaseUrl}
                 value={displayedAiBaseUrl}
                 disabled={envAiConfigured}
                 onChange={(e) => setAiConfig((current) => ({ ...current, baseUrl: e.target.value }))}

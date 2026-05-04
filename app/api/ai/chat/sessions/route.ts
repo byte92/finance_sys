@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { normalizeChatTitle } from '@/lib/ai/chat'
 import { withApiLogging } from '@/lib/observability/api'
@@ -112,7 +113,7 @@ async function handleDELETE(request: Request) {
   }
 }
 
-export const GET = withApiLogging('/api/ai/chat/sessions', handleGET)
-export const POST = withApiLogging('/api/ai/chat/sessions', handlePOST)
-export const PATCH = withApiLogging('/api/ai/chat/sessions', handlePATCH)
-export const DELETE = withApiLogging('/api/ai/chat/sessions', handleDELETE)
+export const GET = withApiLogging(NEXT_API_ROUTES.ai.chatSessions, handleGET)
+export const POST = withApiLogging(NEXT_API_ROUTES.ai.chatSessions, handlePOST)
+export const PATCH = withApiLogging(NEXT_API_ROUTES.ai.chatSessions, handlePATCH)
+export const DELETE = withApiLogging(NEXT_API_ROUTES.ai.chatSessions, handleDELETE)

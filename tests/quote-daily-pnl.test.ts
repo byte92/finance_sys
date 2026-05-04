@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getDailyQuotePnl, getMarketDate, isMarketTradingDay } from '@/lib/quoteDailyPnl'
+import { getDailyQuotePnl, getMarketDate, isMarketHoliday, isMarketTradingDay, type MarketHolidayCalendar } from '@/lib/quoteDailyPnl'
 import type { StockQuote } from '@/types/stockApi'
+
+const chinaHolidayCalendar2026: MarketHolidayCalendar = {
+  market: 'A',
+  year: 2026,
+  holidays: ['2026-05-01', '2026-05-04', '2026-05-05'],
+  source: 'test',
+  fetchedAt: '2026-01-01T00:00:00.000Z',
+}
 
 function quote(overrides: Partial<StockQuote> = {}): StockQuote {
   return {
@@ -27,8 +35,8 @@ test('getDailyQuotePnl ignores weekend quotes for A shares', () => {
 })
 
 test('getDailyQuotePnl ignores stale previous trading day quotes', () => {
-  const mondayBeijing = new Date('2026-05-04T10:00:00+08:00')
-  const result = getDailyQuotePnl(100, quote({ timestamp: '2026-04-30T15:00:00+08:00' }), 'A', mondayBeijing)
+  const wednesdayBeijing = new Date('2026-05-06T10:00:00+08:00')
+  const result = getDailyQuotePnl(100, quote({ timestamp: '2026-04-30T15:00:00+08:00' }), 'A', wednesdayBeijing)
 
   assert.equal(result.state, 'stale-quote')
   assert.equal(result.amount, 0)
@@ -36,13 +44,32 @@ test('getDailyQuotePnl ignores stale previous trading day quotes', () => {
 })
 
 test('getDailyQuotePnl uses same-day market quotes', () => {
-  const mondayBeijing = new Date('2026-05-04T10:00:00+08:00')
-  const result = getDailyQuotePnl(100, quote({ timestamp: '2026-05-04T09:45:00+08:00' }), 'A', mondayBeijing)
+  const wednesdayBeijing = new Date('2026-05-06T10:00:00+08:00')
+  const result = getDailyQuotePnl(100, quote({ timestamp: '2026-05-06T09:45:00+08:00' }), 'A', wednesdayBeijing)
 
   assert.equal(result.state, 'active')
   assert.equal(result.amount, 50)
   assert.equal(result.previousValue, 950)
   assert.equal(Number(result.rate?.toFixed(2)), 5.26)
+})
+
+test('A shares are closed during the 2026 Labor Day holiday', () => {
+  const laborDayHoliday = new Date('2026-05-04T10:00:00+08:00')
+  const result = getDailyQuotePnl(100, quote({ timestamp: '2026-05-04T09:45:00+08:00' }), 'A', laborDayHoliday, chinaHolidayCalendar2026)
+
+  assert.equal(isMarketHoliday('A', laborDayHoliday), false)
+  assert.equal(isMarketHoliday('A', laborDayHoliday, chinaHolidayCalendar2026), true)
+  assert.equal(isMarketTradingDay('A', laborDayHoliday, chinaHolidayCalendar2026), false)
+  assert.equal(result.state, 'market-closed')
+  assert.equal(result.amount, 0)
+  assert.equal(result.rate, 0)
+})
+
+test('US trading day remains open on 2026-05-04 New York time', () => {
+  const mondayNewYorkMarketHours = new Date('2026-05-04T22:00:00+08:00')
+
+  assert.equal(getMarketDate(mondayNewYorkMarketHours, 'US'), '2026-05-04')
+  assert.equal(isMarketTradingDay('US', mondayNewYorkMarketHours), true)
 })
 
 test('US market is closed on Sunday Beijing time', () => {

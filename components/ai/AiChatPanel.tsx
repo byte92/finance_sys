@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAiDebugMode } from '@/hooks/useAiDebugMode'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import { buildAiChatSuggestions } from '@/lib/ai/chatSuggestions'
 import { useStockStore } from '@/store/useStockStore'
@@ -72,7 +73,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     let cancelled = false
     async function loadAiEnvStatus() {
       try {
-        const res = await fetch('/api/ai/config/status', { cache: 'no-store' })
+        const res = await fetch(nextApiUrls.ai.configStatus(), { cache: 'no-store' })
         const data = await res.json()
         if (!cancelled && res.ok) setAiEnvStatus(data.env ?? null)
       } catch {
@@ -94,7 +95,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   const refreshSessions = useCallback(async (options: { autoSelect?: boolean } = {}) => {
     if (!userId) return
-    const res = await fetch(`/api/ai/chat/sessions?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
+    const res = await fetch(nextApiUrls.ai.chatSessions({ userId }), { cache: 'no-store' })
     const data = await res.json()
     if (!res.ok) throw new Error(t(data?.error ?? '获取 AI 对话失败'))
     const nextSessions = (data.sessions ?? []) as AiChatSession[]
@@ -109,7 +110,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
       setMessages([])
       return
     }
-    const res = await fetch(`/api/ai/chat/messages?userId=${encodeURIComponent(userId)}&sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
+    const res = await fetch(nextApiUrls.ai.chatMessages({ userId, sessionId }), { cache: 'no-store' })
     const data = await res.json()
     if (!res.ok) throw new Error(t(data?.error ?? '获取 AI 消息失败'))
     setMessages((data.messages ?? []) as AiChatMessage[])
@@ -154,7 +155,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   const createSession = async () => {
     if (!userId) return
-    const res = await fetch('/api/ai/chat/sessions', {
+    const res = await fetch(nextApiUrls.ai.chatSessions(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId }),
@@ -203,7 +204,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     let assistantText = ''
 
     try {
-      const res = await fetch('/api/ai/chat', {
+      const res = await fetch(nextApiUrls.ai.chat(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -309,7 +310,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   const clearMessages = async () => {
     if (!userId || !activeSessionId) return
-    const res = await fetch('/api/ai/chat/messages', {
+    const res = await fetch(nextApiUrls.ai.chatMessages(), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, sessionId: activeSessionId }),
@@ -326,7 +327,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
 
   const deleteSession = async () => {
     if (!userId || !activeSessionId) return
-    const res = await fetch('/api/ai/chat/sessions', {
+    const res = await fetch(nextApiUrls.ai.chatSessions(), {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, sessionId: activeSessionId }),
@@ -356,7 +357,7 @@ export default function AiChatPanel({ mode, onClose }: AiChatPanelProps) {
     setEditingTitle(false)
     if (nextTitle === activeSession?.title) return
 
-    const res = await fetch('/api/ai/chat/sessions', {
+    const res = await fetch(nextApiUrls.ai.chatSessions(), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, sessionId: activeSessionId, title: nextTitle }),

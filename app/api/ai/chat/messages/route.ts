@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { withApiLogging } from '@/lib/observability/api'
 import { clearAiChatMessages, listAiChatMessages } from '@/lib/sqlite/db'
@@ -37,5 +38,5 @@ async function handleDELETE(request: Request) {
   }
 }
 
-export const GET = withApiLogging('/api/ai/chat/messages', handleGET)
-export const DELETE = withApiLogging('/api/ai/chat/messages', handleDELETE)
+export const GET = withApiLogging(NEXT_API_ROUTES.ai.chatMessages, handleGET)
+export const DELETE = withApiLogging(NEXT_API_ROUTES.ai.chatMessages, handleDELETE)

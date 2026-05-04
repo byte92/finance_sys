@@ -1,12 +1,5 @@
 const KNOWN_QUOTE_ASSETS = ['USDT', 'USDC', 'USD', 'BUSD'] as const
 
-export const CRYPTO_BINANCE_HOSTS = [
-  'https://api.binance.com',
-  'https://api.binance.us',
-] as const
-
-export const COINBASE_EXCHANGE_BASE = 'https://api.exchange.coinbase.com'
-
 export type NormalizedCryptoSymbol = {
   baseAsset: string
   binanceSymbol: string

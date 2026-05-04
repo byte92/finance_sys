@@ -1,4 +1,5 @@
-import type { AgentSkill, AgentSkillCall } from '@/lib/agent/types'
+import type { AgentSkill } from '@/lib/agent/types'
+import { THIRD_PARTY_WEB_FETCH_ALLOWED_HOSTS } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 
 export type WebFetchInput = {
@@ -16,28 +17,6 @@ export type WebFetchResult = {
   url: string
 }
 
-const ALLOWED_HOSTS = [
-  'finance.yahoo.com',
-  'query1.finance.yahoo.com',
-  'query2.finance.yahoo.com',
-  'qt.gtimg.cn',
-  'web.ifzq.gtimg.cn',
-  'ifzq.gtimg.cn',
-  'api.nasdaq.com',
-  'stooq.com',
-  'www.alphavantage.co',
-  'push2.eastmoney.com',
-  'data.eastmoney.com',
-  'emweb.securities.eastmoney.com',
-  'datacenter.eastmoney.com',
-  'www.cninfo.com.cn',
-  'api.exchangerate-api.com',
-  'news.google.com',
-  'vip.stock.finance.sina.com.cn',
-  'hq.sinajs.cn',
-  'money.finance.sina.com.cn',
-]
-
 const BLOCKED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
 const MAX_BODY_SIZE = 512 * 1024 // 512KB
 const REQUEST_TIMEOUT_MS = 15_000
@@ -54,7 +33,7 @@ function validateUrl(raw: string): URL {
   if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|0\.)/.test(url.hostname)) {
     throw new Error(`禁止访问内网 IP：${url.hostname}`)
   }
-  const allowed = ALLOWED_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith('.' + h))
+  const allowed = THIRD_PARTY_WEB_FETCH_ALLOWED_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith('.' + h))
   if (!allowed) {
     throw new Error(`不在白名单中的域名：${url.hostname}`)
   }

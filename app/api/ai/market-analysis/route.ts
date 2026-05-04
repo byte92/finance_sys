@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { generateId } from '@/lib/finance'
 import { generateMarketAnalysis, buildAnalysisTags } from '@/lib/marketOverview'
@@ -55,4 +56,4 @@ async function handlePOST(request: NextRequest) {
   }
 }
 
-export const POST = withApiLogging('/api/ai/market-analysis', handlePOST)
+export const POST = withApiLogging(NEXT_API_ROUTES.ai.marketAnalysis, handlePOST)

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Select } from '@/components/ui/select'
 import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiConfidence } from '@/types'
@@ -53,7 +54,7 @@ export default function AiHistoryView() {
         if (confidenceFilter !== 'ALL') params.set('confidence', confidenceFilter)
         if (dateFrom) params.set('dateFrom', dateFrom)
         if (dateTo) params.set('dateTo', dateTo)
-        const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(nextApiUrls.ai.history(params), { cache: 'no-store' })
         const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
           fallbackMessage: t('获取历史失败'),
           unavailableMessage: t(HISTORY_UNAVAILABLE_MESSAGE),
@@ -149,7 +150,7 @@ export default function AiHistoryView() {
   const handleDeleteRecord = async () => {
     if (!deleteTarget || !userId) return
     try {
-      const res = await fetch('/api/ai/history', {
+      const res = await fetch(nextApiUrls.ai.history(), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, id: deleteTarget.id }),

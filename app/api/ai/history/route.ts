@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { withApiLogging } from '@/lib/observability/api'
 import { logger } from '@/lib/observability/logger'
@@ -64,5 +65,5 @@ async function handleDELETE(request: NextRequest) {
   }
 }
 
-export const GET = withApiLogging('/api/ai/history', handleGET)
-export const DELETE = withApiLogging('/api/ai/history', handleDELETE)
+export const GET = withApiLogging(NEXT_API_ROUTES.ai.history, handleGET)
+export const DELETE = withApiLogging(NEXT_API_ROUTES.ai.history, handleDELETE)

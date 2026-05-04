@@ -1,5 +1,6 @@
 // React Hook for 股价获取
 import { useState, useEffect, useCallback } from 'react'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import type { StockQuote } from '@/types/stockApi'
 import type { Market } from '@/types'
@@ -23,7 +24,7 @@ export function useStockQuote(symbol: string, market: Market, options: Options =
     setError(null)
     try {
       const res = await fetch(
-        `/api/stock/quote?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}`,
+        nextApiUrls.stock.quote(symbol, market),
         { cache: 'no-store' }
       )
       const data = await res.json()
@@ -51,7 +52,7 @@ export function useStockQuote(symbol: string, market: Market, options: Options =
     setError(null)
     try {
       const res = await fetch(
-        `/api/stock/quote?symbol=${encodeURIComponent(symbol)}&market=${encodeURIComponent(market)}&forceRefresh=1`,
+        nextApiUrls.stock.quote(symbol, market, { forceRefresh: true }),
         { cache: 'no-store' }
       )
       const data = await res.json()

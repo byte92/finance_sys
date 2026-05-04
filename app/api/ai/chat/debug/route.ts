@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { withApiLogging } from '@/lib/observability/api'
 import { getAiAgentRun, getAiChatMessage, getAiChatSession, listAiAgentRuns, listAiChatMessages } from '@/lib/sqlite/db'
 import type { AiAgentRun, AiChatMessage } from '@/types'
@@ -77,4 +78,4 @@ async function handleGET(request: NextRequest) {
   return NextResponse.json({ error: '未找到对应的对话、消息或调用链路' }, { status: 404 })
 }
 
-export const GET = withApiLogging('/api/ai/chat/debug', handleGET)
+export const GET = withApiLogging(NEXT_API_ROUTES.ai.chatDebug, handleGET)

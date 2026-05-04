@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { safeReadJsonBody } from '@/lib/api/request'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildChatTitle, estimateTokens, getContextStats, streamChatCompletion, validateAiChatConfig } from '@/lib/ai/chat'
@@ -368,4 +369,4 @@ async function handlePOST(request: Request) {
   })
 }
 
-export const POST = withApiLogging('/api/ai/chat', handlePOST)
+export const POST = withApiLogging(NEXT_API_ROUTES.ai.chat, handlePOST)

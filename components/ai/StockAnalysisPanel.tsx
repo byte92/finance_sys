@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisHistoryRecord, AiAnalysisResult, Stock } from '@/types'
@@ -46,7 +47,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
           stockId: stock.id,
           limit: '1',
         })
-        const res = await fetch(`/api/ai/history?${params.toString()}`, { signal: controller.signal })
+        const res = await fetch(nextApiUrls.ai.history(params), { signal: controller.signal })
         const data = await readJsonResponse<{ records?: AiAnalysisHistoryRecord[] }>(res, {
           fallbackMessage: t('读取标的 AI 历史失败'),
           unavailableMessage: t(AI_ANALYSIS_UNAVAILABLE_MESSAGE),
@@ -73,7 +74,7 @@ export default function StockAnalysisPanel({ stock }: { stock: Stock }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/ai/stock-analysis', {
+      const res = await fetch(nextApiUrls.ai.stockAnalysis(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

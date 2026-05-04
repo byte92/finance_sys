@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
 import { describeClientRequestError, readJsonResponse } from "@/lib/api/client";
+import { nextApiUrls } from "@/lib/api/endpoints";
 import { adoptDeviceIdFromLocalUserId, getDeviceId } from "@/lib/device-id";
 import { generateId } from "@/lib/finance";
 import type { AppConfig, ExportData, Market, Stock, Trade } from "@/types";
@@ -112,7 +113,7 @@ function hasStoredData(payload: StoredPayload) {
 }
 
 async function fetchRemote(userId: string): Promise<RemoteStoredPayload> {
-  const res = await fetch(`/api/storage?userId=${encodeURIComponent(userId)}`, {
+  const res = await fetch(nextApiUrls.storage({ userId }), {
     method: "GET",
     cache: "no-store",
   });
@@ -129,7 +130,7 @@ async function fetchRemote(userId: string): Promise<RemoteStoredPayload> {
 }
 
 async function persistRemote(userId: string, stocks: Stock[], config: AppConfig) {
-  const res = await fetch("/api/storage", {
+  const res = await fetch(nextApiUrls.storage(), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, stocks, config }),
@@ -141,7 +142,7 @@ async function persistRemote(userId: string, stocks: Stock[], config: AppConfig)
 }
 
 async function clearRemoteAiChat(userId: string) {
-  const res = await fetch("/api/ai/chat/sessions", {
+  const res = await fetch(nextApiUrls.ai.chatSessions(), {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, all: true }),

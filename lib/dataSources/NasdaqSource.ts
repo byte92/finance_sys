@@ -1,15 +1,8 @@
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { THIRD_PARTY_REQUEST_HEADERS, thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
-
-const API_BASE = 'https://api.nasdaq.com/api/quote'
-const REQUEST_HEADERS = {
-  'Accept': 'application/json, text/plain, */*',
-  'Origin': 'https://www.nasdaq.com',
-  'Referer': 'https://www.nasdaq.com/',
-  'User-Agent': 'Mozilla/5.0',
-} as const
 
 type NasdaqChartPoint = {
   x?: number
@@ -45,8 +38,8 @@ export class NasdaqSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await loggedFetch(`${API_BASE}/AAPL/chart?assetclass=stocks`, {
-        headers: REQUEST_HEADERS,
+      const res = await loggedFetch(thirdPartyApiUrls.nasdaqChart('AAPL'), {
+        headers: THIRD_PARTY_REQUEST_HEADERS.nasdaq,
         signal: AbortSignal.timeout(6000),
         cache: 'no-store',
       }, {
@@ -64,8 +57,8 @@ export class NasdaqSource implements StockDataSource {
     if (market !== 'US') return null
 
     try {
-      const res = await loggedFetch(`${API_BASE}/${encodeURIComponent(symbol.toUpperCase())}/chart?assetclass=stocks`, {
-        headers: REQUEST_HEADERS,
+      const res = await loggedFetch(thirdPartyApiUrls.nasdaqChart(symbol), {
+        headers: THIRD_PARTY_REQUEST_HEADERS.nasdaq,
         signal: AbortSignal.timeout(7000),
         cache: 'no-store',
       }, {

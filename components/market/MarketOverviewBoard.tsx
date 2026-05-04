@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Newspaper, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import type { MarketIndexSnapshot, MarketRegion, NewsItem } from '@/types'
 
@@ -51,7 +52,7 @@ export default function MarketOverviewBoard() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/market/overview', { cache: 'no-store' })
+      const res = await fetch(nextApiUrls.market.overview(), { cache: 'no-store' })
       const data = await res.json()
       if (!res.ok) {
         throw new Error(t(data?.error ?? '获取大盘数据失败'))

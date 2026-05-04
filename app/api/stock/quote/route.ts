@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { parseMarket } from '@/config/defaults'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { stockPriceService } from '@/lib/StockPriceService'
 import { YahooFinanceSource } from '@/lib/dataSources/YahooFinanceSource'
 import { withApiLogging } from '@/lib/observability/api'
@@ -40,7 +41,7 @@ async function handleGET(request: Request) {
   }
 }
 
-export const GET = withApiLogging('/api/stock/quote', handleGET)
+export const GET = withApiLogging(NEXT_API_ROUTES.stock.quote, handleGET)
 
 async function enrichQuoteWithValuation(
   quote: StockQuote | null,

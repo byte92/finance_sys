@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { describeClientRequestError, readJsonResponse } from '@/lib/api/client'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { AiAnalysisResult } from '@/types'
@@ -35,7 +36,7 @@ export default function MarketAnalysisCard() {
           dateFrom: today,
           dateTo: today,
         })
-        const res = await fetch(`/api/ai/history?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(nextApiUrls.ai.history(params), { cache: 'no-store' })
         const data = await readJsonResponse<{ records?: Array<{ result?: AiAnalysisResult }> }>(res, {
           fallbackMessage: t('加载今日大盘分析失败'),
           unavailableMessage: t(AI_ANALYSIS_UNAVAILABLE_MESSAGE),
@@ -58,7 +59,7 @@ export default function MarketAnalysisCard() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/ai/market-analysis', {
+      const res = await fetch(nextApiUrls.ai.marketAnalysis(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

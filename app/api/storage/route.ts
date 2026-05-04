@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { DEFAULT_APP_CONFIG } from "@/config/defaults";
+import { NEXT_API_ROUTES } from "@/lib/api/endpoints";
 import { safeReadJsonBody } from "@/lib/api/request";
 import { withApiLogging } from "@/lib/observability/api";
 import { logger } from "@/lib/observability/logger";
@@ -59,5 +60,5 @@ async function handlePUT(request: NextRequest) {
   }
 }
 
-export const GET = withApiLogging("/api/storage", handleGET);
-export const PUT = withApiLogging("/api/storage", handlePUT);
+export const GET = withApiLogging(NEXT_API_ROUTES.storage, handleGET);
+export const PUT = withApiLogging(NEXT_API_ROUTES.storage, handlePUT);

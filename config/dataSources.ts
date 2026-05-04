@@ -2,6 +2,7 @@
 
 import type { DataSourceConfig, DataSourceProvider } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { THIRD_PARTY_API_BASES } from '@/lib/external/thirdPartyApis'
 
 // 腾讯财经（默认，无需Key，支持A股/港股）
 export const TENCENT_CONFIG: DataSourceConfig = {
@@ -14,7 +15,7 @@ export const TENCENT_CONFIG: DataSourceConfig = {
 export const ALPHA_VANTAGE_CONFIG: DataSourceConfig = {
   provider: 'alpha-vantage',
   apiKey: process.env.ALPHA_VANTAGE_API_KEY || process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY || '',
-  baseUrl: 'https://www.alphavantage.co/query',
+  baseUrl: THIRD_PARTY_API_BASES.alphaVantage,
   rateLimit: 5,
   cacheTtl: 300,
 }

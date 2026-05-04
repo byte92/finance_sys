@@ -10,6 +10,14 @@ export type DailyQuotePnl = {
   state: DailyQuoteState
 }
 
+export type MarketHolidayCalendar = {
+  market: Market
+  year: number
+  holidays: string[]
+  source: string
+  fetchedAt: string
+}
+
 const MARKET_TIME_ZONES: Record<Market, string> = {
   A: 'Asia/Shanghai',
   FUND: 'Asia/Shanghai',
@@ -42,11 +50,24 @@ export function getMarketDate(date: Date, market: Market) {
   return getDateParts(date, getMarketTimeZone(market)).date
 }
 
-export function isMarketTradingDay(market: Market, date = new Date()) {
+export function needsMarketHolidayCalendar(market: Market) {
+  return market === 'A' || market === 'FUND'
+}
+
+export function isMarketHoliday(market: Market, date = new Date(), calendar?: MarketHolidayCalendar | null) {
+  if (!calendar || calendar.market !== market) return false
+
+  const marketDate = getMarketDate(date, market)
+  if (calendar.year !== Number(marketDate.slice(0, 4))) return false
+
+  return calendar.holidays.includes(marketDate)
+}
+
+export function isMarketTradingDay(market: Market, date = new Date(), calendar?: MarketHolidayCalendar | null) {
   if (market === 'CRYPTO') return true
 
   const { weekday } = getDateParts(date, getMarketTimeZone(market))
-  return weekday !== 'Sat' && weekday !== 'Sun'
+  return weekday !== 'Sat' && weekday !== 'Sun' && !isMarketHoliday(market, date, calendar)
 }
 
 function parseQuoteDate(timestamp: string | undefined, market: Market) {
@@ -62,12 +83,18 @@ function parseQuoteDate(timestamp: string | undefined, market: Market) {
   return getMarketDate(parsed, market)
 }
 
-export function getDailyQuotePnl(holding: number, quote: StockQuote | null | undefined, market: Market, now = new Date()): DailyQuotePnl {
+export function getDailyQuotePnl(
+  holding: number,
+  quote: StockQuote | null | undefined,
+  market: Market,
+  now = new Date(),
+  calendar?: MarketHolidayCalendar | null,
+): DailyQuotePnl {
   if (!quote || holding <= 0) {
     return { amount: 0, rate: null, previousValue: 0, state: 'missing-quote' }
   }
 
-  if (!isMarketTradingDay(market, now)) {
+  if (!isMarketTradingDay(market, now, calendar)) {
     return { amount: 0, rate: 0, previousValue: 0, state: 'market-closed' }
   }
 

@@ -1,4 +1,5 @@
 import type { Market, NewsItem } from '@/types'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -22,7 +23,7 @@ export async function fetchStockNews(symbol: string, stockName: string, market: 
   if (market === 'A' || market === 'FUND') queryParts.push('A股')
   if (market === 'HK') queryParts.push('港股')
   if (market === 'US') queryParts.push('美股')
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(queryParts.join(' '))}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`
+  const url = thirdPartyApiUrls.googleNewsRss(queryParts.join(' '))
 
   try {
     const res = await loggedFetch(url, { signal: AbortSignal.timeout(7000), cache: 'no-store' }, {

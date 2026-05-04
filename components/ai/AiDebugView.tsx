@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import JsonViewer from '@/components/ui/json-viewer'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { useI18n } from '@/lib/i18n'
 import { useStockStore } from '@/store/useStockStore'
 import type { Locale } from '@/lib/i18n/messages'
@@ -102,7 +103,7 @@ export default function AiDebugView() {
     setError('')
     try {
       const params = new URLSearchParams({ userId, id: id.trim() })
-      const res = await fetch(`/api/ai/chat/debug?${params.toString()}`, { cache: 'no-store' })
+      const res = await fetch(nextApiUrls.ai.chatDebug(params), { cache: 'no-store' })
       const data = await res.json()
       if (!res.ok) throw new Error(t(data?.error ?? '查询 Debug 信息失败'))
       const next = data as DebugLookupResult

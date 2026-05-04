@@ -6,9 +6,11 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useStockStore } from '@/store/useStockStore'
 import { useCurrency } from '@/hooks/useCurrency'
+import { useMarketHolidayCalendars } from '@/hooks/useMarketHolidayCalendars'
+import { nextApiUrls } from '@/lib/api/endpoints'
 import { calcStockSummary, formatPnl, formatPercent } from '@/lib/finance'
 import { MARKET_CURRENCY } from '@/lib/ExchangeRateService'
-import { getDailyQuotePnl } from '@/lib/quoteDailyPnl'
+import { getDailyQuotePnl, needsMarketHolidayCalendar } from '@/lib/quoteDailyPnl'
 import { useI18n } from '@/lib/i18n'
 import type { StockQuote } from '@/types/stockApi'
 
@@ -33,6 +35,8 @@ export default function PortfolioSummarySection() {
   const { displayCurrency, convertAmountSync, formatWithCurrency, rates } = useCurrency()
   const { t, numberLocale } = useI18n()
   const [expanded, setExpanded] = useState(false)
+  const calendarMarkets = useMemo(() => Array.from(new Set(stocks.map((stock) => stock.market))), [stocks])
+  const { calendars: holidayCalendars, loading: holidayCalendarLoading } = useMarketHolidayCalendars(calendarMarkets)
   const [todayPnl, setTodayPnl] = useState<TodayPnlSnapshot>({
     amount: 0,
     rate: 0,
@@ -102,13 +106,22 @@ export default function PortfolioSummarySection() {
         return
       }
 
+      const waitingForCalendar = activeHoldings.some(
+        ({ stock }) => needsMarketHolidayCalendar(stock.market) && !holidayCalendars[stock.market] && holidayCalendarLoading,
+      )
+      if (waitingForCalendar) {
+        setTodayPnlLoading(true)
+        return
+      }
+
       setTodayPnlLoading(true)
 
       try {
+        const now = new Date()
         const responses = await Promise.all(
           activeHoldings.map(async ({ stock, summary }) => {
             const res = await fetch(
-              `/api/stock/quote?symbol=${encodeURIComponent(stock.code)}&market=${encodeURIComponent(stock.market)}`,
+              nextApiUrls.stock.quote(stock.code, stock.market),
               { cache: 'no-store' },
             )
             const data = await res.json()
@@ -118,7 +131,7 @@ export default function PortfolioSummarySection() {
             }
 
             const quotedSummary = calcStockSummary(stock, quote.price, { matchMode: config.tradeMatchMode })
-            const dailyPnl = getDailyQuotePnl(summary.currentHolding, quote, stock.market)
+            const dailyPnl = getDailyQuotePnl(summary.currentHolding, quote, stock.market, now, holidayCalendars[stock.market])
             const rawMarketValue = summary.currentHolding * quote.price
             const rawCostBasis = quotedSummary.avgCostPrice * quotedSummary.currentHolding
             return {
@@ -195,7 +208,7 @@ export default function PortfolioSummarySection() {
     return () => {
       cancelled = true
     }
-  }, [stocks, displayCurrency, rates, config.tradeMatchMode])
+  }, [stocks, displayCurrency, rates, config.tradeMatchMode, holidayCalendars, holidayCalendarLoading])
 
   const todayPnlStatus = (() => {
     if (todayPnlLoading) return t('正在刷新当日行情')

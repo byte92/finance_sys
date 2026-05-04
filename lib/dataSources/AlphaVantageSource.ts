@@ -1,9 +1,8 @@
 // Alpha Vantage 数据源实现
 import type { StockDataSource, StockQuote, DataSourceConfig } from '@/types/stockApi'
 import type { Market } from '@/types'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
-
-const API_BASE = 'https://www.alphavantage.co/query'
 
 /**
  * Alpha Vantage 行情数据源，负责在配置 API Key 后获取跨市场报价，作为免费数据源的兜底补充。
@@ -18,7 +17,11 @@ export class AlphaVantageDataSource implements StockDataSource {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const res = await loggedFetch(`${API_BASE}?function=GLOBAL_QUOTE&symbol=IBM&apikey=demo`, {}, {
+      const res = await loggedFetch(thirdPartyApiUrls.alphaVantageQuery({
+        function: 'GLOBAL_QUOTE',
+        symbol: 'IBM',
+        apikey: 'demo',
+      }), {}, {
         operation: 'quote.alphaVantage.healthCheck',
         provider: this.provider,
         resource: 'IBM',
@@ -31,7 +34,11 @@ export class AlphaVantageDataSource implements StockDataSource {
     if (!this.config.apiKey) return null
     try {
       const std = toAlphaSymbol(symbol, market)
-      const url = `${API_BASE}?function=GLOBAL_QUOTE&symbol=${std}&apikey=${this.config.apiKey}`
+      const url = thirdPartyApiUrls.alphaVantageQuery({
+        function: 'GLOBAL_QUOTE',
+        symbol: std,
+        apikey: this.config.apiKey,
+      })
       const res = await loggedFetch(url, {
         signal: AbortSignal.timeout(8000),
         cache: 'no-store',

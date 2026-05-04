@@ -1,4 +1,5 @@
 import type { AiConfig } from '@/types'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -86,7 +87,7 @@ function assertNormalFinish(finishReason: string | null, receivedText: boolean, 
 export async function callJsonCompletion(config: AiConfig, systemPrompt: string, userPrompt: string, signal?: AbortSignal) {
   if (config.provider === 'anthropic-compatible') {
     const baseUrl = ensureApiBase(config.baseUrl)
-    const res = await loggedFetch(`${baseUrl}/messages`, {
+    const res = await loggedFetch(thirdPartyApiUrls.llmMessages(baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -126,7 +127,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
   }
 
   const baseUrl = ensureApiBase(config.baseUrl)
-  const res = await loggedFetch(`${baseUrl}/chat/completions`, {
+  const res = await loggedFetch(thirdPartyApiUrls.llmChatCompletions(baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -161,7 +162,7 @@ export async function callJsonCompletion(config: AiConfig, systemPrompt: string,
 
 async function streamOpenAiCompatible(config: AiConfig, messages: LlmProviderMessage[], onChunk: (chunk: string) => void, signal?: AbortSignal) {
   const baseUrl = ensureApiBase(config.baseUrl)
-  const res = await loggedFetch(`${baseUrl}/chat/completions`, {
+  const res = await loggedFetch(thirdPartyApiUrls.llmChatCompletions(baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -226,7 +227,7 @@ async function streamAnthropicCompatible(config: AiConfig, messages: LlmProvider
       content: message.content,
     }))
 
-  const res = await loggedFetch(`${baseUrl}/messages`, {
+  const res = await loggedFetch(thirdPartyApiUrls.llmMessages(baseUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

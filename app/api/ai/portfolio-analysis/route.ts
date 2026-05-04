@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { resolveEffectiveAiConfig } from '@/lib/ai/config'
 import { buildAnalysisTags, generatePortfolioAnalysis } from '@/lib/ai/service'
 import { safeReadJsonBody } from '@/lib/api/request'
@@ -56,4 +57,4 @@ async function handlePOST(request: Request) {
   }
 }
 
-export const POST = withApiLogging('/api/ai/portfolio-analysis', handlePOST)
+export const POST = withApiLogging(NEXT_API_ROUTES.ai.portfolioAnalysis, handlePOST)

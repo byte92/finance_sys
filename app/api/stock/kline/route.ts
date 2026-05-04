@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { parseMarket } from '@/config/defaults'
+import { NEXT_API_ROUTES } from '@/lib/api/endpoints'
 import { fetchKline, VALID_KLINE_INTERVALS, type KlineFetchResult, type KlineInterval } from '@/lib/external/kline'
 import { withApiLogging } from '@/lib/observability/api'
 
@@ -25,4 +26,4 @@ async function handleGET(request: Request): Promise<NextResponse<KlineFetchResul
   return NextResponse.json(result)
 }
 
-export const GET = withApiLogging('/api/stock/kline', handleGET)
+export const GET = withApiLogging(NEXT_API_ROUTES.stock.kline, handleGET)

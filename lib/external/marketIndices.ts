@@ -1,6 +1,7 @@
 import { buildTechnicalIndicatorSnapshot } from '@/lib/technicalIndicators'
 import type { CandlePoint } from '@/lib/technicalIndicators'
 import type { Market, MarketIndexSnapshot, MarketRegion } from '@/types'
+import { thirdPartyApiUrls } from '@/lib/external/thirdPartyApis'
 import { loggedFetch } from '@/lib/observability/fetch'
 import { logger } from '@/lib/observability/logger'
 
@@ -53,7 +54,7 @@ function parseCandleRows(rows: string[][], market: Market): CandlePoint[] {
 }
 
 async function fetchIndexRawPayload(definition: MarketIndexDefinition, limit = 120) {
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${definition.tencentCode},day,,,${limit},qfq`
+  const url = thirdPartyApiUrls.tencentDailyKline(definition.tencentCode, limit)
   const res = await loggedFetch(url, {
     signal: AbortSignal.timeout(7000),
     cache: 'no-store',

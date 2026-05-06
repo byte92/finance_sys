@@ -31,7 +31,13 @@ cp .env.example .env.local
 
 `docker/docker-compose.yml` 会可选读取 `../.env.local` 并把这些业务变量注入容器。应用代码仍然通过 `process.env.AI_API_KEY`、`process.env.AI_MODEL` 等方式读取。
 
-默认数据会保存在 Docker volume `stocktracker-data` 中，容器重启后不会丢失。
+默认数据会保存在当前目录的 `data/finance.sqlite` 中，也就是：
+
+```text
+docker/data/finance.sqlite
+```
+
+容器重启后不会丢失，备份或迁移时复制整个 `docker/data` 目录即可。
 
 默认情况下，`docker-compose.yml` 会从 GHCR 拉取公开镜像：
 
@@ -67,11 +73,25 @@ docker compose up -d --build
 # 查看日志
 docker compose logs -f
 
-# 停止服务
+# 停止服务；不会删除 docker/data 下的本地数据
 docker compose down
+```
 
-# 停止服务并删除本地数据 volume
-docker compose down -v
+## 写入失败排查
+
+如果页面提示“本地数据服务暂时不可用”，并且浏览器控制台里看到
+`PUT /api/storage 500`，通常是 SQLite 数据文件所在的数据目录权限异常。
+新版镜像启动时会自动修正 `/app/data` 的属主后再降权运行。更新镜像后重启即可：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+如果使用本地构建镜像，请重新构建：
+
+```bash
+docker compose up -d --build
 ```
 
 ## 直接运行公开镜像
@@ -92,7 +112,7 @@ docker run -d \
   --restart unless-stopped \
   -p "${HOST_PORT}:3218" \
   -e PORT=3218 \
-  -v stocktracker-data:/app/data \
+  -v "$(pwd)/data:/app/data" \
   ghcr.io/byte92/finance_sys:latest
 ```
 
@@ -131,7 +151,7 @@ docker buildx build \
 /app/data/finance.sqlite
 ```
 
-`docker/docker-compose.yml` 会把这个目录挂载到命名 volume。请不要把真实 SQLite 数据库打进镜像，也不要把包含真实 API Key 的 `.env.local` 或包含本地编排偏好的 `docker/.env` 提交到仓库。
+`docker/docker-compose.yml` 会把这个目录绑定挂载到 `docker/data`。请不要把真实 SQLite 数据库打进镜像，也不要把包含真实 API Key 的 `.env.local`、包含本地编排偏好的 `docker/.env` 或 `docker/data` 下的数据库文件提交到仓库。
 
 ## 架构说明
 

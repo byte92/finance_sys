@@ -46,12 +46,15 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Pipeline-Depth "0";\nAcquire::
 RUN mkdir -p /app/data /app/skills/custom \
   && chown -R pwuser:pwuser /app/data /app/skills
 
+COPY scripts/docker-entrypoint.sh /usr/local/bin/stocktracker-entrypoint
+RUN chmod +x /usr/local/bin/stocktracker-entrypoint
+
 COPY --from=builder --chown=pwuser:pwuser /app/.next/standalone ./
 COPY --from=builder --chown=pwuser:pwuser /app/.next/static ./.next/static
 COPY --from=builder --chown=pwuser:pwuser /app/app/icon.svg ./app/icon.svg
 COPY --from=builder --chown=pwuser:pwuser /app/skills ./skills
 
-USER pwuser
 VOLUME ["/app/data"]
 
+ENTRYPOINT ["stocktracker-entrypoint"]
 CMD ["node", "server.js"]

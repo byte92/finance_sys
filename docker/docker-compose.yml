@@ -22,8 +22,4 @@ services:
       PORT: 3218
       FINANCE_SQLITE_PATH: /app/data/finance.sqlite
     volumes:
-      - stocktracker-data:/app/data
-
-volumes:
-  stocktracker-data:
-    name: stocktracker-data
+      - ./data:/app/data

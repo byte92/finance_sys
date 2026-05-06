@@ -38,8 +38,15 @@ yarn.lock
 .vscode/
 .qoder/
 data/*.sqlite
+data/*.sqlite-*
 data/*.sqlite.backup-*
 data/*.sqlite.bak-*
+docker/data/*.sqlite
+docker/data/*.sqlite-*
+docker/data/*.sqlite.backup-*
+docker/data/*.sqlite.bak-*
+docker/data/*.db
+docker/data/*.db-*
 
 # typescript
 *.tsbuildinfo

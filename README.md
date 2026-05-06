@@ -155,7 +155,7 @@ docker compose up -d --build
 
 如需修改宿主机端口，可把 `docker/.env.example` 复制为 `docker/.env` 并修改 `HOST_PORT`。AI 模型配置仍放在根目录 `.env.local`；Docker Compose 会读取 `.env.local` 并注入容器。没有 `docker/.env` 时端口默认使用 `3218`。
 
-容器默认把 SQLite 数据保存在 Docker volume 中，重启不会丢失。更多说明见 [Docker 部署指南](./docker/README.md)。
+容器默认把 SQLite 数据保存在 `docker/data/finance.sqlite` 中，重启不会丢失。更多说明见 [Docker 部署指南](./docker/README.md)。
 
 ## 本地优先与隐私边界 🔒
 

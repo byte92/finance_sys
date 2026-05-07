@@ -102,6 +102,20 @@ function toWebFetchSource(data: Record<string, unknown>) {
   }
 }
 
+function toWebBrowseSource(data: Record<string, unknown>) {
+  const url = textValue(data.finalUrl) || textValue(data.url)
+  if (!url) return null
+  const summary = textValue(data.summary)
+  const content = textValue(data.content)
+  return {
+    title: textValue(data.title),
+    url,
+    status: data.status,
+    capturedAt: textValue(data.capturedAt),
+    summary: (summary || content).slice(0, 900),
+  }
+}
+
 function inferAnswerType(plan: AgentPlan): AgentAnswerDraft['answerType'] {
   if (plan.responseMode === 'refuse') return 'refusal'
   if (plan.responseMode === 'clarify') return 'clarify'
@@ -289,6 +303,18 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
       addItem(facts, '公开页面抓取', source, 'web.fetch', '这是受控抓取到的外部页面内容，应按页面来源和抓取状态引用。')
     } else {
       addItem(missingData, '公开页面抓取', '未抓取到可用页面内容。', 'web.fetch')
+    }
+  }
+
+  for (const result of findResults(skillResults, 'web.browse')) {
+    const data = getData(result)
+    if (!data) continue
+
+    const source = toWebBrowseSource(data)
+    if (source) {
+      addItem(facts, '浏览器页面访问', source, 'web.browse', '这是 Playwright 浏览器实际打开并抽取到的页面内容，应优先用于回答用户给定链接的问题。')
+    } else {
+      addItem(missingData, '浏览器页面访问', '未抽取到可用页面正文。', 'web.browse')
     }
   }
 

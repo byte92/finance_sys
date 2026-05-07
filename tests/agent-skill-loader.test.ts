@@ -26,6 +26,7 @@ test('agent skill loader reads builtin markdown manifests', () => {
     'stock.getRecentTrades',
     'stock.getTechnicalSnapshot',
     'stock.match',
+    'web.browse',
     'web.fetch',
     'web.search',
   ].sort())

@@ -27,6 +27,7 @@ const LLM_PLANNER_TIMEOUT_MS = 8_000
 
 function buildStockSkillCalls(stock: Stock, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = buildDefaultStockSkillCalls(stock)
+  appendUrlBrowseFallback(skills, userMessage)
   appendExternalResearchFallback(skills, userMessage, stock)
   appendDomainCalculationFallback(skills, userMessage, stock)
   return dedupeSkillCalls(skills)
@@ -46,6 +47,7 @@ type ExternalStockTarget = Pick<SecurityCandidate, 'code' | 'name' | 'market'>
 
 function buildExternalStockSkillCalls(target: ExternalStockTarget, userMessage: string): AgentSkillCall[] {
   const skills: AgentSkillCall[] = buildDefaultExternalStockSkillCalls(target)
+  appendUrlBrowseFallback(skills, userMessage)
   appendExternalResearchFallback(skills, userMessage, target)
   return dedupeSkillCalls(skills)
 }
@@ -81,7 +83,7 @@ function needsExternalResearch(content: string) {
 }
 
 function hasResearchSkill(calls: AgentSkillCall[]) {
-  return calls.some((call) => call.name === 'web.search' || call.name === 'web.fetch')
+  return calls.some((call) => call.name === 'web.search' || call.name === 'web.fetch' || call.name === 'web.browse')
 }
 
 function needsDividendEstimate(content: string) {
@@ -111,6 +113,16 @@ function appendExternalResearchFallback(calls: AgentSkillCall[], userMessage: st
       searchLimit: 10,
     },
     reason: '用户询问系统本地持仓/行情之外的公开财务或披露信息，需要用公开搜索补充上下文',
+  })
+}
+
+function appendUrlBrowseFallback(calls: AgentSkillCall[], userMessage: string) {
+  const urls = extractUrls(userMessage)
+  if (!urls.length || calls.some((call) => call.name === 'web.browse')) return
+  calls.push({
+    name: 'web.browse',
+    args: { url: urls[0], extractPrompt: stripUrls(userMessage) || userMessage },
+    reason: '用户消息包含 URL，需要用浏览器打开页面并提取正文',
   })
 }
 
@@ -159,15 +171,16 @@ const PLANNER_SYSTEM_PROMPT = [
   '- stock.getFinancials: 获取最近财报数据；args 可带 researchQuery/sourceHints，供结构化数据不可用时继续 web.search',
   '- finance.calculate: 执行受控的投资业务域计算；当前支持 { type: "dividend.estimate", stockId/code/symbol, quantity?, cashPerShare?, dividendPer10Shares? }',
   '- web.search: 搜索公开网页。args 支持 { query, queries?, sourceHints?, limit?, searchLimit? }，query/queries/sourceHints 由你根据用户问题抽取，不会被代码按金融场景二次改写',
-  '- web.fetch: 抓取用户明确给出的 URL 或白名单金融接口。args 支持 { url, method?, headers?, body?, extractPrompt? }',
+  '- web.browse: 使用独立 Playwright 浏览器打开用户明确给出的网页 URL，抽取页面标题和正文。args 支持 { url, extractPrompt? }',
+  '- web.fetch: 发起基础 HTTP/API 请求，仅用于白名单金融接口或静态文本。args 支持 { url, method?, headers?, body?, extractPrompt? }',
   '',
   '规则：',
   '- 如果用户问题与投资标的、持仓、交易或市场无关（天气/编程/娱乐等），intent 设为 out_of_scope，responseMode 设为 refuse',
   '- 如果标的不明确，responseMode 设为 clarify',
-  '- 如果用户询问新闻、公告、政策、财报、业绩、分红/派息、除权除息、股权登记日、利润分配、利好利空、今日发生了什么、外部页面内容或任何当前上下文没有的数据，必须规划 web.search 或 web.fetch 补充上下文',
+  '- 如果用户询问新闻、公告、政策、财报、业绩、分红/派息、除权除息、股权登记日、利润分配、利好利空、今日发生了什么、外部页面内容或任何当前上下文没有的数据，必须规划 web.browse、web.search 或 web.fetch 补充上下文',
   '- 如果用户要求本系统业务域内的计算（例如“预计这次我能分多少”“按当前持仓能拿多少分红”），必须规划 finance.calculate；缺少分红金额等外部事实时，同时规划 web.search 或让 finance.calculate 触发后续检索',
-  '- 如果用户给了明确 URL，优先规划 web.fetch，并用 extractPrompt 写清楚要从页面提取什么',
-  '- web.search query 必须是可独立搜索的短句，包含你从用户问题中抽取的标的、主题、时间范围；如果需要权威来源，用 sourceHints 表达，而不是依赖代码补词',
+  '- 如果用户给了明确网页 URL，必须优先规划 web.browse，并用 extractPrompt 写清楚要从页面提取什么',
+  '- web.search query 必须是可独立搜索的短句，包含你从用户问题中抽取的标的、主题、时间范围；不要把 URL 原文放进 query；如果需要权威来源，用 sourceHints 表达，而不是依赖代码补词',
   '- 如果用户提到的标的还没有标准 code + market，必须先规划 security.resolve，并且 args.query 只放原始标的名称或代码，例如“高德红外”“五粮液”“科创50ETF”，不要放整句问题',
   '- stock.getExternalQuote、stock.getTechnicalSnapshot、stock.getFinancials 只能在已知 code + market 后规划；不要把中文名称放进 symbol',
   '- 只规划数据读取 Skill，不要规划分析 Skill（如 getAnalysisContext）',
@@ -198,10 +211,14 @@ function extractUrls(content: string) {
   return Array.from(new Set(matches.map((item) => item.replace(/[)\]}）】]+$/, ''))))
 }
 
+function stripUrls(content: string) {
+  return content.replace(/https?:\/\/[^\s，。！？、]+/g, '').replace(/\s+/g, ' ').trim()
+}
+
 function normalizeWebSearchCall(call: AgentSkillCall, userMessage: string, target?: StockSearchTarget): AgentSkillCall {
   const query = textArg(call.args, ['query'])
   const targetPrefix = target ? [target.name, target.code].filter(Boolean).join(' ') : ''
-  const baseQuery = query || userMessage
+  const baseQuery = stripUrls(query || userMessage) || userMessage
   const shouldPrefix = targetPrefix && ![target?.name, target?.code].some((value) => value && baseQuery.includes(value))
   const normalizedQuery = [shouldPrefix ? targetPrefix : '', baseQuery].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
   const queries = stringArrayArg(call.args, 'queries')
@@ -236,11 +253,31 @@ function normalizeWebFetchCall(call: AgentSkillCall, userMessage: string): Agent
   }
 }
 
+function normalizeWebBrowseCall(call: AgentSkillCall, userMessage: string): AgentSkillCall | null {
+  const urls = extractUrls(userMessage)
+  const url = textArg(call.args, ['url']) || urls[0] || ''
+  if (!url) return null
+  return {
+    name: 'web.browse',
+    args: {
+      ...call.args,
+      url,
+      extractPrompt: textArg(call.args, ['extractPrompt']) || stripUrls(userMessage) || userMessage,
+    },
+    reason: call.reason || '模型判断需要用浏览器打开用户给出的外部页面',
+  }
+}
+
 function normalizeWebSkillCalls(plan: AgentPlan, userMessage: string, target?: StockSearchTarget) {
   const calls: AgentSkillCall[] = []
   for (const call of plan.requiredSkills) {
     if (call.name === 'web.search') {
       calls.push(normalizeWebSearchCall(call, userMessage, target))
+      continue
+    }
+    if (call.name === 'web.browse') {
+      const normalized = normalizeWebBrowseCall(call, userMessage)
+      if (normalized) calls.push(normalized)
       continue
     }
     if (call.name === 'web.fetch') {
@@ -250,11 +287,11 @@ function normalizeWebSkillCalls(plan: AgentPlan, userMessage: string, target?: S
   }
 
   const urls = extractUrls(userMessage)
-  if (urls.length && !calls.some((call) => call.name === 'web.fetch')) {
+  if (urls.length && !calls.some((call) => call.name === 'web.browse')) {
     calls.push({
-      name: 'web.fetch',
-      args: { url: urls[0], method: 'GET', extractPrompt: userMessage },
-      reason: '用户消息包含 URL，需要抓取页面内容补充上下文',
+      name: 'web.browse',
+      args: { url: urls[0], extractPrompt: stripUrls(userMessage) || userMessage },
+      reason: '用户消息包含 URL，需要用浏览器打开页面内容补充上下文',
     })
   }
 
@@ -326,6 +363,7 @@ function passthroughModelContextCalls(plan: AgentPlan) {
     'stock.getTechnicalSnapshot',
     'stock.getFinancials',
     'finance.calculate',
+    'web.browse',
     'web.search',
     'web.fetch',
   ])
@@ -357,7 +395,7 @@ async function normalizeLlmPlan(plan: AgentPlan, userMessage: string, stocks: St
   if (plan.responseMode !== 'answer') return plan
 
   const normalizedWebCalls = normalizeWebSkillCalls(plan, userMessage)
-  const baseCalls = plan.requiredSkills.filter((call) => call.name !== 'web.search' && call.name !== 'web.fetch')
+  const baseCalls = plan.requiredSkills.filter((call) => call.name !== 'web.browse' && call.name !== 'web.search' && call.name !== 'web.fetch')
   const normalizedPlan = {
     ...plan,
     requiredSkills: dedupeSkillCalls([...baseCalls, ...normalizedWebCalls]),

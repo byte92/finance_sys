@@ -112,6 +112,52 @@ test('agent planner keeps model extracted web search context', async () => {
   }
 })
 
+test('agent planner uses browser access for explicit URLs and keeps URLs out of search query', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    if (String(input).includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              intent: 'stock_analysis',
+              entities: [{ type: 'stock', raw: '好太太', code: '603848', name: '好太太', market: 'A', confidence: 0.85 }],
+              requiredSkills: [{
+                name: 'web.search',
+                args: {
+                  query: 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml#view_type=desktop_client&skin=black 这个新闻有什么启示',
+                  limit: 5,
+                },
+                reason: '模型误把链接放入搜索词',
+              }],
+              responseMode: 'answer',
+            }),
+          },
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    return originalFetch(input)
+  }
+
+  try {
+    const plan = await planAgentResponse({
+      userMessage: 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml#view_type=desktop_client&skin=black 这个新闻有什么启示',
+      stocks,
+      aiConfig: mockAiConfig,
+    })
+    const webBrowse = plan.requiredSkills.find((item) => item.name === 'web.browse')
+    const webSearch = plan.requiredSkills.find((item) => item.name === 'web.search')
+
+    assert.equal(webBrowse?.args.url, 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml#view_type=desktop_client&skin=black')
+    assert.equal(webBrowse?.args.extractPrompt, '这个新闻有什么启示')
+    assert.equal(typeof webSearch?.args.query, 'string')
+    assert.ok(!String(webSearch?.args.query).includes('https://'))
+    assert.ok(String(webSearch?.args.query).includes('这个新闻有什么启示'))
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('agent planner fallback adds generic web search for stock news questions', async () => {
   const plan = await planAgentResponse({
     userMessage: '成都银行今天发生了什么，有利空吗？',

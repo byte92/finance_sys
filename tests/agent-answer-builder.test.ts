@@ -195,6 +195,39 @@ test('answer builder exposes web fetch content', () => {
   assert.equal(fetchFact?.source, 'web.fetch')
 })
 
+test('answer builder exposes browser page content', () => {
+  const draft = buildAgentAnswerDraft({
+    intent: 'market_question',
+    entities: [{ type: 'market', raw: '外部页面', confidence: 0.8 }],
+    requiredSkills: [],
+    responseMode: 'answer',
+  }, [
+    {
+      skillName: 'web.browse',
+      ok: true,
+      data: {
+        url: 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml',
+        finalUrl: 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml#view_type=desktop_client',
+        title: '同花顺新闻标题',
+        status: 200,
+        capturedAt: '2026-05-07T06:24:15.000Z',
+        summary: '按照用户问题提取出的新闻启示。',
+        content: '浏览器抽取的新闻正文。',
+      },
+    },
+  ])
+
+  const browseFact = draft.facts.find((item) => item.label === '浏览器页面访问')
+  assert.deepEqual(browseFact?.value, {
+    title: '同花顺新闻标题',
+    url: 'https://news.10jqka.com.cn/field/v1/20260507/676491894.shtml#view_type=desktop_client',
+    status: 200,
+    capturedAt: '2026-05-07T06:24:15.000Z',
+    summary: '按照用户问题提取出的新闻启示。',
+  })
+  assert.equal(browseFact?.source, 'web.browse')
+})
+
 test('answer builder exposes external quote facts', () => {
   const draft = buildAgentAnswerDraft({
     intent: 'stock_analysis',

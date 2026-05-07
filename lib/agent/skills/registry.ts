@@ -4,6 +4,7 @@ import { portfolioGetAnalysisContextSkill, stockGetAnalysisContextSkill } from '
 import { marketGetAnalysisContextSkill, marketResolveCandidateSkill } from '@/lib/agent/skills/market'
 import { securityResolveSkill } from '@/lib/agent/skills/security'
 import { financeCalculateSkill } from '@/lib/agent/skills/finance'
+import { webBrowseSkill } from '@/lib/agent/skills/browser'
 import { webSearchSkill } from '@/lib/agent/skills/search'
 import { webFetchSkill } from '@/lib/agent/skills/web'
 import { portfolioGetSummarySkill, portfolioGetTopPositionsSkill } from '@/lib/agent/skills/portfolio'
@@ -22,6 +23,7 @@ const BUILTIN_SKILLS: AgentSkill<any, any>[] = [
   financeCalculateSkill,
   marketResolveCandidateSkill,
   marketGetAnalysisContextSkill,
+  webBrowseSkill,
   webFetchSkill,
   webSearchSkill,
   portfolioGetAnalysisContextSkill,

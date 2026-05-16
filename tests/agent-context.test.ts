@@ -83,3 +83,43 @@ test('agent context tells answer model not to expose internal skill identifiers'
   assert.match(system, /根据你的当前持仓数据/)
   assert.match(context, /最终回复不得出现这些内部标识/)
 })
+
+test('agent context instructs trade review answers to address judgment questions first', () => {
+  const plan: AgentPlan = {
+    intent: 'trade_review',
+    entities: [{ type: 'stock', raw: '福耀玻璃', stockId: 'stock-1', code: '600660', name: '福耀玻璃', market: 'A', confidence: 1 }],
+    requiredSkills: [{ name: 'stock.getHolding', args: { stockId: 'stock-1' }, reason: '读取持仓' }],
+    responseMode: 'answer',
+  }
+  const skillResults: AgentSkillResult[] = [{
+    skillName: 'stock.getHolding',
+    ok: true,
+    data: {
+      stock: { id: 'stock-1', code: '600660', name: '福耀玻璃', market: 'A' },
+      summary: {
+        currentHolding: 1800,
+        avgCostPrice: 57.45,
+        marketPrice: 56,
+        unrealizedPnl: -2603.37,
+        totalPnl: -2603.37,
+        pnlIncludesMarketPrice: true,
+      },
+    },
+  }]
+
+  const result = composeAgentContext({
+    aiConfig: mockAiConfig,
+    history: [],
+    userMessage: '福耀玻璃是不是我操作不对呀',
+    plan,
+    skillResults,
+  })
+
+  const system = result.messages[0]?.content ?? ''
+  const answerDraft = JSON.stringify(result.answerDraft)
+
+  assert.match(system, /开头必须先用一句话直接回应问题/)
+  assert.match(system, /不要只罗列持仓、行情或技术指标/)
+  assert.match(system, /不得把当前亏损或当前技术指标直接归因成当时操作错误/)
+  assert.match(answerDraft, /先直接回应用户的判断诉求/)
+})

@@ -225,6 +225,37 @@ test('agent planner uses model-planned web search for stock news questions', asy
   }
 })
 
+test('agent planner forces trade records through prepareRecord even when model asks for quote skills', async () => {
+  const restore = mockPlannerFetch({
+    intent: 'trade_record',
+    entities: [{ type: 'stock', raw: '福耀玻璃', code: '600660', name: '福耀玻璃', market: 'A', confidence: 0.82 }],
+    requiredSkills: [
+      { name: 'stock.getExternalQuote', args: { symbol: '600660', market: 'A' }, reason: '模型误规划为行情读取' },
+      { name: 'stock.getTechnicalSnapshot', args: { symbol: '600660', market: 'A' }, reason: '模型误规划为技术读取' },
+    ],
+    responseMode: 'answer',
+  })
+  try {
+    const plan = await planAgentResponse({
+      userMessage: '今日买入福耀玻璃 1,800 股,A股,成交价格 57.44',
+      stocks,
+      aiConfig: mockAiConfig,
+    })
+
+    assert.equal(plan.intent, 'trade_record')
+    assert.equal(plan.responseMode, 'answer')
+    assert.deepEqual(plan.requiredSkills.map((item) => item.name), ['trade.prepareRecord'])
+    assert.equal(plan.requiredSkills[0]?.args.text, '今日买入福耀玻璃 1,800 股,A股,成交价格 57.44')
+    assert.deepEqual(plan.requiredSkills[0]?.args.security, {
+      code: '600660',
+      name: '福耀玻璃',
+      market: 'A',
+    })
+  } finally {
+    restore()
+  }
+})
+
 test('agent planner uses portfolio skills for portfolio risk questions', async () => {
   const restore = mockPlannerFetch({
     intent: 'portfolio_risk',

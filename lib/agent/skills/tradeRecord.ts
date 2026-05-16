@@ -1,9 +1,10 @@
 import { DEFAULT_FEE_CONFIGS, parseMarket } from '@/config/defaults'
 import { matchStocks } from '@/lib/agent/entity/stockMatcher'
 import { resolveSecurityCandidates } from '@/lib/agent/entity/securityResolver'
+import { callJsonCompletion } from '@/lib/external/llmProvider'
 import { autoCalcFees, calcStockSummary, estimateDeferredDividendTax, generateId } from '@/lib/finance'
 import { getPortfolioByUserId, savePortfolioByUserId } from '@/lib/sqlite/db'
-import type { AgentSkill } from '@/lib/agent/types'
+import type { AgentExecutionContext, AgentSkill } from '@/lib/agent/types'
 import type { AppConfig, Market, Stock, Trade, TradeType } from '@/types'
 
 export type TradeRecordDraft = {
@@ -21,6 +22,7 @@ export type TradeRecordDraft = {
   totalAmount: number
   netAmount: number
   note?: string
+  willCreateStock?: boolean
   sourceText: string
   assumptions: string[]
 }
@@ -29,14 +31,38 @@ type PrepareTradeRecordInput = {
   text?: string
   correctionText?: string
   previousDraft?: TradeRecordDraft
+  security?: {
+    stockId?: string
+    code?: string
+    name?: string
+    market?: Market
+  }
 }
 
 type CommitTradeRecordInput = {
   draft?: TradeRecordDraft
 }
 
-const ACTION_WORDS = ['买入', '买进', '购入', '加仓', '卖出', '卖掉', '减仓', '清仓', '分红', '派息', '股息', '收到']
-const CANCEL_WORDS = ['取消', '不录', '别录', '不要录', '作废']
+type ModelTradeExtraction = {
+  isTradeRecord?: boolean
+  isCancellation?: boolean
+  type?: string
+  date?: string
+  securityQuery?: string
+  code?: string
+  name?: string
+  market?: string
+  quantity?: number | string
+  price?: number | string
+  dividendPerUnit?: number | string
+  dividendTotal?: number | string
+  note?: string
+  assumptions?: string[]
+  missing?: string[]
+  confidence?: number
+}
+
+const TRADE_EXTRACTION_TIMEOUT_MS = 6_000
 
 function isFinitePositive(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
@@ -53,78 +79,6 @@ function localDateString(date = new Date()) {
   return `${year}-${month}-${day}`
 }
 
-function addDays(date: Date, days: number) {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
-function inferTradeType(text: string): TradeType | null {
-  if (/(分红|派息|股息|现金红利|收到.*红利)/.test(text)) return 'DIVIDEND'
-  if (/(卖出|卖掉|减仓|清仓)/.test(text)) return 'SELL'
-  if (/(买入|买进|购入|加仓)/.test(text)) return 'BUY'
-  return null
-}
-
-function inferDate(text: string) {
-  const iso = text.match(/(20\d{2}|19\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})/)
-  if (iso) {
-    const [, year, month, day] = iso
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-  }
-  if (/(昨日|昨天)/.test(text)) return localDateString(addDays(new Date(), -1))
-  if (/(前天)/.test(text)) return localDateString(addDays(new Date(), -2))
-  return localDateString()
-}
-
-function parseFirstNumber(pattern: RegExp, text: string) {
-  const match = text.match(pattern)
-  if (!match?.[1]) return null
-  const value = Number(match[1].replace(/,/g, ''))
-  return Number.isFinite(value) ? value : null
-}
-
-function inferQuantity(text: string) {
-  return parseFirstNumber(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:股|份|枚|手|shares?|coins?)/i, text)
-}
-
-function inferTradePrice(text: string) {
-  return parseFirstNumber(/(?:成本价|成本|成交价|价格|价|@)\s*(?:是|为|=|:|：)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/i, text)
-    ?? parseFirstNumber(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:元|块|港币|美元|USDT|usd|hkd|cny)\s*(?:每股|一股|\/股|\/份)?/i, text)
-}
-
-function inferDividendTotal(text: string) {
-  return parseFirstNumber(/(?:到账|收到|分红|派息|红利|股息)\s*(?:合计|总计|总额|金额)?\s*(?:是|为|=|:|：)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/, text)
-    ?? parseFirstNumber(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:元|块|港币|美元|USDT|usd|hkd|cny)/i, text)
-}
-
-function inferDividendPerUnit(text: string) {
-  return parseFirstNumber(/(?:每股|每份|每枚|\/股|\/份)\s*(?:分红|派息|红利|股息)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)/, text)
-    ?? parseFirstNumber(/(?:分红|派息|红利|股息)\s*(?:每股|每份|每枚)?\s*(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:元|块).*?(?:每股|每份|每枚|\/股|\/份)/, text)
-}
-
-function stripKnownFragments(text: string) {
-  return text
-    .replace(/(20\d{2}|19\d{2})[-/.年]\d{1,2}[-/.月]\d{1,2}日?/g, ' ')
-    .replace(/今日|今天|昨日|昨天|前天/g, ' ')
-    .replace(/\d+(?:,\d{3})*(?:\.\d+)?\s*(?:股|份|枚|手|元|块|港币|美元|USDT|usd|hkd|cny|shares?|coins?)/gi, ' ')
-    .replace(/成本价|成本|成交价|价格|每股|每份|每枚|合计|总计|总额|金额|到账|收到/g, ' ')
-    .replace(/[，。！？、,.!?;；:：()[\]{}"'“”‘’@=]/g, ' ')
-}
-
-function inferSecurityQuery(text: string) {
-  const actionPattern = ACTION_WORDS.join('|')
-  const afterAction = text.match(new RegExp(`(?:${actionPattern})\\s*([\\u4e00-\\u9fa5A-Za-z0-9.\\- ]{2,30}?)(?=\\s*\\d|\\s*(?:成本|成交|价格|价|每股|合计|总额|金额|到账)|$)`))
-  const candidate = afterAction?.[1]?.trim()
-  if (candidate) return candidate
-
-  const stripped = stripKnownFragments(text)
-  const spans = stripped.match(/[\u4e00-\u9fa5A-Za-z0-9. -]{2,30}/g) ?? []
-  return spans
-    .map((item) => item.replace(new RegExp(ACTION_WORDS.join('|'), 'g'), '').trim())
-    .find((item) => item.length >= 2) ?? ''
-}
-
 function mergeCorrection(input: PrepareTradeRecordInput) {
   const previous = input.previousDraft
   const correction = input.correctionText?.trim()
@@ -135,8 +89,193 @@ function mergeCorrection(input: PrepareTradeRecordInput) {
   ].join('，')
 }
 
-async function resolveStock(text: string, stocks: Stock[]) {
-  const query = inferSecurityQuery(text)
+function stripJsonFence(raw: string) {
+  return raw.replace(/```(?:json)?\s*/g, '').replace(/```\s*$/g, '').trim()
+}
+
+function safeParseModelExtraction(raw: string): ModelTradeExtraction | null {
+  try {
+    return JSON.parse(stripJsonFence(raw)) as ModelTradeExtraction
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return JSON.parse(match[0]) as ModelTradeExtraction
+    } catch {
+      return null
+    }
+  }
+}
+
+function toNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value !== 'string') return null
+  const normalized = value.replace(/,/g, '').trim()
+  if (!normalized) return null
+  const number = Number(normalized)
+  return Number.isFinite(number) ? number : null
+}
+
+function normalizeTradeType(value: unknown): TradeType | null {
+  if (value === 'BUY' || value === 'SELL' || value === 'DIVIDEND') return value
+  return null
+}
+
+function normalizeDate(value: unknown) {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^(20\d{2}|19\d{2})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  return value.trim()
+}
+
+function compactSecurity(security?: PrepareTradeRecordInput['security']) {
+  if (!security) return null
+  return {
+    stockId: security.stockId,
+    code: security.code,
+    name: security.name,
+    market: security.market,
+  }
+}
+
+function compactHoldings(stocks: Stock[]) {
+  return stocks.slice(0, 80).map((stock) => ({
+    stockId: stock.id,
+    code: stock.code,
+    name: stock.name,
+    market: stock.market,
+  }))
+}
+
+async function extractTradeRecordWithModel(
+  text: string,
+  args: PrepareTradeRecordInput,
+  ctx: AgentExecutionContext,
+  stocks: Stock[],
+) {
+  if (!ctx.aiConfig.enabled || !ctx.aiConfig.baseUrl || !ctx.aiConfig.model || !ctx.aiConfig.apiKey) {
+    throw new Error('AI 模型未配置，无法解析交易录入内容。')
+  }
+
+  const systemPrompt = [
+    '你是 StockTracker 的交易录入抽取器。',
+    '你的任务是判断用户文本是否在表达一条要录入系统的交易或分红事实，并抽取结构化字段。',
+    '只输出 JSON，不要输出解释文字。',
+    '不要根据固定关键词机械判断；要理解整句话的语义、上下文和券商流水式表达。',
+    '如果用户是在询问建议、复盘、行情、新闻或假设交易，而不是要求录入事实，isTradeRecord=false。',
+    '如果用户是在取消上一条待确认草稿，isCancellation=true。',
+    '日期必须归一化为 YYYY-MM-DD；相对日期请按 currentDate 推断。',
+    'type 只能是 BUY、SELL、DIVIDEND；买入/申购/加仓为 BUY，卖出/赎回/减仓/清仓为 SELL，现金分红/派息/股息为 DIVIDEND。',
+    'price 表示每股/每份成交价；quantity 表示股数/份额/枚数；分红如果只有总额填 dividendTotal，如果有每股/每份金额填 dividendPerUnit。',
+    'securityQuery 放用户指向的原始标的名称或代码，不要把价格、数量、日期放进去。',
+    'market 如果能从文本或已知证券判断则填 A、HK、US、FUND、CRYPTO，否则为空。',
+    '缺失字段放入 missing，不能编造未提供的价格、数量或标的。',
+  ].join('\n')
+
+  const userPrompt = JSON.stringify({
+    currentDate: localDateString(),
+    userText: text,
+    correctionText: args.correctionText,
+    previousDraft: args.previousDraft
+      ? {
+          type: args.previousDraft.type,
+          date: args.previousDraft.date,
+          code: args.previousDraft.code,
+          name: args.previousDraft.name,
+          market: args.previousDraft.market,
+          price: args.previousDraft.price,
+          quantity: args.previousDraft.quantity,
+        }
+      : null,
+    plannerSecurity: compactSecurity(args.security),
+    currentHoldings: compactHoldings(stocks),
+    outputContract: {
+      isTradeRecord: 'boolean',
+      isCancellation: 'boolean',
+      type: 'BUY|SELL|DIVIDEND|null',
+      date: 'YYYY-MM-DD|null',
+      securityQuery: 'string|null',
+      code: 'string|null',
+      name: 'string|null',
+      market: 'A|HK|US|FUND|CRYPTO|null',
+      quantity: 'number|null',
+      price: 'number|null',
+      dividendPerUnit: 'number|null',
+      dividendTotal: 'number|null',
+      note: 'string|null',
+      assumptions: ['string'],
+      missing: ['string'],
+      confidence: '0到1',
+    },
+  })
+
+  const raw = await callJsonCompletion(ctx.aiConfig, systemPrompt, userPrompt, AbortSignal.timeout(TRADE_EXTRACTION_TIMEOUT_MS), {
+    reasoningEffort: 'none',
+    logFailureLevel: 'warn',
+    logMetadata: {
+      phase: 'trade.record.extract',
+      optional: false,
+      timeoutMs: TRADE_EXTRACTION_TIMEOUT_MS,
+    },
+  })
+  const parsed = safeParseModelExtraction(raw)
+  if (!parsed) throw new Error('AI 未返回有效的交易录入 JSON。')
+  return parsed
+}
+
+async function resolveStock(extraction: ModelTradeExtraction, stocks: Stock[], security?: PrepareTradeRecordInput['security']) {
+  if (security?.stockId) {
+    const stock = stocks.find((item) => item.id === security.stockId)
+    if (stock) {
+      return {
+        query: stock.name,
+        candidates: [{
+          code: stock.code,
+          name: stock.name,
+          market: stock.market,
+          stockId: stock.id,
+          confidence: 1,
+          inPortfolio: true,
+        }],
+      }
+    }
+  }
+  if (security?.code && security.market) {
+    const code = security.code.toUpperCase()
+    const local = stocks.find((item) => item.code.toUpperCase() === code && item.market === security.market)
+    return {
+      query: security.name || code,
+      candidates: [{
+        code,
+        name: local?.name ?? security.name ?? code,
+        market: security.market,
+        stockId: local?.id,
+        confidence: local ? 1 : 0.92,
+        inPortfolio: Boolean(local),
+      }],
+    }
+  }
+
+  const extractedMarket = parseMarket(extraction.market)
+  if (extraction.code && extractedMarket) {
+    const code = String(extraction.code).toUpperCase()
+    const local = stocks.find((item) => item.code.toUpperCase() === code && item.market === extractedMarket)
+    return {
+      query: extraction.name || extraction.securityQuery || code,
+      candidates: [{
+        code,
+        name: local?.name ?? extraction.name ?? extraction.securityQuery ?? code,
+        market: extractedMarket,
+        stockId: local?.id,
+        confidence: local ? 1 : 0.9,
+        inPortfolio: Boolean(local),
+      }],
+    }
+  }
+
+  const query = [extraction.securityQuery, extraction.name, extraction.code]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find(Boolean) ?? ''
   if (!query) return { query: '', candidates: [] }
   const local = matchStocks(query, stocks, 3).map((match) => ({
     code: match.stock.code,
@@ -146,9 +285,12 @@ async function resolveStock(text: string, stocks: Stock[]) {
     confidence: match.confidence,
     inPortfolio: true,
   }))
+  const marketMatchedLocal = extractedMarket ? local.filter((candidate) => candidate.market === extractedMarket) : local
+  if (marketMatchedLocal.length) return { query, candidates: marketMatchedLocal }
   if (local.length) return { query, candidates: local }
   const candidates = await resolveSecurityCandidates(query, stocks, 3)
-  return { query, candidates }
+  const marketMatchedCandidates = extractedMarket ? candidates.filter((candidate) => candidate.market === extractedMarket) : candidates
+  return { query, candidates: marketMatchedCandidates.length ? marketMatchedCandidates : candidates }
 }
 
 function configForMarket(config: AppConfig | undefined, market: Market) {
@@ -178,29 +320,50 @@ export const tradePrepareRecordSkill: AgentSkill<PrepareTradeRecordInput> = {
       text: { type: 'string' },
       correctionText: { type: 'string' },
       previousDraft: { type: 'object' },
+      security: { type: 'object' },
     },
   },
   requiredScopes: ['stock.read', 'trade.read'],
   async execute(args, ctx) {
     const text = mergeCorrection(args)
     if (!text) return { skillName: 'trade.prepareRecord', ok: false, error: '缺少要整理的交易或分红文本' }
-    if (CANCEL_WORDS.some((word) => text.includes(word))) {
-      return { skillName: 'trade.prepareRecord', ok: true, data: { status: 'cancelled' } }
-    }
 
     const payload = getPayload(ctx)
-    const type = inferTradeType(text)
-    const date = inferDate(text)
-    const { query, candidates } = await resolveStock(text, payload.stocks)
+    const extraction = await extractTradeRecordWithModel(text, args, ctx, payload.stocks)
+    if (extraction.isCancellation) {
+      return { skillName: 'trade.prepareRecord', ok: true, data: { status: 'cancelled' } }
+    }
+    if (extraction.isTradeRecord === false) {
+      return {
+        skillName: 'trade.prepareRecord',
+        ok: true,
+        data: {
+          status: 'needs_more_info',
+          missing: ['交易录入意图'],
+          query: '',
+          candidates: [],
+          sourceText: text,
+          message: '这句话不像是在录入一笔交易或分红，请明确说明要录入的交易事实。',
+        },
+      }
+    }
+
+    const type = normalizeTradeType(extraction.type)
+    const date = normalizeDate(extraction.date) ?? localDateString()
+    const { query, candidates } = await resolveStock(extraction, payload.stocks, args.security)
     const selected = candidates.length === 1 ? candidates[0] : null
-    const missing: string[] = []
+    const missing = Array.isArray(extraction.missing) ? extraction.missing.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
     if (!type) missing.push('交易类型（买入/卖出/分红）')
 
-    let quantity = inferQuantity(text)
-    const price = type === 'DIVIDEND' ? inferDividendPerUnit(text) : inferTradePrice(text)
-    const dividendTotal = type === 'DIVIDEND' ? inferDividendTotal(text) : null
+    let quantity = toNumber(extraction.quantity)
+    const price = type === 'DIVIDEND'
+      ? toNumber(extraction.dividendPerUnit) ?? toNumber(extraction.price)
+      : toNumber(extraction.price)
+    const dividendTotal = type === 'DIVIDEND' ? toNumber(extraction.dividendTotal) : null
     const heldStock = selected?.stockId ? payload.stocks.find((stock) => stock.id === selected.stockId) : null
-    const assumptions: string[] = []
+    const assumptions = Array.isArray(extraction.assumptions)
+      ? extraction.assumptions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
 
     if (type === 'DIVIDEND' && !quantity && heldStock) {
       quantity = calcStockSummary(heldStock).currentHolding
@@ -232,6 +395,7 @@ export const tradePrepareRecordSkill: AgentSkill<PrepareTradeRecordInput> = {
 
     const finalType = type
     if (!finalType) return { skillName: 'trade.prepareRecord', ok: false, error: '缺少交易类型，无法生成草稿。' }
+    const willCreateStock = !selected.stockId
 
     const market = selected.market
     const feeConfig = configForMarket(payload.config, market)
@@ -240,6 +404,9 @@ export const tradePrepareRecordSkill: AgentSkill<PrepareTradeRecordInput> = {
     if (finalType === 'DIVIDEND' && !isFinitePositive(finalPrice) && isFinitePositive(dividendTotal)) {
       finalPrice = roundMoney(dividendTotal / finalQuantity)
       assumptions.push('分红只提供总额，已按数量反推单位到账金额。')
+    }
+    if (willCreateStock) {
+      assumptions.push('该标的当前未在持仓中，确认后会先创建持仓，再录入本笔记录。')
     }
 
     const totalAmount = roundMoney(finalPrice * finalQuantity)
@@ -271,6 +438,8 @@ export const tradePrepareRecordSkill: AgentSkill<PrepareTradeRecordInput> = {
       deferredDividendTax: deferredDividendTax > 0 ? deferredDividendTax : undefined,
       totalAmount,
       netAmount: finalType === 'DIVIDEND' ? totalAmount : fees.netAmount,
+      note: typeof extraction.note === 'string' && extraction.note.trim() ? extraction.note.trim() : undefined,
+      willCreateStock,
       sourceText: text,
       assumptions,
     }
@@ -328,6 +497,7 @@ export const tradeCommitRecordSkill: AgentSkill<CommitTradeRecordInput> = {
       quantity: draft.quantity,
       commission: draft.commission,
       tax: draft.tax,
+      deferredDividendTax: draft.deferredDividendTax,
       totalAmount: draft.totalAmount,
       netAmount: draft.netAmount,
       note: draft.note,
@@ -364,6 +534,7 @@ export const tradeCommitRecordSkill: AgentSkill<CommitTradeRecordInput> = {
       ok: true,
       data: {
         status: 'recorded',
+        stockCreated: !draft.stockId,
         stock: {
           id: targetStock.id,
           code: targetStock.code,

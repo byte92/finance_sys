@@ -57,6 +57,37 @@ function plannedSkillArgs(plan: AgentPlan, name: string) {
   return plan.requiredSkills.find((call) => call.name === name)?.args ?? {}
 }
 
+function extractTradeSecurityFromPlan(plan: AgentPlan, stocks: Stock[]) {
+  const entity = plan.entities.find((item) => item.type === 'stock' && (item.stockId || (item.code && item.market)))
+  if (!entity) return undefined
+
+  if (entity.stockId) {
+    const stock = stocks.find((item) => item.id === entity.stockId)
+    if (stock) {
+      return {
+        stockId: stock.id,
+        code: stock.code,
+        name: stock.name,
+        market: stock.market,
+      }
+    }
+  }
+
+  if (entity.code && entity.market) {
+    const market = entity.market as Market
+    const code = String(entity.code).toUpperCase()
+    const stock = stocks.find((item) => item.code.toUpperCase() === code && item.market === market)
+    return {
+      ...(stock ? { stockId: stock.id } : {}),
+      code,
+      name: stock?.name ?? entity.name ?? entity.raw ?? code,
+      market,
+    }
+  }
+
+  return undefined
+}
+
 function buildModelStockSkillCalls(stock: Stock, plan: AgentPlan, userMessage: string) {
   const skills = buildDefaultStockSkillCalls(stock)
   if (planRequestsSkill(plan, 'stock.getFinancials')) {
@@ -121,6 +152,19 @@ async function normalizeLlmPlan(plan: AgentPlan, userMessage: string, stocks: St
   const normalizedPlan = {
     ...actionPlan,
     requiredSkills: dedupeSkillCalls([...baseCalls, ...normalizedWebCalls]),
+  }
+
+  if (normalizedPlan.intent === 'trade_record') {
+    const security = extractTradeSecurityFromPlan(normalizedPlan, stocks)
+    return {
+      ...normalizedPlan,
+      requiredSkills: [{
+        name: 'trade.prepareRecord',
+        args: { text: userMessage, ...(security ? { security } : {}) },
+        reason: '用户正在录入一笔交易或分红事实，必须先生成待确认草稿',
+      }],
+      responseMode: 'answer',
+    }
   }
 
   const codedEntities = normalizedPlan.entities

@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto'
+import {
+  collectMissingAnalysisFields,
+  getAnalysisOutputContract,
+  getAnalysisOutputRules,
+  withAnalysisFieldFallbacks,
+} from '@/lib/ai/analysisOutput'
 import { buildAnalysisSystemPrompt, MARKET_ANALYSIS_PROMPT } from '@/lib/agent/prompts/analysis'
 import { runMarketAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
 import { fetchStockNews } from '@/lib/external/news'
@@ -201,35 +207,7 @@ function normalizeMarketAnalysisShape(parsed: Partial<AiAnalysisResult> | null) 
 }
 
 function collectMissingMarketAnalysisFields(parsed: Partial<AiAnalysisResult> | null) {
-  if (!parsed) {
-    return ['__json__']
-  }
-
-  const missing: string[] = []
-  if (!['high', 'medium', 'weak'].includes(String(parsed.analysisStrength))) missing.push('analysisStrength')
-  if (!['low', 'medium', 'high'].includes(String(parsed.confidence))) missing.push('confidence')
-  for (const field of ['summary', 'stance', 'disclaimer'] as const) {
-    const value = parsed[field]
-    if (typeof value !== 'string' || !value.trim()) missing.push(field)
-  }
-  for (const field of [
-    'facts',
-    'inferences',
-    'actionPlan',
-    'invalidationSignals',
-    'timeHorizons',
-    'probabilityAssessment',
-    'technicalSignals',
-    'newsDrivers',
-    'keyLevels',
-    'actionableObservations',
-    'risks',
-    'evidence',
-  ] as const) {
-    const value = parsed[field]
-    if (!Array.isArray(value) || value.length === 0) missing.push(field)
-  }
-  return Array.from(new Set(missing))
+  return collectMissingAnalysisFields(parsed, 'market')
 }
 
 async function repairMarketAnalysisResult(
@@ -243,15 +221,11 @@ async function repairMarketAnalysisResult(
     config,
     '你是严格的 JSON 结构修复助手。只输出 JSON 对象，不要输出解释。',
     JSON.stringify({
-      task: '补全 AI 大盘分析结果缺失的字段。必须保留 currentResult 中已有结论，只补齐 missingFields；补齐内容必须基于 context，不得编造不存在的数据。',
+      task: '补全 AI 大盘分析结果缺失的字段。必须保留 currentResult 中已有结论，只补齐 missingFields；补齐内容必须基于 context，不得编造不存在的数据。所有 missingFields 都必须返回，数组字段至少 1 条；如果上下文没有数据，返回结构化“数据不足/未提供”说明。',
       missingFields,
       currentResult: parsed,
       context,
-      outputContract: {
-        actionableObservations: ['string'],
-        risks: ['string'],
-        evidence: ['string'],
-      },
+      outputContract: getAnalysisOutputContract('market', missingFields),
     }),
   )
   const patch = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
@@ -265,7 +239,12 @@ function normalizeMarketAnalysisResult(
     throw new Error('AI 大盘分析返回不是有效 JSON，已停止生成分析。')
   }
 
-  const missing = collectMissingMarketAnalysisFields(parsed).filter((field) => field !== '__json__')
+  const unresolved = collectMissingMarketAnalysisFields(parsed).filter((field) => field !== '__json__')
+  if (unresolved.length) {
+    logger.warn('ai.market.missingFields.fallback', { missingFields: unresolved })
+    parsed = withAnalysisFieldFallbacks(parsed, 'market', unresolved)
+  }
+  const missing: string[] = []
   const analysisStrength = ['high', 'medium', 'weak'].includes(String(parsed.analysisStrength)) ? parsed.analysisStrength! : 'weak'
   const confidence = ['low', 'medium', 'high'].includes(String(parsed.confidence)) ? parsed.confidence! : 'low'
   const summary = requireTextField(parsed, 'summary', missing)
@@ -285,7 +264,7 @@ function normalizeMarketAnalysisResult(
   const evidence = requireArrayField<string>(parsed, 'evidence', missing)
 
   if (missing.length) {
-    throw new Error(`AI 大盘分析返回缺少必填字段：${Array.from(new Set(missing)).join('、')}。已停止生成分析。`)
+    logger.warn('ai.market.missingFields.afterFallback', { missingFields: Array.from(new Set(missing)) })
   }
 
   return {
@@ -322,6 +301,7 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
         medium: '1-4 周',
       },
       outputRules: [
+        ...getAnalysisOutputRules('market'),
         '必须先判断市场强弱，再解释依据。',
         '必须区分事实与推断。',
         '必须给出概率分析，且概率总和为 100。',
@@ -330,25 +310,7 @@ function marketPrompt(context: MarketAnalysisContext, config: AiConfig) {
         '不能只写“关注节奏变化”，必须指出最值得优先观察的市场和触发条件。',
       ],
       context,
-      outputContract: {
-        analysisStrength: 'high|medium|weak',
-        summary: 'string',
-        stance: 'string',
-        facts: ['string'],
-        inferences: ['string'],
-        actionPlan: ['string'],
-        invalidationSignals: ['string'],
-        timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
-        probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
-        technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
-        newsDrivers: [{ headline: 'string', source: 'string', publishedAt: 'string', sentiment: 'positive|neutral|negative', impact: 'string', url: 'string' }],
-        keyLevels: ['string'],
-        actionableObservations: ['string'],
-        risks: ['string'],
-        confidence: 'low|medium|high',
-        evidence: ['string'],
-        disclaimer: 'string',
-      },
+      outputContract: getAnalysisOutputContract('market'),
     }),
   }
 }

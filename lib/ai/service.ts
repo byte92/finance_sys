@@ -1,4 +1,11 @@
 import { createHash } from 'node:crypto'
+import {
+  collectMissingAnalysisFields,
+  getAnalysisOutputContract,
+  getAnalysisOutputRules,
+  withAnalysisFieldFallbacks,
+  type AnalysisOutputMode,
+} from '@/lib/ai/analysisOutput'
 import { buildAnalysisSystemPrompt, PORTFOLIO_ANALYSIS_PROMPT, STOCK_ANALYSIS_PROMPT } from '@/lib/agent/prompts/analysis'
 import { runPortfolioAnalysisAgentTask, runStockAnalysisAgentTask } from '@/lib/agent/tasks/analysis'
 import { callJsonCompletion } from '@/lib/external/llmProvider'
@@ -9,9 +16,7 @@ import type {
   AiAnalysisResult,
   AiConfig,
   AiConfidence,
-  AiNewsDriver,
   AiProbabilityScenario,
-  AiTechnicalSignal,
   Stock,
 } from '@/types'
 import type { Market } from '@/types'
@@ -46,7 +51,14 @@ function validateAiConfig(config: AiConfig) {
   if (!config.apiKey.trim()) throw new Error('请先配置 AI API Key')
 }
 
-function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputContract: Record<string, unknown>, task: string, context: unknown) {
+function buildPromptEnvelope(
+  config: AiConfig,
+  mode: AnalysisOutputMode,
+  analysisPrompt: string,
+  outputContract: Record<string, unknown>,
+  task: string,
+  context: unknown,
+) {
   return {
     system: buildAnalysisSystemPrompt(config.analysisLanguage, analysisPrompt),
     user: JSON.stringify({
@@ -57,6 +69,7 @@ function buildPromptEnvelope(config: AiConfig, analysisPrompt: string, outputCon
         medium: '1-4 周',
       },
       outputRules: [
+        ...getAnalysisOutputRules(mode),
         '必须先得出结论，再给出证据依据；summary 第一句话必须包含明确主动作。',
         '标的主动作只能从“买入 / 加仓 / 继续持有 / 减仓 / 卖出 / 观望 / 回避”中选择；组合主动作只能从“继续持有 / 分批减仓 / 控制仓位 / 暂不加仓 / 调整结构 / 等待确认”中选择。',
         '不能把“仅供参考”“结合自身情况”“继续观察”作为主结论；若选择观望或等待确认，必须说明等待的具体信号、当前不操作的原因和后续触发动作。',
@@ -132,40 +145,6 @@ function normalizeAnalysisShape(parsed: Partial<AiAnalysisResult> | null) {
   }
 }
 
-function collectMissingAnalysisFields(parsed: Partial<AiAnalysisResult> | null, mode: 'portfolio' | 'stock') {
-  if (!parsed) {
-    return ['__json__']
-  }
-
-  const missing: string[] = []
-  if (!['high', 'medium', 'weak'].includes(String(parsed.analysisStrength))) missing.push('analysisStrength')
-  if (!['low', 'medium', 'high'].includes(String(parsed.confidence))) missing.push('confidence')
-  for (const field of ['summary', 'stance', 'disclaimer'] as const) {
-    const value = parsed[field]
-    if (typeof value !== 'string' || !value.trim()) missing.push(field)
-  }
-  for (const field of [
-    'facts',
-    'inferences',
-    'actionPlan',
-    'invalidationSignals',
-    'timeHorizons',
-    'probabilityAssessment',
-    'technicalSignals',
-    'newsDrivers',
-    'keyLevels',
-    'actionableObservations',
-    'risks',
-    'evidence',
-  ] as const) {
-    const value = parsed[field]
-    if (!Array.isArray(value) || value.length === 0) missing.push(field)
-  }
-  if (mode === 'stock' && (!Array.isArray(parsed.positionAdvice) || parsed.positionAdvice.length === 0)) missing.push('positionAdvice')
-  if (mode === 'portfolio' && (!Array.isArray(parsed.portfolioRiskNotes) || parsed.portfolioRiskNotes.length === 0)) missing.push('portfolioRiskNotes')
-  return Array.from(new Set(missing))
-}
-
 async function repairAnalysisResult(
   config: AiConfig,
   mode: 'portfolio' | 'stock',
@@ -178,24 +157,12 @@ async function repairAnalysisResult(
     config,
     '你是严格的 JSON 结构修复助手。只输出 JSON 对象，不要输出解释。',
     JSON.stringify({
-      task: '补全 AI 投资分析结果缺失的字段。必须保留 currentResult 中已有结论，只补齐 missingFields；补齐内容必须基于 context，不得编造不存在的数据。',
+      task: '补全 AI 投资分析结果缺失的字段。必须保留 currentResult 中已有结论，只补齐 missingFields；补齐内容必须基于 context，不得编造不存在的数据。所有 missingFields 都必须返回，数组字段至少 1 条；如果上下文没有数据，返回结构化“数据不足/未提供”说明。',
       mode,
       missingFields,
       currentResult: parsed,
       context,
-      outputContract: mode === 'stock'
-        ? {
-            actionableObservations: ['string'],
-            risks: ['string'],
-            evidence: ['string'],
-            positionAdvice: ['string'],
-          }
-        : {
-            actionableObservations: ['string'],
-            risks: ['string'],
-            evidence: ['string'],
-            portfolioRiskNotes: ['string'],
-          },
+      outputContract: getAnalysisOutputContract(mode, missingFields),
     }),
   )
   const patch = safeParseJsonObject<Partial<AiAnalysisResult>>(raw)
@@ -207,7 +174,12 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, mode:
     throw new Error('AI 分析返回不是有效 JSON，已停止生成分析。')
   }
 
-  const missing = collectMissingAnalysisFields(parsed, mode).filter((field) => field !== '__json__')
+  const unresolved = collectMissingAnalysisFields(parsed, mode).filter((field) => field !== '__json__')
+  if (unresolved.length) {
+    logger.warn('ai.analysis.missingFields.fallback', { mode, missingFields: unresolved })
+    parsed = withAnalysisFieldFallbacks(parsed, mode, unresolved)
+  }
+  const missing: string[] = []
   const analysisStrength = ['high', 'medium', 'weak'].includes(String(parsed.analysisStrength)) ? parsed.analysisStrength! : 'weak'
   const confidence = ['low', 'medium', 'high'].includes(String(parsed.confidence)) ? parsed.confidence! : 'low'
   const summary = requireTextField(parsed, 'summary', missing)
@@ -219,8 +191,8 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, mode:
   const invalidationSignals = requireArrayField<string>(parsed, 'invalidationSignals', missing)
   const timeHorizons = requireArrayField<AiAnalysisResult['timeHorizons'][number]>(parsed, 'timeHorizons', missing)
   const probabilityAssessment = requireArrayField<AiProbabilityScenario>(parsed, 'probabilityAssessment', missing)
-  const technicalSignals = requireArrayField<AiTechnicalSignal>(parsed, 'technicalSignals', missing)
-  const newsDrivers = requireArrayField<AiNewsDriver>(parsed, 'newsDrivers', missing)
+  const technicalSignals = requireArrayField<AiAnalysisResult['technicalSignals'][number]>(parsed, 'technicalSignals', missing)
+  const newsDrivers = requireArrayField<AiAnalysisResult['newsDrivers'][number]>(parsed, 'newsDrivers', missing)
   const keyLevels = requireArrayField<string>(parsed, 'keyLevels', missing)
   const actionableObservations = requireArrayField<string>(parsed, 'actionableObservations', missing)
   const risks = requireArrayField<string>(parsed, 'risks', missing)
@@ -229,7 +201,7 @@ function normalizeAnalysisResult(parsed: Partial<AiAnalysisResult> | null, mode:
   const portfolioRiskNotes = mode === 'portfolio' ? requireArrayField<string>(parsed, 'portfolioRiskNotes', missing) : undefined
 
   if (missing.length) {
-    throw new Error(`AI 分析返回缺少必填字段：${Array.from(new Set(missing)).join('、')}。已停止生成分析。`)
+    logger.warn('ai.analysis.missingFields.afterFallback', { mode, missingFields: Array.from(new Set(missing)) })
   }
 
   return {
@@ -293,24 +265,9 @@ async function callProvider(config: AiConfig, systemPrompt: string, userPrompt: 
 function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
   return buildPromptEnvelope(
     config,
+    'portfolio',
     PORTFOLIO_ANALYSIS_PROMPT,
-    {
-      analysisStrength: 'high|medium|weak',
-      summary: 'string',
-      stance: 'string',
-      facts: ['string'],
-      inferences: ['string'],
-      actionPlan: ['string'],
-      invalidationSignals: ['string'],
-      timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
-      probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
-      portfolioRiskNotes: ['string'],
-      actionableObservations: ['string'],
-      risks: ['string'],
-      confidence: 'low|medium|high',
-      evidence: ['string'],
-      disclaimer: 'string',
-    },
+    getAnalysisOutputContract('portfolio'),
     '请对当前组合做短中期分析，重点关注仓位集中度、已实现/未实现盈亏结构、主要风险暴露，并给出可执行的组合操作建议。',
     context,
   )
@@ -319,27 +276,9 @@ function portfolioPrompt(context: PortfolioAnalysisContext, config: AiConfig) {
 function stockPrompt(context: StockAnalysisContext, config: AiConfig) {
   return buildPromptEnvelope(
     config,
+    'stock',
     STOCK_ANALYSIS_PROMPT,
-    {
-      analysisStrength: 'high|medium|weak',
-      summary: 'string',
-      stance: 'string',
-      facts: ['string'],
-      inferences: ['string'],
-      actionPlan: ['string'],
-      invalidationSignals: ['string'],
-      timeHorizons: [{ horizon: 'short|medium', summary: 'string', scenarios: [{ label: 'string', probability: 'number', rationale: 'string' }] }],
-      probabilityAssessment: [{ label: 'string', probability: 'number', rationale: 'string' }],
-      technicalSignals: [{ name: 'string', value: 'string', interpretation: 'string' }],
-      newsDrivers: [{ headline: 'string', source: 'string', publishedAt: 'string', sentiment: 'positive|neutral|negative', impact: 'string', url: 'string' }],
-      keyLevels: ['string'],
-      positionAdvice: ['string'],
-      actionableObservations: ['string'],
-      risks: ['string'],
-      confidence: 'low|medium|high',
-      evidence: ['string'],
-      disclaimer: 'string',
-    },
+    getAnalysisOutputContract('stock'),
     '请对这个标的从持仓视角给出短中期分析，结合技术指标、持仓成本、盈亏状态与新闻驱动，给出买入、卖出、继续持有、减仓或观望等明确操作建议。',
     context,
   )

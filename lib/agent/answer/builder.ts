@@ -344,7 +344,7 @@ export function buildAgentAnswerDraft(plan: AgentPlan, skillResults: AgentSkillR
   if (answerType === 'trade_review') {
     addItem(facts, '交易复盘方法论', buildTradeReviewMethodologySummary(), 'agent.knowledge.tradingMethodology')
     addItem(inferences, '评价框架', '交易记录是已发生事实；复盘需要从事实账本、成本收益、仓位风险、行情位置和行为纪律五个维度拆开看。', 'answer.builder')
-    addItem(recommendations, '回答方式', '先给条件化结论，再列事实和计算；明确区分已发生交易事实、单笔结果、累计收益和当前行情四个口径。用户提到具体交易理论时，再按该框架展开。', 'answer.builder')
+    addItem(recommendations, '回答方式', '先直接回应用户的判断诉求，给出条件化结论，再列事实和计算；明确区分已发生交易事实、单笔结果、累计收益、当前行情和不可倒推的历史入场依据。用户提到具体交易理论时，再按该框架展开。', 'answer.builder')
   } else if (answerType === 'stock_holding_review') {
     addItem(inferences, '评价框架', '需要区分持仓成本、已实现收益、未实现收益、估值与技术面，不要把某一项单独作为买卖结论。', 'answer.builder')
   } else if (answerType === 'portfolio_review') {

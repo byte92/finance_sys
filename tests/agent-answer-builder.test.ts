@@ -87,7 +87,9 @@ test('answer builder creates quality warnings for trade review context', () => {
   assert.ok(draft.calculations.some((item) => item.label === '已实现收益' && item.source === 'stock.getHolding'))
   assert.ok(draft.qualityWarnings.some((item) => item.label === '单笔收益缺口'))
   assert.ok(draft.qualityWarnings.some((item) => item.label === '时间口径提醒'))
-  assert.ok(draft.recommendations.some((item) => item.label === '回答方式'))
+  const answerStyle = draft.recommendations.find((item) => item.label === '回答方式')
+  assert.match(String(answerStyle?.value), /先直接回应用户的判断诉求/)
+  assert.match(String(answerStyle?.value), /不可倒推的历史入场依据/)
 })
 
 test('answer builder exposes methodology even without trade plan fields', () => {
